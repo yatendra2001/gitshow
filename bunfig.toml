@@ -1,0 +1,9 @@
+# Local bun cache — workaround for a root-owned ~/.bun/install/cache/@anthropic-ai
+# from a past `sudo bun install`. The clean fix is to chown the global cache:
+#
+#   sudo chown -R $(whoami):staff ~/.bun/install/cache
+#
+# After that, delete this file and the .bun-cache/ directory to go back to the
+# shared global cache.
+[install.cache]
+dir = "./.bun-cache"

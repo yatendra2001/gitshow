@@ -1,0 +1,21 @@
+{
+  "name": "gitshow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "GitShow — AI-generated engineering portfolios from git history",
+  "scripts": {
+    "scan": "bun src/scan.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@openrouter/agent": "^0.3.2",
+    "@openrouter/sdk": "^0.12.8",
+    "dotenv": "^16.4.5",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3"
+  }
+}
