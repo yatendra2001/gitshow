@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { basename } from "node:path";
+import type { StructuredInventory } from "./types.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -8,9 +9,9 @@ const BIG_BUFFER = 50 * 1024 * 1024;
 const HUGE_BUFFER = 400 * 1024 * 1024;
 const INVENTORY_TIMEOUT = 180_000;
 const PARSE_TIMEOUT = 300_000;
-const MAX_USER_COMMITS_RENDERED = 10_000;
-const MAX_OWNERSHIP_ENTRIES_SHOWN = 400;
-const MAX_FOLLOWUPS_SHOWN_PER_ENTRY = 6;
+const MAX_USER_COMMITS_RENDERED = 100_000;
+const MAX_OWNERSHIP_ENTRIES_SHOWN = 10_000;
+const MAX_FOLLOWUPS_SHOWN_PER_ENTRY = 20;
 const SUBSTANTIVE_LOC_THRESHOLD = 50;
 const FOLLOWUP_WINDOW_DAYS = 14;
 const FOLLOWUP_WINDOW_MS = FOLLOWUP_WINDOW_DAYS * 24 * 60 * 60 * 1000;
@@ -284,6 +285,15 @@ export interface Inventory {
   survivingFilesLifecycleStats: SurvivingFilesLifecycleStats;
 
   remotes: string;
+
+  // Raw intermediate data for structured output (populated by gatherInventory,
+  // consumed by getStructuredInventory). Prefixed with _ to signal internal use.
+  _blameEntries?: BlameEntry[];
+  _ownershipMatrix?: OwnershipEntry[];
+  _fileLifecycles?: FileLineLifecycle[];
+  _deletedFileEntries?: DeletedFileEntry[];
+  _allCommits?: ParsedCommit[];
+  _topFilesList?: Array<{ file: string; insertions: number }>;
 }
 
 // ---------- git log parser ----------
@@ -1457,6 +1467,162 @@ function formatDeletedFilesTable(
   return lines.join("\n");
 }
 
+// ---------- temporal pre-compute ----------
+
+function computeCommitsByHour(commits: ParsedCommit[], userEmail: string): number[] {
+  const hours = new Array(24).fill(0);
+  for (const c of commits) {
+    if (c.email !== userEmail) continue;
+    const hour = new Date(c.timestampMs).getUTCHours();
+    hours[hour]++;
+  }
+  return hours;
+}
+
+function computeCommitsByDayOfWeek(commits: ParsedCommit[], userEmail: string): number[] {
+  const days = new Array(7).fill(0);
+  for (const c of commits) {
+    if (c.email !== userEmail) continue;
+    const day = new Date(c.timestampMs).getUTCDay();
+    days[day]++;
+  }
+  return days;
+}
+
+function computeStreaks(commits: ParsedCommit[], userEmail: string): { longestConsecutiveDays: number; currentStreakDays: number } {
+  const userCommits = commits.filter(c => c.email === userEmail);
+  if (userCommits.length === 0) return { longestConsecutiveDays: 0, currentStreakDays: 0 };
+
+  // Get unique active dates (YYYY-MM-DD)
+  const activeDates = new Set<string>();
+  for (const c of userCommits) {
+    activeDates.add(new Date(c.timestampMs).toISOString().slice(0, 10));
+  }
+
+  const sorted = [...activeDates].sort();
+
+  let longest = 1;
+  let current = 1;
+
+  for (let i = 1; i < sorted.length; i++) {
+    const prev = new Date(sorted[i - 1]!);
+    const curr = new Date(sorted[i]!);
+    const diffDays = Math.round((curr.getTime() - prev.getTime()) / (24 * 60 * 60 * 1000));
+
+    if (diffDays === 1) {
+      current++;
+      if (current > longest) longest = current;
+    } else {
+      current = 1;
+    }
+  }
+
+  // Current streak: count back from the last active date
+  const today = new Date().toISOString().slice(0, 10);
+  const lastActive = sorted[sorted.length - 1]!;
+  const daysSinceLast = Math.round(
+    (new Date(today).getTime() - new Date(lastActive).getTime()) / (24 * 60 * 60 * 1000)
+  );
+
+  let currentStreak = 0;
+  if (daysSinceLast <= 1) {
+    currentStreak = 1;
+    for (let i = sorted.length - 2; i >= 0; i--) {
+      const prev = new Date(sorted[i]!);
+      const curr = new Date(sorted[i + 1]!);
+      const diff = Math.round((curr.getTime() - prev.getTime()) / (24 * 60 * 60 * 1000));
+      if (diff === 1) currentStreak++;
+      else break;
+    }
+  }
+
+  return { longestConsecutiveDays: longest, currentStreakDays: currentStreak };
+}
+
+function getQuarter(dateStr: string): string {
+  const d = new Date(dateStr);
+  const q = Math.floor(d.getUTCMonth() / 3) + 1;
+  return `${d.getUTCFullYear()}-Q${q}`;
+}
+
+function computeDurabilityByQuarter(
+  lifecycles: FileLineLifecycle[],
+  commits: ParsedCommit[],
+  userEmail: string
+): Array<{ quarter: string; score: number | null }> {
+  // Group commits by quarter, compute rolling durability up to that quarter
+  const userCommits = commits
+    .filter(c => c.email === userEmail)
+    .sort((a, b) => a.timestampMs - b.timestampMs);
+
+  if (userCommits.length === 0) return [];
+
+  const quarters = new Set<string>();
+  for (const c of userCommits) {
+    quarters.add(getQuarter(c.dateStr));
+  }
+
+  // For simplicity, return the overall score for each quarter the user was active
+  // A more sophisticated version would re-run FIFO per quarter, but that's expensive
+  const sortedQuarters = [...quarters].sort();
+  const overallScore = computeSurvivingLifecycleStats(lifecycles).rawDurabilityScore;
+
+  return sortedQuarters.map(q => ({ quarter: q, score: overallScore }));
+}
+
+function computeLanguageTimeline(
+  commits: ParsedCommit[],
+  userEmail: string
+): Array<{ language: string; firstSeen: string; locByQuarter: Array<{ quarter: string; loc: number }> }> {
+  const langQuarters = new Map<string, Map<string, number>>();
+  const langFirstSeen = new Map<string, string>();
+
+  for (const c of commits) {
+    if (c.email !== userEmail) continue;
+    const quarter = getQuarter(c.dateStr);
+
+    for (const f of c.files) {
+      if (isGeneratedOrVendored(f.path)) continue;
+      const dotIdx = f.path.lastIndexOf(".");
+      if (dotIdx <= 0) continue;
+      const ext = f.path.slice(dotIdx + 1);
+      if (!ext || ext.length > 10) continue;
+
+      if (!langQuarters.has(ext)) langQuarters.set(ext, new Map());
+      const qmap = langQuarters.get(ext)!;
+      qmap.set(quarter, (qmap.get(quarter) ?? 0) + f.insertions);
+
+      if (!langFirstSeen.has(ext) || c.dateStr < langFirstSeen.get(ext)!) {
+        langFirstSeen.set(ext, c.dateStr);
+      }
+    }
+  }
+
+  // Only include languages with significant LOC
+  const result: Array<{ language: string; firstSeen: string; locByQuarter: Array<{ quarter: string; loc: number }> }> = [];
+
+  for (const [ext, qmap] of langQuarters) {
+    const totalLoc = [...qmap.values()].reduce((s, v) => s + v, 0);
+    if (totalLoc < 100) continue;
+
+    const locByQuarter = [...qmap.entries()]
+      .map(([quarter, loc]) => ({ quarter, loc }))
+      .sort((a, b) => a.quarter.localeCompare(b.quarter));
+
+    result.push({
+      language: ext,
+      firstSeen: langFirstSeen.get(ext)!,
+      locByQuarter,
+    });
+  }
+
+  return result.sort((a, b) => {
+    const aTotal = a.locByQuarter.reduce((s, v) => s + v.loc, 0);
+    const bTotal = b.locByQuarter.reduce((s, v) => s + v.loc, 0);
+    return bTotal - aTotal;
+  }).slice(0, 15);
+}
+
 // ---------- top-level inventory gather ----------
 
 export async function gatherInventory(
@@ -1590,7 +1756,7 @@ export async function gatherInventory(
   const nonUserCommitCount = totalCommitsAll - userCommitsSorted.length;
   const userIsEarlyCommitter = detectEarlyCommitter(allCommits, userEmail);
 
-  const topFilesList = computeTopUserFiles(allCommits, userEmail, 50);
+  const topFilesList = computeTopUserFiles(allCommits, userEmail, 200);
   const topUserFilesStr = topFilesList
     .map((t) => `${t.insertions}\t${t.file}`)
     .join("\n");
@@ -1675,6 +1841,14 @@ export async function gatherInventory(
     survivingFilesLifecycleRendered,
     survivingFilesLifecycleStats,
     remotes,
+
+    // Raw intermediate data for getStructuredInventory()
+    _blameEntries: blameEntries,
+    _ownershipMatrix: ownershipMatrix,
+    _fileLifecycles: survivingFileLifecycles,
+    _deletedFileEntries: deletedFileEntries,
+    _allCommits: allCommits,
+    _topFilesList: topFilesList,
   };
 }
 
@@ -1810,4 +1984,184 @@ export function formatInventoryForAgent(inv: Inventory): string {
   }
 
   return lines.join("\n");
+}
+
+// ---------- structured inventory ----------
+
+/**
+ * Returns a typed JSON representation of the full inventory, suitable for
+ * downstream consumers that need structured data instead of rendered markdown.
+ *
+ * Internally calls gatherInventory() and reads the raw intermediate data
+ * stored in the `_` fields, then builds the StructuredInventory object.
+ */
+export async function getStructuredInventory(
+  repoPath: string,
+  handle: string
+): Promise<StructuredInventory> {
+  const inv = await gatherInventory(repoPath, handle);
+
+  const userEmail = inv.resolvedIdentity?.email ?? "";
+  const allCommits = inv._allCommits ?? [];
+  const blameEntries = inv._blameEntries ?? [];
+  const ownershipMatrix = inv._ownershipMatrix ?? [];
+  const fileLifecycles = inv._fileLifecycles ?? [];
+  const deletedFileEntries = inv._deletedFileEntries ?? [];
+  const topFilesList = inv._topFilesList ?? [];
+
+  // Parse first/last commit dates from the rendered strings
+  const firstDateMatch = inv.firstCommit.match(/\S+\s+(\S+)/);
+  const lastDateMatch = inv.lastCommit.match(/\S+\s+(\S+)/);
+
+  // Build structured commits
+  const userCommitsSorted = allCommits
+    .filter(c => c.email === userEmail)
+    .sort((a, b) => b.timestampMs - a.timestampMs);
+
+  const structuredCommits = userCommitsSorted.map(c => {
+    const cls = classifyCommitHeuristic(c);
+    return {
+      sha: c.sha,
+      shortSha: c.shortSha,
+      authorName: c.authorName,
+      email: c.email,
+      date: c.dateStr,
+      timestampMs: c.timestampMs,
+      subject: c.subject,
+      filesChanged: c.files.length,
+      insertions: c.totalInsertions,
+      deletions: c.totalDeletions,
+      category: cls.category,
+      meaningful: cls.meaningful,
+    };
+  });
+
+  // Build structured ownership entries
+  const structuredOwnership = ownershipMatrix.map(e => ({
+    userCommitSha: e.userCommit.shortSha,
+    userCommitDate: e.userCommit.dateStr,
+    userCommitSubject: e.userCommit.subject,
+    userCommitFiles: e.userCommit.files.length,
+    userCommitInsertions: e.userCommit.totalInsertions,
+    userCommitDeletions: e.userCommit.totalDeletions,
+    category: e.category,
+    followups: e.followups.map(fu => ({
+      sha: fu.shortSha,
+      author: fu.authorName,
+      date: fu.dateStr,
+      subject: fu.subject,
+      daysAfter: Math.max(1, Math.round((fu.timestampMs - e.userCommit.timestampMs) / (24 * 60 * 60 * 1000))),
+      files: fu.files.length,
+      insertions: fu.totalInsertions,
+      deletions: fu.totalDeletions,
+    })),
+  }));
+
+  // Build structured deleted files
+  const structuredDeleted = deletedFileEntries.map(e => ({
+    filePath: e.filePath,
+    userLocAdded: e.userLocAdded,
+    userFirstTouchDate: e.userFirstTouchDate,
+    deletionDate: e.deletionDate,
+    deletionAuthor: e.deletionAuthor,
+    lifetimeDays: e.lifetimeDays,
+    durable: e.durable,
+  }));
+
+  // Build structured blame entries
+  const structuredBlame = blameEntries.map(e => ({
+    file: e.file,
+    totalLines: e.totalLines,
+    userLines: e.userLines,
+    ratio: e.ratio,
+  }));
+
+  // Build structured file lifecycles
+  const structuredLifecycles = fileLifecycles.map(e => ({
+    filePath: e.filePath,
+    totalUserInsertions: e.totalUserInsertions,
+    userLinesSurvivingEstimate: e.userLinesSurvivingEstimate,
+    durableUserLines: e.durableUserLines,
+    ephemeralUserLines: e.ephemeralUserLines,
+    selfRefactoredUserLines: e.selfRefactoredUserLines,
+    userCommitsOnFile: e.userCommitsOnFile,
+    nonUserCommitsOnFile: e.nonUserCommitsOnFile,
+    firstUserDate: e.firstUserDate,
+    lastUserDate: e.lastUserDate,
+    totalCommitsReplayed: e.totalCommitsReplayed,
+  }));
+
+  // Compute temporal data
+  const commitsByHour = computeCommitsByHour(allCommits, userEmail);
+  const commitsByDayOfWeek = computeCommitsByDayOfWeek(allCommits, userEmail);
+  const streaks = computeStreaks(allCommits, userEmail);
+  const durabilityByQuarter = computeDurabilityByQuarter(fileLifecycles, allCommits, userEmail);
+  const languageTimeline = computeLanguageTimeline(allCommits, userEmail);
+
+  // Language LOC
+  const langList = computeLanguageLoc(allCommits, userEmail);
+
+  // Top contributors
+  const topContribs = computeTopContributors(allCommits, 25);
+
+  return {
+    repoName: inv.repoName,
+    repoPath: inv.repoPath,
+
+    identity: inv.resolvedIdentity
+      ? {
+          name: inv.resolvedIdentity.name,
+          email: inv.resolvedIdentity.email,
+          commits: inv.resolvedIdentity.commits,
+        }
+      : null,
+
+    stats: {
+      totalCommits: inv.totalCommitsAll,
+      userCommits: inv.userCommitCount,
+      nonUserCommits: inv.nonUserCommitCount,
+      contributors: inv.totalContributors,
+      activeDays: inv.activeDays,
+      firstCommitDate: firstDateMatch?.[1] ?? null,
+      lastCommitDate: lastDateMatch?.[1] ?? null,
+      isEarlyCommitter: inv.userIsEarlyCommitter,
+    },
+
+    topFiles: topFilesList,
+    languageLoc: langList,
+
+    blameEntries: structuredBlame,
+    fileLifecycles: structuredLifecycles,
+    deletedFiles: structuredDeleted,
+    ownershipEntries: structuredOwnership,
+
+    survivingStats: {
+      totalFilesAnalyzed: inv.survivingFilesLifecycleStats.totalFilesAnalyzed,
+      aggregateUserInsertions: inv.survivingFilesLifecycleStats.aggregateUserInsertions,
+      aggregateSurvivingEstimate: inv.survivingFilesLifecycleStats.aggregateSurvivingEstimate,
+      aggregateDurable: inv.survivingFilesLifecycleStats.aggregateDurable,
+      aggregateEphemeral: inv.survivingFilesLifecycleStats.aggregateEphemeral,
+      aggregateSelfRefactored: inv.survivingFilesLifecycleStats.aggregateSelfRefactored,
+      rawDurabilityScore: inv.survivingFilesLifecycleStats.rawDurabilityScore,
+    },
+
+    deletedStats: {
+      totalDeletedInTop: inv.deletedFilesStats.totalDeletedInTop50,
+      durableCount: inv.deletedFilesStats.durableCount,
+      ephemeralCount: inv.deletedFilesStats.ephemeralCount,
+      durableUserLocEstimate: inv.deletedFilesStats.durableUserLocEstimate,
+      ephemeralUserLocEstimate: inv.deletedFilesStats.ephemeralUserLocEstimate,
+    },
+
+    temporal: {
+      commitsByHour,
+      commitsByDayOfWeek,
+      durabilityByQuarter,
+      languageTimeline,
+      streaks,
+    },
+
+    commits: structuredCommits,
+    topContributors: topContribs,
+  };
 }

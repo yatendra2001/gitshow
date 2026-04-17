@@ -1,50 +1,41 @@
-export interface CliArgs {
-  repoPath: string;
-  handle: string;
-  out?: string;
-  model: string;
-}
+/**
+ * CLI argument parsing for profile mode.
+ *
+ * Usage:
+ *   bun run profile -- --handle <github_handle> [--out file] [--model model] [--concurrency N] [--feedback]
+ */
 
 export const DEFAULT_MODEL = "anthropic/claude-sonnet-4.6";
+const DEFAULT_CONCURRENCY = 3;
 
-const USAGE = `GitShow Scanner — analyze a local git clone and produce structured signals.
+export interface ProfileArgs {
+  handle: string;
+  model: string;
+  concurrency: number;
+  outPath?: string;
+  feedback: boolean;
+}
+
+const USAGE = `GitShow — AI-generated engineering portfolios.
 
 Usage:
-  bun run scan -- --repo <path> --handle <handle> [--model <id>] [--out <file>]
+  bun run profile -- --handle <github_handle> [--out file] [--model model] [--concurrency N] [--feedback]
 
 Arguments:
-  --repo, -r     Path to a local git clone (required)
-  --handle, -u   GitHub handle or git author name of the user to analyze (required)
-  --model, -m    OpenRouter model ID (default: ${DEFAULT_MODEL})
-  --out, -o      Write JSON result to this file instead of stdout (optional)
-  --help, -h     Show this message
+  --handle, -u     GitHub username (required)
+  --model, -m      OpenRouter model ID (default: ${DEFAULT_MODEL})
+  --out, -o        Write JSON result to this file (optional)
+  --concurrency    Max parallel repo analyses (default: ${DEFAULT_CONCURRENCY})
+  --feedback       Enable feedback loop for quality improvement
+  --help, -h       Show this message
 
-All flags also accept the --flag=value form.
-
-The scanner uses OpenRouter for LLM inference. Get your API key at
-https://openrouter.ai/keys and put it in .env as OPENROUTER_API_KEY.
-
-Examples (copy as a single line — do NOT use backslash line continuation):
-  # Default: Claude Sonnet 4.6 via OpenRouter (recommended)
-  bun run scan -- --repo ~/code/my-project --handle yatendra --out scans/my-scan.json
-
-  # Override the model
-  bun run scan -- --repo ~/code/my-project --handle yatendra --model google/gemini-2.5-flash --out scans/test.json
-
-Scan outputs go in scans/ (gitignored). To skip writing to disk, omit --out.
+The pipeline uses OpenRouter for LLM inference. Set OPENROUTER_API_KEY in .env.
+GitHub data is fetched via \`gh\` CLI (must be authenticated: \`gh auth login\`).
 `;
 
 /**
- * Normalize a raw argv entry so we can parse it regardless of shell-quoting
- * mistakes. Handles three forms:
- *
- *   1. Standard: \`--flag\` alone (next argv entry is the value)
- *   2. Equals:   \`--flag=value\` (value inline, no next entry consumed)
- *   3. Glued:    \`--flag value\` squished into one argv entry because the user
- *                pasted a multi-line command with \`\\\` continuation and the
- *                shell escaped the space instead of ending the line
- *
- * Also strips leading/trailing whitespace from each arg.
+ * Normalize a raw argv entry. Handles:
+ *   --flag=value, --flag value, -f value, and glued forms.
  */
 function normalizeArg(raw: string | undefined): {
   flag: string;
@@ -75,61 +66,77 @@ function normalizeArg(raw: string | undefined): {
   return { flag: trimmed, inlineValue: undefined };
 }
 
-export function parseArgs(argv: string[]): CliArgs {
-  let repoPath: string | undefined;
-  let handle: string | undefined;
-  let out: string | undefined;
-  let model: string = DEFAULT_MODEL;
+export function parseArgs(argv: string[]): ProfileArgs {
+  // Filter out bare "profile" token if present (from npm script)
+  const filteredArgv = argv.filter((a) => a.trim() !== "profile");
 
+  let handle: string | undefined;
+  let outPath: string | undefined;
+  let model: string = DEFAULT_MODEL;
+  let concurrency: number = DEFAULT_CONCURRENCY;
+  let feedback = false;
+
+  const iRef = { cur: 0 };
   const nextValue = (
-    i: { cur: number },
     inlineValue: string | undefined
   ): string | undefined => {
     if (inlineValue !== undefined) return inlineValue;
-    i.cur += 1;
-    return argv[i.cur];
+    iRef.cur += 1;
+    return filteredArgv[iRef.cur];
   };
 
-  const iRef = { cur: 0 };
-  for (iRef.cur = 0; iRef.cur < argv.length; iRef.cur++) {
-    const { flag, inlineValue } = normalizeArg(argv[iRef.cur]);
+  for (iRef.cur = 0; iRef.cur < filteredArgv.length; iRef.cur++) {
+    const { flag, inlineValue } = normalizeArg(filteredArgv[iRef.cur]);
     if (!flag) continue;
 
     switch (flag) {
-      case "--repo":
-      case "-r":
-        repoPath = nextValue(iRef, inlineValue);
-        break;
       case "--handle":
       case "-u":
-        handle = nextValue(iRef, inlineValue);
+        handle = nextValue(inlineValue);
         break;
       case "--out":
       case "-o":
-        out = nextValue(iRef, inlineValue);
+        outPath = nextValue(inlineValue);
         break;
       case "--model":
       case "-m": {
-        const v = nextValue(iRef, inlineValue);
+        const v = nextValue(inlineValue);
         if (v) model = v;
         break;
       }
+      case "--concurrency": {
+        const v = nextValue(inlineValue);
+        if (v) {
+          const n = parseInt(v, 10);
+          if (Number.isFinite(n) && n > 0) concurrency = n;
+        }
+        break;
+      }
+      case "--feedback":
+        feedback = true;
+        break;
       case "--help":
       case "-h":
         process.stdout.write(USAGE);
         process.exit(0);
       default:
-        process.stderr.write(
-          `Unknown argument: ${argv[iRef.cur]}\n\n${USAGE}`
-        );
-        process.exit(1);
+        // Don't error on unknown args — be lenient
+        break;
     }
   }
 
-  if (!repoPath || !handle) {
-    process.stderr.write(`Error: --repo and --handle are required\n\n${USAGE}`);
+  if (!handle) {
+    process.stderr.write(
+      `Error: --handle is required\n\n${USAGE}`
+    );
     process.exit(1);
   }
 
-  return { repoPath, handle, out, model };
+  return {
+    handle,
+    model,
+    concurrency,
+    outPath,
+    feedback,
+  };
 }

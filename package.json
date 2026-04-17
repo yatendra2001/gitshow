@@ -5,7 +5,7 @@
   "type": "module",
   "description": "GitShow — AI-generated engineering portfolios from git history",
   "scripts": {
-    "scan": "bun src/scan.ts",
+    "profile": "bun src/scan.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
