@@ -89,12 +89,30 @@ export interface ScanCheckpointMeta {
   errors: string[];
 }
 
+/**
+ * Fired after every successful local checkpoint write — both stage files
+ * (`01-github-data.json`, ..., `14-card.json`) and the meta file
+ * (`checkpoint.json`). The cloud entrypoint uses this to mirror writes into
+ * R2. Throws propagate up and fail the stage, so a failed upload fails
+ * the scan loudly instead of silently drifting between local and cloud.
+ */
+export type CheckpointSaveHook = (
+  filename: string,
+  data: unknown,
+) => Promise<void>;
+
 export class ScanCheckpoint {
   private dir: string;
   private meta: ScanCheckpointMeta;
+  private onSaveFile?: CheckpointSaveHook;
 
-  constructor(session: ScanSession, baseDir = "profiles") {
+  constructor(
+    session: ScanSession,
+    baseDir = "profiles",
+    onSaveFile?: CheckpointSaveHook,
+  ) {
     this.dir = join(baseDir, sanitizeHandle(session.handle));
+    this.onSaveFile = onSaveFile;
     this.meta = {
       handle: session.handle,
       session_id: session.id,
@@ -185,15 +203,17 @@ export class ScanCheckpoint {
   }
 
   private async saveMeta(): Promise<void> {
-    await writeFile(
-      join(this.dir, "checkpoint.json"),
-      JSON.stringify(this.meta, null, 2),
-    );
+    // Route through saveFile so the onSaveFile hook fires for checkpoint.json
+    // too (cloud mode relies on this to mirror meta into R2).
+    await this.saveFile("checkpoint.json", this.meta);
   }
 
   // ── Generic save/load ────────────────────────────────────
   async saveFile(name: string, data: unknown): Promise<void> {
     await writeFile(join(this.dir, name), JSON.stringify(data, null, 2));
+    if (this.onSaveFile) {
+      await this.onSaveFile(name, data);
+    }
   }
   async loadFile<T>(name: string): Promise<T | null> {
     const p = join(this.dir, name);

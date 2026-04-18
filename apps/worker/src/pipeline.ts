@@ -126,6 +126,11 @@ export interface RunPipelineInput {
   maxDeepRepos?: number | null;
   /** Event callback. */
   onEvent?: (ev: PipelineEvent) => void;
+  /**
+   * Override the checkpoint (used by the cloud entrypoint to inject an
+   * R2-mirroring checkpoint). Defaults to a plain local-disk checkpoint.
+   */
+  checkpoint?: ScanCheckpoint;
 }
 
 export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
@@ -133,7 +138,7 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
   const stream = (text: string) => events({ kind: "stream", text });
   const concurrency = input.concurrency ?? 3;
 
-  const ckpt = new ScanCheckpoint(input.session);
+  const ckpt = input.checkpoint ?? new ScanCheckpoint(input.session);
   await ckpt.init();
   const existing = await ckpt.loadExisting();
   if (existing) {

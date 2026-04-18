@@ -6,4 +6,10 @@ dist/
 .DS_Store
 scans/*.json
 profiles/
+apps/**/profiles/
+apps/**/scans/*.json
+apps/**/dist/
+apps/**/.next/
+apps/**/.open-next/
+apps/**/.wrangler/
 .bun-cache/

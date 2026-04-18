@@ -1,0 +1,15 @@
+app = "gitshow-worker"
+primary_region = "iad"
+
+[build]
+  # Path is relative to this fly.toml. Build context is set by the
+  # positional arg to `fly deploy` (pass `.` from the repo root so the
+  # Dockerfile's COPYs can reach package.json / bun.lock at the root).
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+
+[[vm]]
+  size = "shared-cpu-2x"
+  memory = "2048"
