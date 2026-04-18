@@ -5,6 +5,18 @@
  * so it hits D1 via the Cloudflare REST API. Every scan does ~50-100 writes
  * (stage events + heartbeats + claim upserts), which is well under D1's
  * per-account rate limits.
+ *
+ * ── Resilience ──
+ * `query()` retries on transient failures (network errors, 5xx responses,
+ * 429 rate limits) with exponential backoff + jitter. Permanent errors
+ * (4xx other than 429, SQL errors) throw immediately — retrying a bad
+ * query just wastes time.
+ *
+ * Every final failure (after retries exhausted) increments
+ * `failureCount`, logs a structured JSON line to stderr, and fires
+ * `onFailure` if registered. Fire-and-forget callers (heartbeat,
+ * event log) still need their own `.catch` but can surface the shared
+ * `failureCount` at end-of-run so silently-dropped writes become visible.
  */
 
 export interface D1Config {
@@ -26,9 +38,36 @@ interface D1QueryResponse {
 
 export type D1Param = string | number | boolean | null;
 
+export interface RetryOptions {
+  /** Total attempts, including the first try. Default 3. */
+  attempts?: number;
+  /** Base backoff delay in ms. Default 500. */
+  baseDelayMs?: number;
+  /** Max backoff cap in ms. Default 4000. */
+  maxDelayMs?: number;
+}
+
+export interface D1FailureInfo {
+  sqlPreview: string;
+  /** Actual attempts made before giving up (1 for permanent errors). */
+  attempts: number;
+  error: string;
+  status?: number;
+}
+
+const DEFAULT_RETRY: Required<RetryOptions> = {
+  attempts: 3,
+  baseDelayMs: 500,
+  maxDelayMs: 4000,
+};
+
 export class D1Client {
   private endpoint: string;
   private apiToken: string;
+  private _failureCount = 0;
+  private _lastFailureAt: number | null = null;
+  /** Optional listener; fires once per fully-failed query. */
+  onFailure: ((info: D1FailureInfo) => void) | null = null;
 
   constructor(cfg: D1Config) {
     this.endpoint = `https://api.cloudflare.com/client/v4/accounts/${cfg.accountId}/d1/database/${cfg.databaseId}/query`;
@@ -42,21 +81,86 @@ export class D1Client {
     return new D1Client({ accountId, databaseId, apiToken });
   }
 
-  async query(sql: string, params: D1Param[] = []): Promise<D1QueryResponse> {
-    const resp = await fetch(this.endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ sql, params }),
-    });
-    const json = (await resp.json()) as D1QueryResponse;
-    if (!resp.ok || !json.success) {
-      const err = json.errors?.[0]?.message ?? `d1 query failed (${resp.status})`;
-      throw new Error(`d1: ${err}`);
+  get failureCount(): number {
+    return this._failureCount;
+  }
+
+  get lastFailureAt(): number | null {
+    return this._lastFailureAt;
+  }
+
+  async query(
+    sql: string,
+    params: D1Param[] = [],
+    retry?: RetryOptions,
+  ): Promise<D1QueryResponse> {
+    const attempts = retry?.attempts ?? DEFAULT_RETRY.attempts;
+    const baseDelayMs = retry?.baseDelayMs ?? DEFAULT_RETRY.baseDelayMs;
+    const maxDelayMs = retry?.maxDelayMs ?? DEFAULT_RETRY.maxDelayMs;
+
+    let lastErr: unknown;
+    let lastStatus: number | undefined;
+    let attemptsMade = 0;
+
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      attemptsMade = attempt;
+      try {
+        const resp = await fetch(this.endpoint, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${this.apiToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ sql, params }),
+        });
+
+        if (!resp.ok) {
+          const text = await resp.text();
+          lastStatus = resp.status;
+          lastErr = new Error(`d1 http ${resp.status}: ${text}`);
+          if (!isRetriableStatus(resp.status) || attempt === attempts) {
+            break;
+          }
+        } else {
+          const json = (await resp.json()) as D1QueryResponse;
+          if (!json.success) {
+            const msg = json.errors?.[0]?.message ?? "d1 query failed";
+            // API-level errors (bad SQL, constraint violations, etc.) are
+            // permanent — retrying doesn't help, surface immediately.
+            lastErr = new Error(`d1: ${msg}`);
+            break;
+          }
+          return json;
+        }
+      } catch (netErr) {
+        // Network/transport error — always retriable until budget is spent.
+        lastErr = netErr;
+        if (attempt === attempts) break;
+      }
+
+      // Exponential backoff with ±25% jitter.
+      const raw = Math.min(baseDelayMs * 2 ** (attempt - 1), maxDelayMs);
+      const jittered = raw * (0.75 + Math.random() * 0.5);
+      await sleep(jittered);
     }
-    return json;
+
+    this._failureCount++;
+    this._lastFailureAt = Date.now();
+    const failure: D1FailureInfo = {
+      sqlPreview: sql.replace(/\s+/g, " ").slice(0, 100),
+      attempts: attemptsMade,
+      error: lastErr instanceof Error ? lastErr.message : String(lastErr),
+      status: lastStatus,
+    };
+    console.error(
+      JSON.stringify({
+        at: "d1.query.failed",
+        ts: new Date().toISOString(),
+        ...failure,
+      }),
+    );
+    this.onFailure?.(failure);
+    throw lastErr;
   }
 
   // ── Scan state ────────────────────────────────────────────
@@ -217,4 +321,15 @@ function requireEnv(name: string): string {
     throw new Error(`missing required env var: ${name}`);
   }
   return v;
+}
+
+function isRetriableStatus(status: number): boolean {
+  // 5xx = server / transient. 429 = rate limit. Everything else in 4xx is
+  // a permanent client error (bad SQL, auth, validation) — retrying won't
+  // help and just burns latency.
+  return status >= 500 || status === 429;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

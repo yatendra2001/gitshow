@@ -1,0 +1,60 @@
+name: Deploy worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/worker/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/deploy-worker.yml"
+  workflow_dispatch: # allow manual re-deploys from the Actions UI
+
+concurrency:
+  group: deploy-worker
+  cancel-in-progress: false # deploys should always complete
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Deploy image + update app's current release
+        # We DON'T pass --build-only because that doesn't update the app's
+        # currentRelease on Fly (that's why FlyClient's GraphQL resolver
+        # would otherwise keep returning the previous deployment tag).
+        # Unavoidable side-effect: Fly creates a crashlooping "app" machine
+        # (there's no SCAN_ID in its env). We clean it up below.
+        run: flyctl deploy -c apps/worker/fly.toml .
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+
+      - name: Destroy post-deploy zombie machines (preserve live scan/revise workers)
+        # Our model: per-scan machines are spawned via Machines API with
+        # name `scan-<id>` or `revise-<id>-<ts>`. Any other machine is a
+        # `fly deploy` zombie (auto-generated name like "bitter-moon-6036")
+        # and is safe to destroy. This keeps in-flight user scans alive.
+        run: |
+          set -euo pipefail
+          machines_json=$(flyctl machines list -a gitshow-worker -j)
+          zombie_ids=$(echo "$machines_json" | jq -r '
+            .[]
+            | select(
+                ((.name | startswith("scan-")) or (.name | startswith("revise-")))
+                | not
+              )
+            | .id
+          ')
+          if [ -z "${zombie_ids:-}" ]; then
+            echo "No zombie machines to destroy."
+            exit 0
+          fi
+          for id in $zombie_ids; do
+            echo "Destroying zombie machine: $id"
+            flyctl machines destroy "$id" -a gitshow-worker --force
+          done
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}

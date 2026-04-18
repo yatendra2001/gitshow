@@ -1,0 +1,42 @@
+name: Run D1 migrations
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "migrations/**"
+      - ".github/workflows/migrate-d1.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: migrate-d1
+  cancel-in-progress: false
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2"
+
+      - name: Install deps (frozen lockfile)
+        run: bun install --frozen-lockfile
+
+      - name: Apply migrations
+        # Migrations are written with CREATE TABLE / INDEX IF NOT EXISTS
+        # so re-running on every push is safe and idempotent. Non-idempotent
+        # migrations (destructive ALTERs, etc.) should be one-time scripts
+        # named 0002_..., 0003_... and still pass through this runner.
+        run: |
+          set -euo pipefail
+          for f in migrations/*.sql; do
+            echo "── Applying $f ──"
+            bun apps/worker/scripts/run-migration.ts "$f"
+          done
+        env:
+          CF_ACCOUNT_ID: ${{ secrets.CF_ACCOUNT_ID }}
+          CF_API_TOKEN: ${{ secrets.CF_API_TOKEN }}
+          D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID }}

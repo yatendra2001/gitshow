@@ -175,6 +175,10 @@ async function main() {
       claims: profile.claims.length,
       cost_usd: profile.meta.estimated_cost_usd,
       llm_calls: profile.meta.llm_calls,
+      // Number of D1 writes that exhausted their retry budget. Expect 0 in
+      // normal ops; non-zero means we silently dropped heartbeats/events
+      // and someone should look at the d1.query.failed log lines.
+      d1_failure_count: d1.failureCount,
     });
     process.exit(0);
   } catch (err) {

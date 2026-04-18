@@ -38,6 +38,12 @@ export interface SpawnMachineInput {
   cpus?: number;
   cpuKind?: "shared" | "performance";
   memoryMb?: number;
+  /**
+   * Override the container's CMD. Used to dispatch to a different
+   * entrypoint inside the same image — e.g. `["bun", "scripts/revise-claim.ts"]`
+   * for revisions. If unset, the Dockerfile CMD (run-scan.ts) runs.
+   */
+  initCmd?: string[];
 }
 
 export interface FlyMachine {
@@ -83,6 +89,7 @@ export class FlyClient {
       config: {
         image,
         env: input.env,
+        ...(input.initCmd ? { init: { cmd: input.initCmd } } : {}),
         guest: {
           cpu_kind: input.cpuKind ?? "shared",
           cpus: input.cpus ?? 2,
