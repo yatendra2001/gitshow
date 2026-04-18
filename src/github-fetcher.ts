@@ -113,6 +113,8 @@ interface RawRepo {
 }
 
 async function fetchRepos(handle: string): Promise<RepoRef[]> {
+  // No cap — take everything the user owns.
+  // `gh repo list --limit 2000` is well above any realistic account size.
   const raw = await ghJson<RawRepo[]>([
     "repo",
     "list",
@@ -120,7 +122,7 @@ async function fetchRepos(handle: string): Promise<RepoRef[]> {
     "--json",
     "name,owner,isPrivate,isFork,isArchived,description,primaryLanguage,languages,stargazerCount,forkCount,pushedAt,createdAt",
     "--limit",
-    "500",
+    "2000",
   ]);
   if (!Array.isArray(raw)) return [];
   return raw.map((r) => ({
@@ -156,40 +158,69 @@ interface RawPR {
 }
 
 async function fetchAuthoredPRs(handle: string): Promise<GitHubPR[]> {
-  // gh search prs uses --merged flag (not --is=merged) and doesn't expose
-  // additions/deletions/changedFiles in search results. We fetch basic data
-  // from search and can enrich individual PRs later via `gh pr view`.
-  const raw = await ghJson<RawPR[]>([
-    "search",
-    "prs",
-    `--author=${handle}`,
-    "--merged",
-    "--json",
-    "repository,number,title,state,createdAt,closedAt,updatedAt",
-    "--limit",
-    "200",
-  ]);
-  if (!Array.isArray(raw)) return [];
+  // Fetch ALL PRs the user has authored — any state (open, closed, merged,
+  // draft). `gh search prs` has a hard max of 1000 per query; for users
+  // with more we'd need date-range pagination, but 1000 covers the vast
+  // majority and drops `--merged` so we include external contributions
+  // that aren't merged yet.
   const lowerHandle = handle.toLowerCase();
-  return raw.map((pr) => {
-    const repoFullName = pr.repository?.nameWithOwner ?? "";
-    const repoOwner = repoFullName.split("/")[0]?.toLowerCase() ?? "";
-    return {
-      repoFullName,
-      number: pr.number,
-      title: pr.title ?? "",
-      state: "merged" as const,
-      additions: pr.additions ?? 0,
-      deletions: pr.deletions ?? 0,
-      changedFiles: pr.changedFiles ?? 0,
-      merged: true,
-      mergedAt: pr.closedAt ?? null,
-      createdAt: pr.createdAt ?? new Date().toISOString(),
-      closedAt: pr.closedAt ?? null,
-      reviewDecision: null,
-      isExternal: repoOwner !== lowerHandle,
-    };
-  });
+  const all: GitHubPR[] = [];
+  const seen = new Set<string>();
+
+  // Three passes: merged, unmerged-closed, open. Dedupe by repo#number.
+  // Each pass can hit the 1000-result ceiling; combining gives a larger
+  // effective window.
+  const passes: Array<{ label: string; extra: string[] }> = [
+    { label: "merged", extra: ["--merged"] },
+    { label: "closed", extra: ["--closed", "--not-merged"] },
+    { label: "open",   extra: ["--state=open"] },
+  ];
+
+  for (const pass of passes) {
+    const args = [
+      "search",
+      "prs",
+      `--author=${handle}`,
+      ...pass.extra,
+      "--json",
+      "repository,number,title,state,createdAt,closedAt,updatedAt",
+      "--limit",
+      "1000",
+    ];
+    const raw = await ghJson<RawPR[]>(args);
+    if (!Array.isArray(raw)) continue;
+    for (const pr of raw) {
+      const repoFullName = pr.repository?.nameWithOwner ?? "";
+      if (!repoFullName) continue;
+      const key = `${repoFullName}#${pr.number}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const repoOwner = repoFullName.split("/")[0]?.toLowerCase() ?? "";
+      const isMerged = pass.label === "merged";
+      const stateOut: GitHubPR["state"] = isMerged
+        ? "merged"
+        : pass.label === "closed"
+          ? "closed"
+          : "open";
+      all.push({
+        repoFullName,
+        number: pr.number,
+        title: pr.title ?? "",
+        state: stateOut,
+        additions: pr.additions ?? 0,
+        deletions: pr.deletions ?? 0,
+        changedFiles: pr.changedFiles ?? 0,
+        merged: isMerged,
+        mergedAt: isMerged ? (pr.closedAt ?? null) : null,
+        createdAt: pr.createdAt ?? new Date().toISOString(),
+        closedAt: pr.closedAt ?? null,
+        reviewDecision: null,
+        isExternal: repoOwner !== lowerHandle,
+      });
+    }
+  }
+
+  return all;
 }
 
 interface RawEvent {
@@ -247,8 +278,8 @@ async function fetchReviews(
     }
   }
 
-  // Limit to 5 repos to avoid rate-limit pressure
-  const repos = [...reviewRepos].slice(0, 5);
+  // No cap — iterate every repo the user has a review event in.
+  const repos = [...reviewRepos];
   const reviews: GitHubReview[] = [];
   const lowerHandle = handle.toLowerCase();
 
@@ -256,12 +287,12 @@ async function fetchReviews(
     try {
       const prs = await ghJson<Array<{ number: number }>>([
         "api",
-        `/repos/${repo}/pulls?state=all&per_page=30`,
+        `/repos/${repo}/pulls?state=all&per_page=100`,
       ]);
       if (!Array.isArray(prs)) continue;
 
-      // Fetch reviews for up to 10 PRs per repo
-      for (const pr of prs.slice(0, 10)) {
+      // Scan every PR in the response for reviews by this user.
+      for (const pr of prs) {
         try {
           const rawReviews = await ghJson<RawReview[]>([
             "api",
@@ -340,11 +371,10 @@ async function fetchOrgContributedRepos(
 
   if (activeRepos.size === 0) return [];
 
-  // 3. Fetch metadata for active org repos
-  // Sort by activity count, take top 10 to avoid rate limit issues
+  // 3. Fetch metadata for active org repos — no cap, sort by activity
+  //    for a stable order but include every discovered repo.
   const topActive = [...activeRepos.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 10);
+    .sort((a, b) => b[1] - a[1]);
 
   const orgRepos: RepoRef[] = [];
 

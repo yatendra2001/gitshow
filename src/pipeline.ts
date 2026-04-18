@@ -1,757 +1,727 @@
 /**
- * Pipeline orchestrator with checkpoint persistence.
+ * Pipeline orchestrator for the v2 AI backend.
  *
- * Every phase saves its output to disk. If the pipeline crashes,
- * re-running with the same handle resumes from the last checkpoint.
+ * Design: orchestrator-workers pattern (Anthropic) + evaluator-optimizer for
+ * the hook loop. Deterministic code wraps the LLM steps — normalize and
+ * assemble are pure; every LLM call is a focused sub-agent.
  *
- * Checkpoint directory: profiles/<handle>/
- * See checkpoint.ts for the file format.
+ * Stages (see checkpoint.ts for file layout):
+ *   1  github-fetch   — gh CLI (no LLM)
+ *   2  repo-filter    — tiered (no LLM)
+ *   3  inventory      — clone + git-inventory per deep repo (no LLM, parallel)
+ *   4  normalize      — artifact table + indexes (no LLM)
+ *   5  discover       — 1 LLM call
+ *   6  workers        — 4 parallel LLM calls (cross-repo, temporal, content, signal)
+ *   7  hook           — writer + critic loop (up to 2 rounds)
+ *   8  numbers        — 1 LLM call
+ *   9  disclosure     — 1 LLM call (may return empty)
+ *   10 shipped        — 1 LLM call
+ *   11 assemble       — merge into Profile (no LLM)
+ *   12 critic         — 1 LLM call (profile-level critic)
+ *   13 bind           — validate evidence refs (no LLM)
+ *
+ * ~9 LLM calls per profile, 4 of them concurrent.
+ *
+ * Checkpointed at every stage boundary. Resumable with the same session_id.
  */
 
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import pLimit from "p-limit";
 
-import { CheckpointManager } from "./checkpoint.js";
+import { ScanCheckpoint, shouldRun, type ScanPhase } from "./checkpoint.js";
 import { fetchGitHubData } from "./github-fetcher.js";
 import { filterRepos } from "./repo-filter.js";
-import { getStructuredInventory } from "./git-inventory.js";
-import { runSystemMapper } from "./agents/system-mapper.js";
-import { runRepoAnalyzer } from "./agents/repo-analyzer.js";
-import { runPRAnalyst } from "./agents/pr-analyst.js";
-import { runSynthesizer } from "./agents/synthesizer.js";
-import { runEvaluator } from "./agents/evaluator.js";
+import { normalize, type NormalizeResult } from "./normalize.js";
+import { cloneAndInventory } from "./inventory-runner.js";
+import { SessionUsage } from "./session.js";
+import { assembleProfile } from "./assemble.js";
+import { bindEvidence, formatBindReport } from "./bind-evidence.js";
+import { emitCard } from "./emit-card.js";
+import { applyGuardrails, formatGuardrailReport } from "./guardrails.js";
+
+import { runDiscover } from "./agents/discover.js";
+import { runCrossRepoWorker } from "./agents/workers/cross-repo.js";
+import { runTemporalWorker } from "./agents/workers/temporal.js";
+import { runContentWorker } from "./agents/workers/content.js";
+import { runSignalWorker } from "./agents/workers/signal.js";
+import { runDeepDiveWorker } from "./agents/workers/deep-dive.js";
+import { runReviewsWorker } from "./agents/workers/reviews.js";
+import { runHookWriter } from "./agents/hook/writer.js";
+import { runHookCritic } from "./agents/hook/critic.js";
+import { runHookStabilityCheck } from "./agents/hook/stability-check.js";
+import { runAngleSelector } from "./agents/hook/angle-selector.js";
+import { runNumbersAgent } from "./agents/numbers.js";
+import { runDisclosureAgent } from "./agents/disclosure.js";
+import { runShippedAgent } from "./agents/shipped.js";
+import { runProfileCritic } from "./agents/profile-critic.js";
+import { runCopyEditor } from "./agents/copy-editor.js";
+import { runTimelineAgent } from "./agents/timeline.js";
+import { runHiringReviseLoop } from "./revise-loop.js";
 
 import type {
-  PipelineConfig,
-  PipelineProgress,
-  RepoRef,
-  TemporalPrecompute,
-  SystemMapping,
-  FilterResult,
   GitHubData,
+  FilterResult,
+  StructuredInventory,
 } from "./types.js";
 import type {
-  ProfileResult,
-  RepoAnalysisResult,
-  ExternalContribution,
+  Artifact,
+  Profile,
+  ScanSession,
+  DiscoverOutput,
+  WorkerOutput,
+  HookCandidate,
+  PipelineMeta,
 } from "./schemas.js";
-import { toProfileCard } from "./schemas.js";
 
-const execFileAsync = promisify(execFile);
-
-// Phase ordering for resume logic
-const PHASE_ORDER = [
-  "init",
-  "github-fetch",
-  "repo-filter",
-  "system-map",
-  "repo-analysis",
-  "pr-analysis",
-  "synthesis",
-  "evaluation",
-  "complete",
-] as const;
-
-function phaseIndex(phase: string): number {
-  return PHASE_ORDER.indexOf(phase as (typeof PHASE_ORDER)[number]);
-}
-
-function shouldRun(current: string, target: string): boolean {
-  return phaseIndex(current) < phaseIndex(target);
-}
-
-// ---------- main pipeline ----------
-
-export async function runPipeline(
-  config: PipelineConfig
-): Promise<ProfileResult> {
-  const progress = config.onProgress ?? defaultProgress;
-  const startTime = Date.now();
-
-  const log = (text: string) => process.stderr.write(text);
-
-  // Initialize checkpoint manager
-  const ckpt = new CheckpointManager(config.handle);
-  await ckpt.init();
-
-  // Check for existing checkpoint
-  const existing = await ckpt.loadExisting();
-  if (existing && existing.phase !== "init") {
-    log(
-      `[pipeline] Found checkpoint at phase "${existing.phase}" ` +
-        `(${existing.completedRepos.length} repos done, ` +
-        `${existing.agentCalls} agent calls). Resuming...\n`
-    );
-  }
-
-  const lastPhase = ckpt.currentPhase;
-
-  // ──────────── Step 1: GitHub Discovery ────────────
-  let githubData: GitHubData;
-
-  if (shouldRun(lastPhase, "github-fetch")) {
-    progress({
-      phase: "github-fetch",
-      message: `Fetching GitHub data for @${config.handle}...`,
-      percent: 5,
-    });
-
-    githubData = await fetchGitHubData(config.handle);
-    await ckpt.saveGitHubData(githubData);
-
-    log(
-      `[pipeline] GitHub: ${githubData.ownedRepos.length} repos, ` +
-        `${githubData.authoredPRs.length} PRs, ` +
-        `${githubData.submittedReviews.length} reviews ` +
-        `[saved to checkpoint]\n`
-    );
-  } else {
-    githubData = (await ckpt.loadGitHubData<GitHubData>())!;
-    log(
-      `[pipeline] Loaded GitHub data from checkpoint ` +
-        `(${githubData.ownedRepos.length} repos)\n`
-    );
-  }
-
-  // ──────────── Step 2: Repo Filtering ────────────
-  let filtered: FilterResult;
-
-  if (shouldRun(lastPhase, "repo-filter")) {
-    progress({
-      phase: "repo-filter",
-      message: "Filtering significant repos...",
-      percent: 10,
-    });
-
-    filtered = filterRepos(githubData);
-    await ckpt.saveFilteredRepos(filtered);
-
-    log(
-      `[pipeline] Tiered: ${filtered.deep.length} deep, ` +
-        `${filtered.light.length} light, ` +
-        `${filtered.metadata.length} metadata, ` +
-        `${filtered.external.length} external [saved]\n`
-    );
-  } else {
-    filtered = (await ckpt.loadFilteredRepos<FilterResult>())!;
-    log(
-      `[pipeline] Loaded filter from checkpoint ` +
-        `(${filtered.deep.length} deep, ${filtered.light.length} light)\n`
-    );
-  }
-
-  // ──────────── Step 3: System Mapping ────────────
-  let systems: SystemMapping;
-
-  if (shouldRun(lastPhase, "system-map")) {
-    progress({
-      phase: "system-map",
-      message: `Grouping ${filtered.deep.length + filtered.light.length + filtered.metadata.length} repos into systems...`,
-      percent: 15,
-    });
-
-    // System mapper sees ALL repos — even metadata-only ones — to connect dots
-    const allRepos = [...filtered.deep, ...filtered.light, ...filtered.metadata];
-    try {
-      systems = await runSystemMapper(
-        { repos: allRepos },
-        { model: config.model, onProgress: log }
-      );
-      ckpt.incrementAgentCalls();
-      await ckpt.saveSystems(systems);
-      log(
-        `[pipeline] Systems: ${systems.systems.length} identified [saved]\n`
-      );
-    } catch (err) {
-      const msg = (err as Error).message;
-      log(`[pipeline] WARNING: System mapper failed: ${msg}\n`);
-      ckpt.addError(`system-mapper: ${msg}`);
-      systems = {
-        systems: [],
-        standalone: filtered.deep.map((r) => r.fullName),
-      };
-      await ckpt.saveSystems(systems);
-    }
-  } else {
-    systems = (await ckpt.loadSystems<SystemMapping>())!;
-    log(
-      `[pipeline] Loaded systems from checkpoint ` +
-        `(${systems.systems.length} systems)\n`
-    );
-  }
-
-  // ──────────── Step 4: Per-Repo Deep Analysis ────────────
-  progress({
-    phase: "repo-analysis",
-    message: `Deep-analyzing ${filtered.deep.length} repos...`,
-    percent: 20,
-  });
-
-  const repoAnalyses = await analyzeReposWithCheckpoint(
-    filtered.deep,
-    config,
-    ckpt,
-    (repoName, idx, total) => {
-      progress({
-        phase: "repo-analysis",
-        message: `Analyzing repo ${idx + 1}/${total}: ${repoName}`,
-        repoName,
-        percent: 20 + Math.round(((idx + 1) / total) * 40),
-      });
-    },
-    log
-  );
-
-  await ckpt.setPhase("repo-analysis");
-  log(`[pipeline] Completed ${repoAnalyses.length} repo analyses\n`);
-
-  // ──────────── Step 5: External PR Analysis ────────────
-  const externalContributions: ExternalContribution[] = [];
-
-  if (filtered.external.length > 0) {
-    progress({
-      phase: "pr-analysis",
-      message: `Analyzing ${filtered.external.length} external repo contributions...`,
-      percent: 65,
-    });
-
-    const prsByRepo = new Map<string, typeof githubData.authoredPRs>();
-    for (const pr of githubData.authoredPRs) {
-      if (!pr.isExternal) continue;
-      const existing = prsByRepo.get(pr.repoFullName) ?? [];
-      existing.push(pr);
-      prsByRepo.set(pr.repoFullName, existing);
-    }
-
-    const topExternalRepos = [...prsByRepo.entries()]
-      .sort((a, b) => b[1].length - a[1].length)
-      .slice(0, 5);
-
-    for (const [repoFullName, prs] of topExternalRepos) {
-      // Skip if already done in a previous run
-      if (ckpt.isExternalRepoComplete(repoFullName)) {
-        const cached = await ckpt.loadExternalAnalysis<ExternalContribution>(repoFullName);
-        if (cached) {
-          externalContributions.push(cached);
-          log(`[pipeline] Loaded external ${repoFullName} from checkpoint\n`);
-          continue;
-        }
-      }
-
-      try {
-        const contrib = await runPRAnalyst(
-          { repoFullName, prs },
-          { model: config.model, onProgress: log }
-        );
-        externalContributions.push(contrib);
-        ckpt.incrementAgentCalls();
-        await ckpt.saveExternalAnalysis(repoFullName, contrib);
-        log(`[pipeline] External ${repoFullName} analyzed [saved]\n`);
-      } catch (err) {
-        const msg = (err as Error).message;
-        log(`[pipeline] WARNING: PR analysis failed for ${repoFullName}: ${msg}\n`);
-        ckpt.addError(`pr-analyst ${repoFullName}: ${msg}`);
-      }
-    }
-  }
-
-  await ckpt.setPhase("pr-analysis");
-
-  // ──────────── Aggregate Temporal Data ────────────
-  progress({
-    phase: "temporal-aggregate",
-    message: "Aggregating temporal data...",
-    percent: 70,
-  });
-
-  const aggregateTemporal: TemporalPrecompute | null = null;
-
-  // ──────────── Step 6: Profile Synthesis ────────────
-  if (shouldRun(ckpt.currentPhase, "synthesis") || lastPhase === "pr-analysis") {
-    progress({
-      phase: "synthesis",
-      message: "Synthesizing unified profile...",
-      percent: 75,
-    });
-
-    const synthesized = await runSynthesizer(
-      {
-        handle: config.handle,
-        githubData,
-        systems,
-        repoAnalyses,
-        externalContributions,
-        aggregateTemporal,
-      },
-      { model: config.model, onProgress: log }
-    );
-    ckpt.incrementAgentCalls();
-    await ckpt.saveSynthesis(synthesized);
-    log(`[pipeline] Synthesis complete. Hook: "${synthesized.hook}" [saved]\n`);
-  } else {
-    log(`[pipeline] Loaded synthesis from checkpoint\n`);
-  }
-
-  // Load synthesis (either just computed or from checkpoint)
-  let synthesized = (await ckpt.loadSynthesis<
-    Omit<ProfileResult, "evaluationScore" | "evaluationNotes" | "pipelineMeta" | "generatedAt">
-  >())!;
-
-  // ──────────── Step 7: LLM Evaluation ────────────
-  let evaluationScore: number | undefined;
-  let evaluationNotes: string | undefined;
-
-  if (shouldRun(ckpt.currentPhase, "evaluation") || ckpt.currentPhase === "synthesis") {
-    progress({
-      phase: "evaluation",
-      message: "Evaluating profile quality...",
-      percent: 85,
-    });
-
-    try {
-      const evaluation = await runEvaluator(synthesized, {
-        model: config.model,
-        onProgress: log,
-      });
-      ckpt.incrementAgentCalls();
-      await ckpt.saveEvaluation(evaluation);
-
-      evaluationScore = evaluation.score;
-      evaluationNotes = evaluation.notes;
-
-      log(
-        `[pipeline] Evaluation: ${evaluation.score}/100` +
-          `${evaluation.reject ? " (REJECTED)" : ""} [saved]\n`
-      );
-
-      // Re-synthesize if rejected
-      if (evaluation.reject && evaluation.score < 40) {
-        progress({
-          phase: "re-synthesis",
-          message: `Re-synthesizing (score: ${evaluation.score})...`,
-          percent: 90,
-        });
-
-        const reSynthesized = await runSynthesizer(
-          {
-            handle: config.handle,
-            githubData,
-            systems,
-            repoAnalyses,
-            externalContributions,
-            aggregateTemporal,
-            evaluatorFeedback: evaluation.notes,
-          },
-          { model: config.model, onProgress: log }
-        );
-        ckpt.incrementAgentCalls();
-        synthesized = reSynthesized;
-        await ckpt.saveSynthesis(reSynthesized);
-
-        const reeval = await runEvaluator(reSynthesized, {
-          model: config.model,
-          onProgress: log,
-        });
-        ckpt.incrementAgentCalls();
-        evaluationScore = reeval.score;
-        evaluationNotes = reeval.notes;
-        await ckpt.saveEvaluation(reeval);
-        log(`[pipeline] Re-evaluation: ${reeval.score}/100 [saved]\n`);
-      }
-    } catch (err) {
-      const msg = (err as Error).message;
-      log(`[pipeline] WARNING: Evaluation failed: ${msg}\n`);
-      ckpt.addError(`evaluator: ${msg}`);
-    }
-  } else {
-    const cached = await ckpt.loadEvaluation<{ score: number; notes: string }>();
-    if (cached) {
-      evaluationScore = cached.score;
-      evaluationNotes = cached.notes;
-      log(`[pipeline] Loaded evaluation from checkpoint (${cached.score}/100)\n`);
-    }
-  }
-
-  // ──────────── Step 8: Deterministic Validation ────────────
-  progress({
-    phase: "validation",
-    message: "Running validation checks...",
-    percent: 95,
-  });
-
-  const warnings = validateProfile(synthesized, repoAnalyses);
-  if (warnings.length > 0) {
-    progress({ phase: "validation", message: "Validation", warnings });
-    for (const w of warnings) {
-      log(`[pipeline] VALIDATION WARNING: ${w}\n`);
-    }
-  }
-
-  // ──────────── Assemble final result ────────────
-  const totalDurationMs = Date.now() - startTime;
-
-  const result: ProfileResult = {
-    ...synthesized,
-    generatedAt: new Date().toISOString(),
-    evaluationScore,
-    evaluationNotes,
-    pipelineMeta: {
-      totalReposFound: githubData.ownedRepos.length,
-      significantRepos: filtered.deep.length + filtered.light.length,
-      systemsIdentified: systems.systems.length,
-      externalReposAnalyzed: externalContributions.length,
-      totalDurationMs,
-      agentCalls: ckpt.totalAgentCalls,
-    },
-  };
-
-  // Save full result (dashboard — reasoning, evidence, audit trail)
-  await ckpt.saveFinal(result);
-
-  // Save lean card (frontend — concise, no heavy descriptions)
-  const card = toProfileCard(result);
-  await ckpt.saveFile("09-card.json", card);
-
-  progress({
-    phase: "complete",
-    message: `Profile generated in ${Math.round(totalDurationMs / 1000)}s ` +
-      `(${ckpt.totalAgentCalls} agent calls)`,
-    percent: 100,
-  });
-
-  log(
-    `[pipeline] Full profile: ${ckpt.checkpointDir}/08-final.json\n` +
-    `[pipeline] Frontend card: ${ckpt.checkpointDir}/09-card.json\n`
-  );
-
-  return result;
-}
-
-// ---------- repo analysis with checkpoint support ----------
-
-async function analyzeReposWithCheckpoint(
-  repos: RepoRef[],
-  config: PipelineConfig,
-  ckpt: CheckpointManager,
-  onRepoStart: (name: string, idx: number, total: number) => void,
-  log: (text: string) => void
-): Promise<RepoAnalysisResult[]> {
-  const concurrency = config.concurrency ?? 3;
-  const results: RepoAnalysisResult[] = [];
-
-  for (let i = 0; i < repos.length; i += concurrency) {
-    const batch = repos.slice(i, i + concurrency);
-    const batchResults = await Promise.all(
-      batch.map(async (repo, batchIdx) => {
-        const idx = i + batchIdx;
-        onRepoStart(repo.fullName, idx, repos.length);
-
-        // Check if already completed in a previous run
-        if (ckpt.isRepoComplete(repo.fullName)) {
-          const cached = await ckpt.loadRepoAnalysis<RepoAnalysisResult>(repo.fullName);
-          if (cached) {
-            log(`[pipeline] Loaded ${repo.fullName} from checkpoint\n`);
-            return cached;
-          }
-        }
-
-        let tmpDir: string | null = null;
-        const MAX_REPO_RETRIES = 3;
-
-        for (let attempt = 1; attempt <= MAX_REPO_RETRIES; attempt++) {
-          tmpDir = null;
-          try {
-            tmpDir = await mkdtemp(join(tmpdir(), `gitshow-${repo.name}-`));
-            const clonePath = join(tmpDir, repo.name);
-
-            // Clone with retry-aware logging
-            log(`[pipeline] Cloning ${repo.fullName}${attempt > 1 ? ` (retry ${attempt})` : ""}...\n`);
-            await execFileAsync(
-              "gh",
-              ["repo", "clone", repo.fullName, clonePath, "--", "--no-checkout"],
-              { timeout: 300_000 }
-            );
-
-            log(`[pipeline] Pre-computing inventory for ${repo.name}...\n`);
-            const inventory = await getStructuredInventory(
-              clonePath,
-              config.handle
-            );
-
-            // Check if inventory has enough data for a full agent analysis.
-            // Clone + inventory is cheap (~10s). Agent call is expensive (~$1).
-            // For tiny repos, save the inventory data for the synthesizer but
-            // skip the agent call — the synthesizer can still use basic stats.
-            const MIN_COMMITS_FOR_AGENT = 5;
-            const userCommits = inventory.stats.userCommits;
-
-            if (!inventory.identity || userCommits === 0) {
-              log(`[pipeline] ${repo.name}: no user commits found. Saving inventory, skipping agent.\n`);
-              // Save a minimal analysis from inventory data so synthesizer sees it
-              const minimalAnalysis = buildMinimalAnalysis(repo.fullName, inventory);
-              await ckpt.saveRepoAnalysis(repo.fullName, minimalAnalysis);
-              return minimalAnalysis;
-            }
-
-            if (userCommits < MIN_COMMITS_FOR_AGENT) {
-              log(`[pipeline] ${repo.name}: only ${userCommits} commits. Saving inventory, skipping agent.\n`);
-              const minimalAnalysis = buildMinimalAnalysis(repo.fullName, inventory);
-              await ckpt.saveRepoAnalysis(repo.fullName, minimalAnalysis);
-              return minimalAnalysis;
-            }
-
-            log(`[pipeline] Running agent for ${repo.name} (${userCommits} commits)...\n`);
-            const analysis = await runRepoAnalyzer(inventory, {
-              model: config.model,
-              onProgress: log,
-            });
-
-            // Save immediately after each repo completes
-            ckpt.incrementAgentCalls();
-            await ckpt.saveRepoAnalysis(repo.fullName, analysis);
-            log(`[pipeline] ${repo.fullName} complete [saved to checkpoint]\n`);
-
-            return analysis;
-          } catch (err) {
-            const msg = (err as Error).message;
-            const lower = msg.toLowerCase();
-            const isTransient =
-              lower.includes("timeout") ||
-              lower.includes("econnreset") ||
-              lower.includes("502") ||
-              lower.includes("503") ||
-              lower.includes("504") ||
-              lower.includes("429") ||
-              lower.includes("rate limit") ||
-              lower.includes("socket hang up") ||
-              lower.includes("socket connection") ||
-              lower.includes("connectionclosed") ||
-              lower.includes("connection closed") ||
-              lower.includes("closed unexpectedly") ||
-              lower.includes("abort") ||
-              lower.includes("fetch failed") ||
-              lower.includes("network") ||
-              lower.includes("invalid final response") ||
-              lower.includes("empty or invalid output") ||
-              lower.includes("json") ||
-              lower.includes("maximum context length");
-
-            if (isTransient && attempt < MAX_REPO_RETRIES) {
-              log(`[pipeline] Transient error on ${repo.fullName}: ${msg.slice(0, 100)}\n`);
-              log(`[pipeline] Retrying in ${attempt * 5}s...\n`);
-              await new Promise((r) => setTimeout(r, attempt * 5000));
-              // Clean up failed attempt before retry
-              if (tmpDir) {
-                try { await rm(tmpDir, { recursive: true, force: true }); } catch { /* ignore */ }
-              }
-              continue;
-            }
-
-            log(`[pipeline] ERROR: ${repo.fullName}: ${msg.slice(0, 300)}\n`);
-            ckpt.addError(`repo-analyzer ${repo.fullName}: ${msg.slice(0, 500)}`);
-            return null;
-          } finally {
-            if (tmpDir) {
-              try {
-                await rm(tmpDir, { recursive: true, force: true });
-              } catch { /* ignore */ }
-            }
-          }
-        }
-        // All retries exhausted
-        return null;
-      })
-    );
-
-    for (const r of batchResults) {
-      if (r) results.push(r);
-    }
-  }
-
-  return results;
-}
-
-// ---------- minimal analysis from inventory (no LLM) ----------
-
-import type { StructuredInventory } from "./types.js";
+const PIPELINE_VERSION = "0.2.0-v2";
 
 /**
- * Build a basic RepoAnalysisResult from pre-computed inventory data.
- * Used for repos with < 5 commits where a full agent call isn't worth the cost.
- * The synthesizer still sees all the key numbers.
+ * Load a required checkpoint file or throw with a clear message.
+ * Replaces the unsafe `(await loadFile(x))!` pattern.
  */
-function buildMinimalAnalysis(
-  repoFullName: string,
-  inv: StructuredInventory
-): RepoAnalysisResult {
-  const langMap: Record<string, string> = {
-    ts: "TypeScript", tsx: "React (TSX)", js: "JavaScript", jsx: "React (JSX)",
-    py: "Python", go: "Go", rs: "Rust", dart: "Dart", swift: "Swift",
-    rb: "Ruby", java: "Java", kt: "Kotlin", c: "C", cpp: "C++",
-    cs: "C#", sql: "SQL", sh: "Shell", html: "HTML", css: "CSS",
-    scss: "SCSS", yaml: "YAML", json: "JSON", md: "Markdown",
-  };
-
-  const languages = inv.languageLoc
-    .filter((l) => l.insertions >= 100)
-    .map((l) => langMap[l.extension] ?? l.extension)
-    .slice(0, 6);
-
-  // Determine archetype from primary language
-  const primary = inv.languageLoc[0]?.extension ?? "";
-  let archetype: "backend" | "frontend" | "fullstack" | "mobile" | "infra" | "ml" | "tooling" | "other" = "other";
-  if (["go", "py", "rs", "java", "rb"].includes(primary)) archetype = "backend";
-  else if (["ts", "tsx", "js", "jsx"].includes(primary)) archetype = "fullstack";
-  else if (["dart", "swift", "kt"].includes(primary)) archetype = "mobile";
-  else if (["sh", "yaml"].includes(primary)) archetype = "infra";
-  else if (["html", "css"].includes(primary)) archetype = "frontend";
-
-  const stats = inv.survivingStats;
-  const dStats = inv.deletedStats;
-
-  // Compute durability if we have enough data
-  let durScore: number | null = null;
-  const linesSurviving = stats.aggregateSurvivingEstimate;
-  const durable = stats.aggregateDurable + dStats.durableUserLocEstimate;
-  const ephemeral = stats.aggregateEphemeral + dStats.ephemeralUserLocEstimate;
-  const denom = linesSurviving + durable + ephemeral;
-
-  if (denom > 0 && inv.stats.activeDays >= 180) {
-    durScore = Math.round(((linesSurviving + durable) / denom) * 100);
+async function requireFile<T>(
+  ckpt: ScanCheckpoint,
+  filename: string,
+  stage: string,
+): Promise<T> {
+  const loaded = await ckpt.loadFile<T>(filename);
+  if (!loaded) {
+    throw new Error(
+      `Stage "${stage}" expected ${ckpt.checkpointDir}/${filename} to exist but it's missing. ` +
+      `Delete ${ckpt.checkpointDir}/checkpoint.json to force a clean restart.`,
+    );
   }
-
-  const repoName = repoFullName.split("/").pop() ?? repoFullName;
-
-  return {
-    repoName,
-    archetype,
-    repoSummary: {
-      totalCommitsByUser: inv.stats.userCommits,
-      totalCommitsInRepo: inv.stats.totalCommits,
-      firstCommitDate: inv.stats.firstCommitDate,
-      lastCommitDate: inv.stats.lastCommitDate,
-      primaryLanguages: languages,
-      activeDays: inv.stats.activeDays,
-    },
-    durability: {
-      score: durScore,
-      reasoning: durScore !== null
-        ? `Computed from pre-compute: (${linesSurviving} surviving + ${durable} durable) / (${linesSurviving} + ${durable} + ${ephemeral}) = ${durScore}%. No agent analysis — ${inv.stats.userCommits} commits.`
-        : `Score null: repo is ${inv.stats.activeDays} days old (below 180-day threshold) or insufficient data. ${inv.stats.userCommits} user commits, ${denom} total lines in formula.`,
-      linesSampled: denom,
-      linesSurviving,
-      durableReplacedLines: durable,
-      meaningfulRewrites: ephemeral,
-      noiseRewrites: 0,
-      evidence: [{
-        repoName,
-        description: `Pre-computed from inventory: ${inv.stats.userCommits} commits, ${linesSurviving} lines surviving, ${inv.stats.activeDays} active days. No agent deep-dive (< ${5} commits threshold).`,
-        impact: "low" as const,
-        kind: "pattern",
-      }],
-      confidence: "low" as const,
-    },
-    adaptability: {
-      rampUpDays: inv.stats.isEarlyCommitter ? null : null, // can't determine without agent
-      reasoning: `${languages.length} languages detected: ${languages.join(", ")}. No agent analysis to determine ramp-up time.`,
-      languagesShipped: languages.filter((l) => {
-        const loc = inv.languageLoc.find((ll) => (langMap[ll.extension] ?? ll.extension) === l);
-        return loc && loc.insertions >= 500;
-      }),
-      recentNewTech: [],
-      evidence: [{
-        repoName,
-        description: `Languages from inventory: ${languages.join(", ")}. No deep agent analysis performed.`,
-        impact: "low" as const,
-        kind: "pattern",
-      }],
-      confidence: "low" as const,
-    },
-    ownership: {
-      score: null,
-      reasoning: inv.stats.nonUserCommits === 0
-        ? `Solo-maintained repo (0 non-user commits). Ownership score is null by definition.`
-        : `${inv.ownershipEntries.length} ownership entries found but no agent analysis to classify cleanup vs collaboration.`,
-      commitsAnalyzed: 0,
-      commitsRequiringCleanup: 0,
-      soloMaintained: inv.stats.nonUserCommits === 0,
-      evidence: [{
-        repoName,
-        description: inv.stats.nonUserCommits === 0
-          ? `Solo-maintained: all ${inv.stats.userCommits} commits are by the user.`
-          : `${inv.stats.nonUserCommits} non-user commits present but not classified.`,
-        impact: "low" as const,
-        kind: "pattern",
-      }],
-      confidence: "low" as const,
-    },
-    commitClassifications: [],
-    notes: `Minimal analysis from pre-compute engine (${inv.stats.userCommits} user commits). Full agent analysis not run — below threshold. Key data: ${linesSurviving} lines surviving, ${languages.length} languages, ${inv.stats.activeDays} active days.`,
-  };
+  return loaded;
 }
 
-// ---------- deterministic validation ----------
+export type StageName =
+  | "github-fetch"
+  | "repo-filter"
+  | "inventory"
+  | "normalize"
+  | "discover"
+  | "workers"
+  | "hook"
+  | "numbers"
+  | "disclosure"
+  | "shipped"
+  | "assemble"
+  | "critic"
+  | "bind";
 
-function validateProfile(
-  profile: Omit<ProfileResult, "evaluationScore" | "evaluationNotes" | "pipelineMeta" | "generatedAt">,
-  repoAnalyses: RepoAnalysisResult[]
-): string[] {
-  const warnings: string[] = [];
+export type PipelineEvent =
+  | { kind: "stage-start"; stage: StageName; detail?: string }
+  | { kind: "stage-end"; stage: StageName; durationMs: number; detail?: string }
+  | { kind: "stage-warn"; stage: StageName; message: string }
+  | { kind: "worker-update"; worker: string; status: "running" | "done" | "failed"; detail?: string }
+  | { kind: "stream"; text: string };
 
-  if (profile.durability.score !== null) {
-    const { linesSurviving, durableReplacedLines, meaningfulRewrites } =
-      profile.durability;
-    const durable = durableReplacedLines ?? 0;
-    const denom = linesSurviving + durable + meaningfulRewrites;
-    if (denom > 0) {
-      const expected = Math.round(
-        ((linesSurviving + durable) / denom) * 100
-      );
-      if (Math.abs(profile.durability.score - expected) > 3) {
-        warnings.push(
-          `Durability score ${profile.durability.score} vs formula ${expected}`
+export interface RunPipelineInput {
+  session: ScanSession;
+  /** Parallelism for the inventory stage (repo clone + git-inventory). */
+  concurrency?: number;
+  /**
+   * Max repos to deep-scan. Default: no cap — every deep repo is analyzed.
+   * Pass a number only when deliberately testing or short on disk.
+   */
+  maxDeepRepos?: number | null;
+  /** Event callback. */
+  onEvent?: (ev: PipelineEvent) => void;
+}
+
+export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
+  const events = input.onEvent ?? (() => {});
+  const stream = (text: string) => events({ kind: "stream", text });
+  const concurrency = input.concurrency ?? 3;
+
+  const ckpt = new ScanCheckpoint(input.session);
+  await ckpt.init();
+  const existing = await ckpt.loadExisting();
+  if (existing) {
+    stream(`[pipeline] resuming at phase "${existing.phase}"\n`);
+  }
+
+  const usage = new SessionUsage();
+  const stageTimings: PipelineMeta["stage_timings"] = [];
+
+  const withStage = async <T>(stage: StageName, fn: () => Promise<T>, detail?: string): Promise<T> => {
+    events({ kind: "stage-start", stage, detail });
+    const t0 = Date.now();
+    const startedAt = new Date().toISOString();
+    try {
+      const result = await fn();
+      const durationMs = Date.now() - t0;
+      stageTimings.push({
+        stage,
+        started_at: startedAt,
+        finished_at: new Date().toISOString(),
+        duration_ms: durationMs,
+      });
+      events({ kind: "stage-end", stage, durationMs, detail });
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      usage.recordError(`${stage}: ${msg}`);
+      ckpt.addError(`${stage}: ${msg}`);
+      throw err;
+    }
+  };
+
+  // ── 1. GitHub fetch ────────────────────────────────────────
+  let githubData: GitHubData;
+  if (shouldRun(ckpt.currentPhase, "github-fetch")) {
+    githubData = await withStage("github-fetch", async () => {
+      const d = await fetchGitHubData(input.session.handle);
+      await ckpt.saveGitHubData(d);
+      return d;
+    }, `@${input.session.handle}`);
+  } else {
+    githubData = await requireFile<GitHubData>(ckpt, "01-github-data.json", "github-fetch");
+    stream(`[pipeline] loaded github data (${githubData.ownedRepos.length} repos)\n`);
+  }
+
+  // ── 2. Repo filter ─────────────────────────────────────────
+  let filtered: FilterResult;
+  if (shouldRun(ckpt.currentPhase, "repo-filter")) {
+    filtered = await withStage("repo-filter", async () => {
+      const f = filterRepos(githubData);
+      await ckpt.saveFilter(f);
+      return f;
+    }, `${githubData.ownedRepos.length} repos`);
+  } else {
+    filtered = await requireFile<FilterResult>(ckpt, "02-filter.json", "repo-filter");
+    stream(`[pipeline] loaded filter (${filtered.deep.length} deep, ${filtered.light.length} light)\n`);
+  }
+
+  // ── 3. Inventory (parallel, per-repo checkpointed) ─────────
+  const inventories: Record<string, StructuredInventory> = {};
+  if (shouldRun(ckpt.currentPhase, "inventory")) {
+    await withStage(
+      "inventory",
+      async () => {
+        // Merge existing inventories if resuming
+        const existingInv = await ckpt.loadFile<Record<string, StructuredInventory>>("03-inventories.json");
+        if (existingInv) Object.assign(inventories, existingInv);
+
+        const deepRepos = input.maxDeepRepos === null || input.maxDeepRepos === undefined
+          ? filtered.deep
+          : filtered.deep.slice(0, input.maxDeepRepos);
+
+        const limit = pLimit(concurrency);
+        await Promise.all(
+          deepRepos.map((repo) =>
+            limit(async () => {
+              if (inventories[repo.fullName]) return;
+              events({ kind: "worker-update", worker: repo.fullName, status: "running" });
+              try {
+                const inv = await cloneAndInventory({
+                  fullName: repo.fullName,
+                  handle: input.session.handle,
+                  profileDir: ckpt.checkpointDir,
+                  log: stream,
+                });
+                inventories[repo.fullName] = inv;
+                ckpt.markInventoryComplete(repo.fullName);
+                events({ kind: "worker-update", worker: repo.fullName, status: "done", detail: `${inv.stats.userCommits} commits` });
+                // Incremental checkpoint
+                await ckpt.saveFile("03-inventories.json", inventories);
+              } catch (err) {
+                const msg = err instanceof Error ? err.message : String(err);
+                events({ kind: "worker-update", worker: repo.fullName, status: "failed", detail: msg.slice(0, 120) });
+                ckpt.addError(`inventory ${repo.fullName}: ${msg.slice(0, 300)}`);
+              }
+            }),
+          ),
         );
+
+        await ckpt.saveInventories(inventories);
+      },
+      `${filtered.deep.length} deep repos`,
+    );
+  } else {
+    const cached = await ckpt.loadFile<Record<string, StructuredInventory>>("03-inventories.json");
+    if (cached) Object.assign(inventories, cached);
+    stream(`[pipeline] loaded ${Object.keys(inventories).length} inventories from checkpoint\n`);
+  }
+
+  // ── 4. Normalize ───────────────────────────────────────────
+  let normalized: NormalizeResult;
+  if (shouldRun(ckpt.currentPhase, "normalize")) {
+    normalized = await withStage(
+      "normalize",
+      async () => {
+        const n = normalize({ github: githubData, inventories });
+        await ckpt.saveNormalized(n);
+        return n;
+      },
+      `artifact table`,
+    );
+  } else {
+    normalized = await requireFile<NormalizeResult>(ckpt, "04-normalized.json", "normalize");
+    stream(`[pipeline] loaded artifact table (${Object.keys(normalized.artifacts).length} artifacts)\n`);
+  }
+
+  // Mutable artifact dict — workers can add `web` artifacts via tools.
+  const artifacts: Record<string, Artifact> = { ...normalized.artifacts };
+
+  // ── 5. Discover ────────────────────────────────────────────
+  let discover: DiscoverOutput;
+  if (shouldRun(ckpt.currentPhase, "discover")) {
+    discover = await withStage(
+      "discover",
+      async () => {
+        const d = await runDiscover({
+          session: input.session,
+          usage,
+          github: githubData,
+          artifacts,
+          indexes: normalized.indexes,
+          onProgress: stream,
+        });
+        await ckpt.saveDiscover(d);
+        return d;
+      },
+    );
+  } else {
+    discover = await requireFile<DiscoverOutput>(ckpt, "05-discover.json", "discover");
+    stream(`[pipeline] loaded discover\n`);
+  }
+
+  // ── 6. Parallel workers ────────────────────────────────────
+  const WORKER_COUNT = 6; // cross-repo + temporal + content + signal + deep-dive + reviews
+  let workerOutputs: WorkerOutput[] = [];
+  if (shouldRun(ckpt.currentPhase, "workers")) {
+    workerOutputs = await withStage(
+      "workers",
+      async () => {
+        const artifactSink: Record<string, Artifact> = {};
+        const deps = {
+          session: input.session,
+          usage,
+          artifacts,
+          indexes: normalized.indexes,
+          discover,
+          artifactSink,
+          profileDir: ckpt.checkpointDir,
+          onProgress: stream,
+        };
+
+        const workers = [
+          { name: "cross-repo", run: runCrossRepoWorker },
+          { name: "temporal",   run: runTemporalWorker },
+          { name: "content",    run: runContentWorker },
+          { name: "signal",     run: runSignalWorker },
+          { name: "deep-dive",  run: runDeepDiveWorker },
+          { name: "reviews",    run: runReviewsWorker },
+        ] as const;
+
+        const results = await Promise.all(
+          workers.map(async (w) => {
+            events({ kind: "worker-update", worker: w.name, status: "running" });
+            try {
+              const out = await w.run(deps);
+              events({ kind: "worker-update", worker: w.name, status: "done", detail: `${out.claims.length} claims` });
+              return out;
+            } catch (err) {
+              const msg = err instanceof Error ? err.message : String(err);
+              events({ kind: "worker-update", worker: w.name, status: "failed", detail: msg.slice(0, 120) });
+              ckpt.addError(`worker ${w.name}: ${msg.slice(0, 300)}`);
+              return { worker: w.name, claims: [], new_artifacts: [], notes: `failed: ${msg.slice(0, 200)}` };
+            }
+          }),
+        );
+
+        // Merge any new artifacts discovered by workers (from sink + each result)
+        for (const [id, a] of Object.entries(artifactSink)) {
+          if (!artifacts[id]) artifacts[id] = a;
+        }
+        for (const r of results) {
+          for (const a of r.new_artifacts ?? []) {
+            if (!artifacts[a.id]) artifacts[a.id] = a;
+          }
+        }
+
+        await ckpt.saveWorkers({ outputs: results, artifactsSnapshot: Object.keys(artifacts).length });
+        // Persist updated artifact table (merged)
+        await ckpt.saveFile("04-normalized.json", { artifacts, indexes: normalized.indexes });
+        return results;
+      },
+      `${WORKER_COUNT} parallel`,
+    );
+  } else {
+    const loaded = await ckpt.loadFile<{ outputs: WorkerOutput[] }>("06-workers.json");
+    workerOutputs = loaded?.outputs ?? [];
+    const reloaded = await ckpt.loadFile<NormalizeResult>("04-normalized.json");
+    if (reloaded) Object.assign(artifacts, reloaded.artifacts);
+    stream(`[pipeline] loaded ${workerOutputs.length} worker outputs\n`);
+  }
+
+  // ── 7. Hook loop (writer + critic, max 2 rounds) ──────────
+  let hook: HookCandidate | null = null;
+  // The angle selection lives outside the `hook` stage so the revise loop
+  // can see it. It's deliberately NOT checkpointed separately here — it's
+  // saved along with the hook itself in 07-hook.json.
+  let hookAngle: import("./schemas.js").HookAngleSelection | null = null;
+
+  if (shouldRun(ckpt.currentPhase, "hook")) {
+    hook = await withStage("hook", async () => {
+      // STEP 1 — angle selector picks the dominant framing
+      hookAngle = await runAngleSelector({
+        session: input.session,
+        usage,
+        discover,
+        workerOutputs,
+        onProgress: stream,
+      });
+      stream(`[pipeline] hook angle: ${hookAngle.angle} — ${hookAngle.reason}\n`);
+
+      // STEP 2 — writer + critic loop under the fixed angle
+      const MAX_ROUNDS = 2;
+      let reviseInstruction: string | undefined;
+      let last: { candidates: HookCandidate[]; critique: unknown } | null = null;
+      for (let round = 1; round <= MAX_ROUNDS; round++) {
+        const candidates = await runHookWriter({
+          session: input.session,
+          usage,
+          discover,
+          workerOutputs,
+          artifacts,
+          angle: hookAngle,
+          reviseInstruction,
+          onProgress: stream,
+        });
+        const critique = await runHookCritic({
+          session: input.session,
+          usage,
+          candidates,
+          discover,
+          onProgress: stream,
+        });
+        last = { candidates: candidates.candidates, critique };
+        if (critique.winner_index !== null) {
+          const winner = candidates.candidates[critique.winner_index];
+          await ckpt.saveHook({ round, angle: hookAngle, candidates: candidates.candidates, critique, winner });
+          return winner;
+        }
+        reviseInstruction = critique.revise_instruction;
+      }
+      // Exhausted — take best-effort from last critic scores
+      if (last) {
+        const scored = (last.critique as { scores: Array<{ index: number; specific: number; verifiable: number; surprising: number; earned: number }> }).scores;
+        const best = [...scored].sort((a, b) =>
+          (b.specific + b.verifiable + b.surprising + b.earned) -
+          (a.specific + a.verifiable + a.surprising + a.earned),
+        )[0];
+        const winner = last.candidates[best.index];
+        await ckpt.saveHook({ round: MAX_ROUNDS, angle: hookAngle, candidates: last.candidates, critique: last.critique, winner, note: "forced best-of" });
+        return winner;
+      }
+      return null;
+    });
+  } else {
+    const loaded = await ckpt.loadFile<{ winner: HookCandidate; angle?: import("./schemas.js").HookAngleSelection }>("07-hook.json");
+    hook = loaded?.winner ?? null;
+    hookAngle = loaded?.angle ?? null;
+    stream(`[pipeline] loaded hook${hookAngle ? ` (angle: ${hookAngle.angle})` : ""}\n`);
+  }
+
+  // ── 8. Numbers ─────────────────────────────────────────────
+  let numbers: WorkerOutput;
+  if (shouldRun(ckpt.currentPhase, "numbers")) {
+    numbers = await withStage("numbers", async () => {
+      const n = await runNumbersAgent({
+        session: input.session,
+        usage,
+        discover,
+        workerOutputs,
+        artifacts,
+        onProgress: stream,
+      });
+      await ckpt.saveNumbers(n);
+      return n;
+    });
+  } else {
+    numbers = await requireFile<WorkerOutput>(ckpt, "08-numbers.json", "numbers");
+  }
+
+  // ── 9. Disclosure ──────────────────────────────────────────
+  let disclosure: WorkerOutput;
+  if (shouldRun(ckpt.currentPhase, "disclosure")) {
+    disclosure = await withStage("disclosure", async () => {
+      const d = await runDisclosureAgent({
+        session: input.session,
+        usage,
+        discover,
+        workerOutputs,
+        artifacts,
+        onProgress: stream,
+      });
+      await ckpt.saveDisclosure(d);
+      return d;
+    });
+  } else {
+    disclosure = await requireFile<WorkerOutput>(ckpt, "09-disclosure.json", "disclosure");
+  }
+
+  // ── 10. Shipped ────────────────────────────────────────────
+  let shipped: WorkerOutput;
+  if (shouldRun(ckpt.currentPhase, "shipped")) {
+    shipped = await withStage("shipped", async () => {
+      const s = await runShippedAgent({
+        session: input.session,
+        usage,
+        discover,
+        workerOutputs,
+        artifacts,
+        onProgress: stream,
+      });
+      await ckpt.saveShipped(s);
+      return s;
+    });
+  } else {
+    shipped = await requireFile<WorkerOutput>(ckpt, "10-shipped.json", "shipped");
+  }
+
+  // ── 11. Assemble ───────────────────────────────────────────
+  let profile: Profile;
+  if (shouldRun(ckpt.currentPhase, "assemble")) {
+    profile = await withStage("assemble", async () => {
+      const meta: PipelineMeta = {
+        pipeline_version: PIPELINE_VERSION,
+        session: input.session,
+        stage_timings: stageTimings,
+        llm_calls: usage.llmCalls,
+        web_calls: usage.webCalls,
+        github_search_calls: usage.githubSearchCalls,
+        total_tokens: usage.totalTokens,
+        estimated_cost_usd: usage.estimatedCostUsd,
+        errors: usage.errors,
+      };
+      const p = assembleProfile({
+        session: input.session,
+        discover,
+        workerOutputs,
+        hook,
+        numbers,
+        disclosure,
+        shipped,
+        artifacts,
+        meta,
+        pipelineVersion: PIPELINE_VERSION,
+      });
+      await ckpt.saveProfileDraft(p);
+      return p;
+    });
+
+    // ── 11b. Copy-editor voice pass ──────────────────────────
+    // Runs INSIDE the "assemble" phase — rewrites every claim's text
+    // for human voice before the critic judges it. Preserves evidence
+    // ids and numbers; only prose changes.
+    // We keep 11-profile-draft.json as the PRE-EDIT snapshot so diffs
+    // against 11b-copy-edited.json show exactly what the editor changed.
+    try {
+      const edited = await runCopyEditor({
+        session: input.session,
+        usage,
+        profile,
+        onProgress: stream,
+      });
+      profile = edited;
+      await ckpt.saveFile("11b-copy-edited.json", profile);
+      stream(`[pipeline] copy-editor: voice pass complete\n`);
+
+      // ── 11c. Deterministic guardrails ────────────────────
+      // Hedges placeholder-shaped low-confidence numbers ("999 features")
+      // by pairing with the inventory denominator when available, else
+      // rounding up to a measurement-style value ("~1,000 features").
+      // Runs BEFORE the critic so the critic sees the safe form.
+      const { profile: guarded, report: gr } = applyGuardrails(profile);
+      profile = guarded;
+      stream(`[pipeline] ${formatGuardrailReport(gr)}\n`);
+      await ckpt.saveFile("11c-guardrail-report.json", gr);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      stream(`[pipeline] WARNING: copy-editor failed, shipping unedited: ${msg.slice(0, 200)}\n`);
+      ckpt.addError(`copy-editor: ${msg.slice(0, 300)}`);
+    }
+  } else {
+    profile = await requireFile<Profile>(ckpt, "11-profile-draft.json", "assemble");
+  }
+
+  // ── 12. Profile critic ─────────────────────────────────────
+  if (shouldRun(ckpt.currentPhase, "critic")) {
+    await withStage("critic", async () => {
+      const critique = await runProfileCritic({
+        session: input.session,
+        usage,
+        discover,
+        claims: profile.claims,
+        artifacts: profile.artifacts,
+        onProgress: stream,
+      });
+      await ckpt.saveCritic(critique);
+
+      // Soft action: mark flagged claims with lower confidence in the profile
+      const flagged = new Set(critique.flagged_claims.map((f) => f.claim_id));
+      if (flagged.size > 0) {
+        profile = {
+          ...profile,
+          claims: profile.claims.map((c) =>
+            flagged.has(c.id)
+              ? { ...c, confidence: "low", extra: { ...(c.extra ?? {}), critic_flag: critique.flagged_claims.find((f) => f.claim_id === c.id) } }
+              : c,
+          ),
+        };
+      }
+    });
+  } else {
+    stream(`[pipeline] critic already ran\n`);
+  }
+
+  // ── 13. Bind evidence ──────────────────────────────────────
+  const bindReport = await withStage("bind", async () => {
+    const r = bindEvidence(profile);
+    stream(`[pipeline] ${formatBindReport(r)}\n`);
+    await ckpt.saveFile("bind-report.json", r);
+    return r;
+  });
+
+  // Final profile with updated meta (finalize counters)
+  profile = {
+    ...profile,
+    generated_at: new Date().toISOString(),
+    meta: {
+      ...profile.meta,
+      llm_calls: usage.llmCalls,
+      web_calls: usage.webCalls,
+      github_search_calls: usage.githubSearchCalls,
+      total_tokens: usage.totalTokens,
+      estimated_cost_usd: usage.estimatedCostUsd,
+      errors: usage.errors,
+      stage_timings: stageTimings,
+    },
+  };
+
+  await ckpt.saveProfile(profile);
+
+  // Attach bind report to the profile's meta.errors list as warnings if any
+  if (bindReport.claims_missing_evidence.length > 0 || bindReport.claims_with_orphan_refs.length > 0) {
+    stream(`[pipeline] WARNING: evidence binding has ${bindReport.claims_missing_evidence.length + bindReport.claims_with_orphan_refs.length} issue(s) — see bind-report.json\n`);
+  }
+
+  // ── 13b. Senior hiring-manager revise LOOP ─────────────────
+  // Strict six-axis evaluator that ACTS on its own verdict. On REVISE or
+  // BLOCK, dispatches each top_three_fix to the affected agent (hook,
+  // numbers, disclosure, copy-editor, or evidence downgrader) and
+  // re-evaluates. Up to 2 revise rounds; exits early on PASS.
+  //
+  // When the loop finishes, `hiringReview` is the LAST verdict — either
+  // PASS (we got there) or whatever state remained after max rounds.
+  let hiringReview: import("./schemas.js").HiringManagerOutput | undefined;
+  let reviseRounds = 0;
+  try {
+    const loopResult = await runHiringReviseLoop({
+      session: input.session,
+      usage,
+      discover,
+      workerOutputs,
+      profile,
+      hookAngle,
+      onProgress: stream,
+      saveRound: async (round, payload) => {
+        await ckpt.saveFile(`13c-revise-round-${round}.json`, payload);
+      },
+    });
+    profile = loopResult.profile;
+    hiringReview = loopResult.finalReview;
+    reviseRounds = loopResult.rounds;
+
+    await ckpt.saveFile("13b-hiring-review.json", hiringReview);
+    stream(
+      `[pipeline] hiring-manager: ${hiringReview.verdict} (${hiringReview.overall_score}/100) ` +
+        `after ${reviseRounds} revise round${reviseRounds === 1 ? "" : "s"} — ` +
+        `forwardable=${hiringReview.forwarding_test.would_a_senior_eng_forward_this}\n`,
+    );
+    if (hiringReview.block_triggers.length > 0) {
+      for (const t of hiringReview.block_triggers.slice(0, 5)) {
+        stream(`[pipeline] BLOCK TRIGGER: ${t}\n`);
       }
     }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    stream(`[pipeline] WARNING: hiring-manager loop failed: ${msg.slice(0, 200)}\n`);
+    ckpt.addError(`hiring-manager: ${msg.slice(0, 300)}`);
   }
 
-  if (profile.insights.length < 4)
-    warnings.push(`Only ${profile.insights.length} insights (min 4)`);
-  if (profile.radar.length < 4)
-    warnings.push(`Only ${profile.radar.length} radar dims (min 4)`);
-  if (profile.technicalDepth.length === 0)
-    warnings.push("No technical depth entries");
-  if (profile.shipped.length === 0)
-    warnings.push("No shipped projects");
-
-  const profileRepos = new Set(profile.repoAnalyses.map((r) => r.repoName));
-  for (const ra of repoAnalyses) {
-    if (!profileRepos.has(ra.repoName))
-      warnings.push(`${ra.repoName} analyzed but missing from profile`);
-  }
-
-  for (const dim of profile.radar) {
-    if (dim.value < 0 || dim.value > 100)
-      warnings.push(`Radar "${dim.trait}" = ${dim.value} outside 0-100`);
-  }
-
-  if (profile.hook.length < 10)
-    warnings.push(`Hook too short (${profile.hook.length} chars)`);
-
-  return warnings;
-}
-
-// ---------- progress ----------
-
-function defaultProgress(event: PipelineProgress): void {
-  const pct = event.percent ? ` [${event.percent}%]` : "";
-  process.stderr.write(`[pipeline${pct}] ${event.message}\n`);
-  if (event.warnings) {
-    for (const w of event.warnings) {
-      process.stderr.write(`[pipeline] WARNING: ${w}\n`);
+  // ── 14a-pre. Hook stability check (always on — accuracy > cost) ──
+  // Runs a second hook-writer+critic pass under the SAME angle and measures
+  // how similar the winners are. Using the same angle means we measure pure
+  // writer variance, not angle-selector variance (which would double-count).
+  let hookStability: import("./agents/hook/stability-check.js").StabilityReport | undefined;
+  if (hook && hookAngle) {
+    try {
+      hookStability = await runHookStabilityCheck({
+        session: input.session,
+        usage,
+        discover,
+        workerOutputs,
+        artifacts,
+        canonicalWinner: hook,
+        angle: hookAngle,
+        onProgress: stream,
+      });
+      stream(`[pipeline] hook stability: ${hookStability.verdict} (sim=${hookStability.similarity}) — ${hookStability.note}\n`);
+      await ckpt.saveFile("14a0-hook-stability.json", hookStability);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      stream(`[pipeline] WARNING: stability check failed: ${msg.slice(0, 200)}\n`);
     }
   }
+
+  // ── 14a. Timeline agent (chart data) ─────────────────────
+  let timelineEntries: import("./schemas.js").TimelineChartEntry[] = [];
+  try {
+    const timelineOut = await runTimelineAgent({
+      session: input.session,
+      usage,
+      discover,
+      workerOutputs,
+      shippedClaims: profile.claims
+        .filter((c) => c.beat === "shipped-line")
+        .map((c) => ({ text: c.text, label: c.label, sublabel: c.sublabel })),
+      onProgress: stream,
+    });
+    timelineEntries = timelineOut.entries;
+    await ckpt.saveFile("14a-timeline.json", timelineOut);
+    stream(`[pipeline] timeline: ${timelineEntries.length} entries\n`);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    stream(`[pipeline] WARNING: timeline agent failed: ${msg.slice(0, 200)}\n`);
+    ckpt.addError(`timeline: ${msg.slice(0, 300)}`);
+  }
+
+  // ── 14b. Emit slim frontend card ─────────────────────────
+  const critic = await ckpt.loadFile<import("./schemas.js").ProfileCriticOutput>("12-critic.json");
+  const card = emitCard({
+    profile,
+    critic: critic ?? undefined,
+    primary_shape: discover.primary_shape,
+    timeline: timelineEntries,
+    stability: hookStability
+      ? {
+          hook_similarity: hookStability.similarity,
+          verdict: hookStability.verdict,
+          note: hookStability.note,
+        }
+      : undefined,
+    hiringReview,
+  });
+  await ckpt.saveFile("14-card.json", card);
+  stream(`[pipeline] card: ${(JSON.stringify(card).length / 1024).toFixed(1)} KB → profiles/${input.session.handle}/14-card.json\n`);
+
+  await ckpt.markComplete();
+
+  return profile;
 }
+
+// Re-export phase order for CLI label rendering
+export { phaseIndex, shouldRun, type ScanPhase } from "./checkpoint.js";

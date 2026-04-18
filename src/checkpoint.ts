@@ -1,63 +1,107 @@
 /**
- * Checkpoint persistence system.
+ * Checkpoint persistence for the v2 pipeline.
  *
- * Saves pipeline state to disk after each phase so that:
- * 1. Progress is never lost if a phase crashes/times out
- * 2. The pipeline can resume from the last completed phase
- * 3. We can analyze agent performance by reading the checkpoint files
+ * Each stage of the pipeline writes its output to `profiles/<handle>/`
+ * immediately on completion. If the process crashes, re-running with the
+ * same handle resumes from the last completed stage. The OpenRouter
+ * session_id is reused on resume so the dashboard shows one continuous
+ * trace across runs.
  *
- * Checkpoint directory: profiles/<handle>/
- *   checkpoint.json         — current phase + metadata
- *   01-github-data.json     — GitHub API data
- *   02-filtered-repos.json  — filtered repo list
- *   03-systems.json         — system mapping
- *   04-repo-<name>.json     — per-repo analysis (one per repo)
- *   05-external-<name>.json — per-external-repo PR analysis
- *   06-synthesis.json       — synthesized profile (pre-evaluation)
- *   07-evaluation.json      — evaluator result
- *   08-final.json           — final ProfileResult
+ * Files under profiles/<handle>/:
+ *   checkpoint.json           — current phase + metadata + session ref
+ *   01-github-data.json       — raw GitHub API data (from gh CLI)
+ *   02-filter.json            — repo tiering
+ *   03-inventories.json       — per-repo StructuredInventory (clone + git-inventory)
+ *   04-normalized.json        — { artifacts, indexes } from normalize()
+ *   05-discover.json          — DiscoverOutput
+ *   06-workers.json           — WorkerOutput[] (cross-repo, temporal, content, signal)
+ *   07-hook.json              — { candidates, critic, winner }
+ *   08-numbers.json           — WorkerOutput (numbers agent)
+ *   09-disclosure.json        — WorkerOutput (0 or 1 claim)
+ *   10-shipped.json           — WorkerOutput (up to 7 claims)
+ *   11-profile-draft.json     — assembled Profile before critic
+ *   12-critic.json            — ProfileCriticOutput
+ *   13-profile.json           — final Profile (post-critic revisions)
+ *   web-cache/                — cached browse_web / search_web results
  */
 
 import { writeFile, readFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
+import type { ScanSession } from "./schemas.js";
+import { sanitizeHandle } from "./session.js";
 
-export type CheckpointPhase =
+export type ScanPhase =
   | "init"
   | "github-fetch"
   | "repo-filter"
-  | "system-map"
-  | "repo-analysis"
-  | "pr-analysis"
-  | "synthesis"
-  | "evaluation"
+  | "inventory"
+  | "normalize"
+  | "discover"
+  | "workers"
+  | "hook"
+  | "numbers"
+  | "disclosure"
+  | "shipped"
+  | "assemble"
+  | "critic"
+  | "bind"
   | "complete";
 
-export interface CheckpointMeta {
+const PHASE_ORDER: readonly ScanPhase[] = [
+  "init",
+  "github-fetch",
+  "repo-filter",
+  "inventory",
+  "normalize",
+  "discover",
+  "workers",
+  "hook",
+  "numbers",
+  "disclosure",
+  "shipped",
+  "assemble",
+  "critic",
+  "bind",
+  "complete",
+] as const;
+
+const PHASE_SET: Record<string, true> = Object.fromEntries(
+  PHASE_ORDER.map((p) => [p, true]),
+);
+
+export function phaseIndex(phase: ScanPhase): number {
+  return PHASE_ORDER.indexOf(phase);
+}
+
+/** Should we (re)run `target` given current phase `current`? */
+export function shouldRun(current: ScanPhase, target: ScanPhase): boolean {
+  return phaseIndex(current) < phaseIndex(target);
+}
+
+export interface ScanCheckpointMeta {
   handle: string;
-  phase: CheckpointPhase;
-  startedAt: string;
-  updatedAt: string;
-  completedRepos: string[];
-  completedExternalRepos: string[];
-  agentCalls: number;
+  session_id: string;
+  phase: ScanPhase;
+  started_at: string;
+  updated_at: string;
+  completed_inventories: string[];  // repo fullNames whose inventory is cached
   errors: string[];
 }
 
-export class CheckpointManager {
+export class ScanCheckpoint {
   private dir: string;
-  private meta: CheckpointMeta;
+  private meta: ScanCheckpointMeta;
 
-  constructor(handle: string, baseDir: string = "profiles") {
-    this.dir = join(baseDir, handle);
+  constructor(session: ScanSession, baseDir = "profiles") {
+    this.dir = join(baseDir, sanitizeHandle(session.handle));
     this.meta = {
-      handle,
+      handle: session.handle,
+      session_id: session.id,
       phase: "init",
-      startedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      completedRepos: [],
-      completedExternalRepos: [],
-      agentCalls: 0,
+      started_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+      completed_inventories: [],
       errors: [],
     };
   }
@@ -65,201 +109,158 @@ export class CheckpointManager {
   get checkpointDir(): string {
     return this.dir;
   }
-
-  /** Initialize checkpoint directory. */
-  async init(): Promise<void> {
-    await mkdir(this.dir, { recursive: true });
+  get webCacheDir(): string {
+    return join(this.dir, "web-cache");
+  }
+  get currentPhase(): ScanPhase {
+    return this.meta.phase;
+  }
+  get sessionId(): string {
+    return this.meta.session_id;
   }
 
-  /** Check if a previous checkpoint exists and load it. */
-  async loadExisting(): Promise<CheckpointMeta | null> {
-    const metaPath = join(this.dir, "checkpoint.json");
-    if (!existsSync(metaPath)) return null;
+  async init(): Promise<void> {
+    await mkdir(this.dir, { recursive: true });
+    await mkdir(this.webCacheDir, { recursive: true });
+  }
+
+  async loadExisting(): Promise<ScanCheckpointMeta | null> {
+    const p = join(this.dir, "checkpoint.json");
+    if (!existsSync(p)) return null;
     try {
-      const raw = await readFile(metaPath, "utf-8");
-      this.meta = JSON.parse(raw) as CheckpointMeta;
+      const raw = await readFile(p, "utf-8");
+      const loaded = JSON.parse(raw) as Record<string, unknown>;
+
+      // Migration: detect a v1 checkpoint (no session_id, old phase names,
+      // completedRepos camelCase). If v1, reset phase to "repo-filter" so
+      // the existing 01-github-data.json and 02-filter.json can be reused
+      // but all new LLM stages re-run cleanly.
+      const isV1 =
+        !("session_id" in loaded) ||
+        ("completedRepos" in loaded) ||
+        (typeof loaded.phase === "string" &&
+          !(loaded.phase as string in PHASE_SET));
+
+      if (isV1) {
+        // Keep handle + reset to "github-fetch" so:
+        //   01-github-data.json — reused (format unchanged)
+        //   02-filter.json       — regenerated under new filename
+        //   everything past it   — re-runs cleanly under the v2 pipeline
+        this.meta = {
+          ...this.meta,
+          handle: String(loaded.handle ?? this.meta.handle),
+          phase: "github-fetch",
+          completed_inventories: [],
+          errors: Array.isArray(loaded.errors) ? (loaded.errors as string[]) : [],
+          updated_at: new Date().toISOString(),
+        };
+        await this.saveMeta();
+        return this.meta;
+      }
+
+      this.meta = loaded as unknown as ScanCheckpointMeta;
       return this.meta;
     } catch {
       return null;
     }
   }
 
-  /** Update phase and persist metadata. */
-  async setPhase(phase: CheckpointPhase): Promise<void> {
+  async setPhase(phase: ScanPhase): Promise<void> {
     this.meta.phase = phase;
-    this.meta.updatedAt = new Date().toISOString();
+    this.meta.updated_at = new Date().toISOString();
     await this.saveMeta();
   }
 
-  /** Increment agent call count. */
-  incrementAgentCalls(): void {
-    this.meta.agentCalls++;
-  }
-
-  /** Record an error. */
   addError(msg: string): void {
     this.meta.errors.push(`[${new Date().toISOString()}] ${msg}`);
   }
 
-  /** Mark a repo analysis as completed. */
-  markRepoComplete(repoName: string): void {
-    if (!this.meta.completedRepos.includes(repoName)) {
-      this.meta.completedRepos.push(repoName);
+  markInventoryComplete(repoFullName: string): void {
+    if (!this.meta.completed_inventories.includes(repoFullName)) {
+      this.meta.completed_inventories.push(repoFullName);
     }
   }
-
-  /** Mark an external repo analysis as completed. */
-  markExternalRepoComplete(repoName: string): void {
-    if (!this.meta.completedExternalRepos.includes(repoName)) {
-      this.meta.completedExternalRepos.push(repoName);
-    }
+  isInventoryComplete(repoFullName: string): boolean {
+    return this.meta.completed_inventories.includes(repoFullName);
   }
-
-  /** Check if a repo was already analyzed in a previous run. */
-  isRepoComplete(repoName: string): boolean {
-    return this.meta.completedRepos.includes(repoName);
-  }
-
-  /** Check if an external repo was already analyzed. */
-  isExternalRepoComplete(repoName: string): boolean {
-    return this.meta.completedExternalRepos.includes(repoName);
-  }
-
-  /** Get the last completed phase. */
-  get currentPhase(): CheckpointPhase {
-    return this.meta.phase;
-  }
-
-  get totalAgentCalls(): number {
-    return this.meta.agentCalls;
-  }
-
-  /** Generic save for arbitrary files in the checkpoint dir. */
-  async saveFile(filename: string, data: unknown): Promise<void> {
-    await writeFile(
-      join(this.dir, filename),
-      JSON.stringify(data, null, 2)
-    );
-  }
-
-  // ── Save helpers ──
 
   private async saveMeta(): Promise<void> {
     await writeFile(
       join(this.dir, "checkpoint.json"),
-      JSON.stringify(this.meta, null, 2)
+      JSON.stringify(this.meta, null, 2),
     );
   }
 
-  async saveGitHubData(data: unknown): Promise<void> {
-    await writeFile(
-      join(this.dir, "01-github-data.json"),
-      JSON.stringify(data, null, 2)
-    );
-    await this.setPhase("github-fetch");
+  // ── Generic save/load ────────────────────────────────────
+  async saveFile(name: string, data: unknown): Promise<void> {
+    await writeFile(join(this.dir, name), JSON.stringify(data, null, 2));
   }
-
-  async saveFilteredRepos(data: unknown): Promise<void> {
-    await writeFile(
-      join(this.dir, "02-filtered-repos.json"),
-      JSON.stringify(data, null, 2)
-    );
-    await this.setPhase("repo-filter");
-  }
-
-  async saveSystems(data: unknown): Promise<void> {
-    await writeFile(
-      join(this.dir, "03-systems.json"),
-      JSON.stringify(data, null, 2)
-    );
-    await this.setPhase("system-map");
-  }
-
-  async saveRepoAnalysis(repoName: string, data: unknown): Promise<void> {
-    // Sanitize repo name for filesystem (replace / with -)
-    const safeName = repoName.replace(/\//g, "-");
-    await writeFile(
-      join(this.dir, `04-repo-${safeName}.json`),
-      JSON.stringify(data, null, 2)
-    );
-    this.markRepoComplete(repoName);
-    await this.saveMeta();
-  }
-
-  async saveExternalAnalysis(repoName: string, data: unknown): Promise<void> {
-    const safeName = repoName.replace(/\//g, "-");
-    await writeFile(
-      join(this.dir, `05-external-${safeName}.json`),
-      JSON.stringify(data, null, 2)
-    );
-    this.markExternalRepoComplete(repoName);
-    await this.saveMeta();
-  }
-
-  async saveSynthesis(data: unknown): Promise<void> {
-    await writeFile(
-      join(this.dir, "06-synthesis.json"),
-      JSON.stringify(data, null, 2)
-    );
-    await this.setPhase("synthesis");
-  }
-
-  async saveEvaluation(data: unknown): Promise<void> {
-    await writeFile(
-      join(this.dir, "07-evaluation.json"),
-      JSON.stringify(data, null, 2)
-    );
-    await this.setPhase("evaluation");
-  }
-
-  async saveFinal(data: unknown): Promise<void> {
-    await writeFile(
-      join(this.dir, "08-final.json"),
-      JSON.stringify(data, null, 2)
-    );
-    await this.setPhase("complete");
-  }
-
-  // ── Load helpers (for resume) ──
-
-  async loadGitHubData<T>(): Promise<T | null> {
-    return this.loadFile<T>("01-github-data.json");
-  }
-
-  async loadFilteredRepos<T>(): Promise<T | null> {
-    return this.loadFile<T>("02-filtered-repos.json");
-  }
-
-  async loadSystems<T>(): Promise<T | null> {
-    return this.loadFile<T>("03-systems.json");
-  }
-
-  async loadRepoAnalysis<T>(repoName: string): Promise<T | null> {
-    const safeName = repoName.replace(/\//g, "-");
-    return this.loadFile<T>(`04-repo-${safeName}.json`);
-  }
-
-  async loadExternalAnalysis<T>(repoName: string): Promise<T | null> {
-    const safeName = repoName.replace(/\//g, "-");
-    return this.loadFile<T>(`05-external-${safeName}.json`);
-  }
-
-  async loadSynthesis<T>(): Promise<T | null> {
-    return this.loadFile<T>("06-synthesis.json");
-  }
-
-  async loadEvaluation<T>(): Promise<T | null> {
-    return this.loadFile<T>("07-evaluation.json");
-  }
-
-  private async loadFile<T>(filename: string): Promise<T | null> {
-    const path = join(this.dir, filename);
-    if (!existsSync(path)) return null;
+  async loadFile<T>(name: string): Promise<T | null> {
+    const p = join(this.dir, name);
+    if (!existsSync(p)) return null;
     try {
-      const raw = await readFile(path, "utf-8");
+      const raw = await readFile(p, "utf-8");
       return JSON.parse(raw) as T;
     } catch {
       return null;
     }
   }
+
+  // ── Stage-specific save helpers (enforce file naming) ───
+  async saveGitHubData(data: unknown) {
+    await this.saveFile("01-github-data.json", data);
+    await this.setPhase("github-fetch");
+  }
+  async saveFilter(data: unknown) {
+    await this.saveFile("02-filter.json", data);
+    await this.setPhase("repo-filter");
+  }
+  async saveInventories(data: unknown) {
+    await this.saveFile("03-inventories.json", data);
+    await this.setPhase("inventory");
+  }
+  async saveNormalized(data: unknown) {
+    await this.saveFile("04-normalized.json", data);
+    await this.setPhase("normalize");
+  }
+  async saveDiscover(data: unknown) {
+    await this.saveFile("05-discover.json", data);
+    await this.setPhase("discover");
+  }
+  async saveWorkers(data: unknown) {
+    await this.saveFile("06-workers.json", data);
+    await this.setPhase("workers");
+  }
+  async saveHook(data: unknown) {
+    await this.saveFile("07-hook.json", data);
+    await this.setPhase("hook");
+  }
+  async saveNumbers(data: unknown) {
+    await this.saveFile("08-numbers.json", data);
+    await this.setPhase("numbers");
+  }
+  async saveDisclosure(data: unknown) {
+    await this.saveFile("09-disclosure.json", data);
+    await this.setPhase("disclosure");
+  }
+  async saveShipped(data: unknown) {
+    await this.saveFile("10-shipped.json", data);
+    await this.setPhase("shipped");
+  }
+  async saveProfileDraft(data: unknown) {
+    await this.saveFile("11-profile-draft.json", data);
+    await this.setPhase("assemble");
+  }
+  async saveCritic(data: unknown) {
+    await this.saveFile("12-critic.json", data);
+    await this.setPhase("critic");
+  }
+  async saveProfile(data: unknown) {
+    await this.saveFile("13-profile.json", data);
+    await this.setPhase("bind");
+  }
+  async markComplete() {
+    await this.setPhase("complete");
+  }
 }
+

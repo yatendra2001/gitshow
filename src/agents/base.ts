@@ -11,6 +11,8 @@
 import { OpenRouter, tool, stepCountIs } from "@openrouter/agent";
 import type { StreamableOutputItem } from "@openrouter/agent";
 import * as z from "zod/v4";
+import type { ScanSession } from "../schemas.js";
+import type { SessionUsage } from "../session.js";
 
 // ---------- types ----------
 
@@ -31,6 +33,16 @@ export interface AgentRunConfig {
   timeoutMs?: number;
   /** Progress callback for streaming output. */
   onProgress?: (text: string) => void;
+  /**
+   * Scan session — its `id` is passed as OpenRouter `session_id` on every
+   * callModel, so all LLM calls for this scan are grouped in the dashboard.
+   * Optional only to keep utility scripts happy; all real agents pass it.
+   */
+  session?: ScanSession;
+  /** Optional usage accumulator — call counts, tokens, estimated cost. */
+  usage?: SessionUsage;
+  /** Label for this agent run (e.g., "discover", "cross-repo-worker"). Used in logs. */
+  label?: string;
 }
 
 interface AgentResult<T> {
@@ -106,11 +118,13 @@ export async function runAgentLoop(config: AgentRunConfig): Promise<{
   iterations: number;
 }> {
   const log = config.onProgress ?? (() => {});
-  // NO CAPS: agents have unlimited iterations and generous timeout.
-  // The agent decides when it's done, not an artificial ceiling.
+  // NO CAPS: agents have unlimited iterations and an effectively-unlimited
+  // HTTP timeout. Accuracy and quality > wall-clock. The agent decides when
+  // it's done, not an artificial ceiling.
   const maxIter = config.maxIterations ?? 10_000; // safety valve only
   const effort = config.reasoning?.effort ?? "high";
-  const timeout = config.timeoutMs ?? 7_200_000; // 2 hours
+  // 24 hours — long enough that no real scan will ever hit it.
+  const timeout = config.timeoutMs ?? 86_400_000;
 
   const apiKey = process.env.OPENROUTER_API_KEY;
   if (!apiKey) throw new Error("OPENROUTER_API_KEY not set");
@@ -144,6 +158,29 @@ export async function runAgentLoop(config: AgentRunConfig): Promise<{
     const loggedFunctionCallComplete = new Set<string>();
     const loggedToolOutputs = new Set<string>();
     let stepCounter = 0;
+
+    // Classify and handle the @openrouter/agent "empty final response" bug:
+    // the SDK throws when the assistant ends with just a tool call and no
+    // trailing assistant message, even though the tool already executed.
+    // We detect this error (from the stream OR from getResponse) and
+    // treat it as a successful completion.
+    const isEmptyOutputBug = (err: unknown): boolean => {
+      // Lowercase both sides — the SDK variously throws "Stream ended..."
+      // (capital S) vs "Follow-up stream ended..." (lowercase s). Earlier
+      // versions of this check were case-sensitive and missed the first.
+      const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+      return (
+        msg.includes("empty or invalid output") ||
+        msg.includes("invalid final response") ||
+        // "Stream ended without completion event" and
+        // "Follow-up stream ended without a completed response" — same
+        // family. If the tool already ran, we've got our result.
+        msg.includes("stream ended") ||
+        msg.includes("without completion")
+      );
+    };
+
+    try {
 
     for await (const item of result.getItemsStream()) {
       const itemId = (item as { id?: string }).id ?? "";
@@ -200,18 +237,36 @@ export async function runAgentLoop(config: AgentRunConfig): Promise<{
       }
     }
 
-    const response = await result.getResponse();
-    const usage = (response as { usage?: { total_tokens?: number } }).usage;
-    if (usage?.total_tokens) {
-      totalTokens += usage.total_tokens;
-      log(`\n[agent] Phase done. Tokens: ${usage.total_tokens}\n`);
-    } else {
-      log(`\n[agent] Phase done.\n`);
+    try {
+      const response = await result.getResponse();
+      const usage = (response as { usage?: { total_tokens?: number } }).usage;
+      if (usage?.total_tokens) {
+        totalTokens += usage.total_tokens;
+        log(`\n[agent] Phase done. Tokens: ${usage.total_tokens}\n`);
+      } else {
+        log(`\n[agent] Phase done.\n`);
+      }
+    } catch (err) {
+      if (isEmptyOutputBug(err)) {
+        log(`\n[agent] Phase done (SDK empty-output bug bypassed at getResponse).\n`);
+      } else {
+        throw err;
+      }
+    }
+    } catch (err) {
+      // Catches errors thrown from the for-await stream iteration itself
+      if (isEmptyOutputBug(err)) {
+        log(`\n[agent] Phase done (SDK empty-output bug bypassed at stream).\n`);
+        return;
+      }
+      throw err;
     }
   };
 
   // ----- Run with retry on transient errors -----
-  const MAX_TRANSIENT_RETRIES = 3;
+  // Longer retry budget for "empty output" / "invalid final response" —
+  // those are often one-off SDK stream hiccups that clear on retry.
+  const MAX_TRANSIENT_RETRIES = 6;
   let lastError: Error | null = null;
 
   for (let attempt = 1; attempt <= MAX_TRANSIENT_RETRIES; attempt++) {
@@ -223,8 +278,16 @@ export async function runAgentLoop(config: AgentRunConfig): Promise<{
         tools: config.tools as Parameters<typeof client.callModel>[0]["tools"],
         stopWhen: [stepCountIs(maxIter)],
         reasoning: { effort },
+        // Group every call under the scan's session so costs + traces are
+        // queryable per scan in the OpenRouter dashboard.
+        ...(config.session ? { sessionId: config.session.id } : {}),
       });
-      await streamResult(result1, `Starting agent loop${attempt > 1 ? ` (retry ${attempt})` : ""}`);
+      await streamResult(result1, `Starting agent loop${config.label ? ` [${config.label}]` : ""}${attempt > 1 ? ` (retry ${attempt})` : ""}`);
+
+      // Record usage
+      if (config.usage) {
+        config.usage.recordLlmCall({ tokens: totalTokens });
+      }
 
       return {
         assistantText: getAssistantText(),
@@ -239,6 +302,10 @@ export async function runAgentLoop(config: AgentRunConfig): Promise<{
       // Classify the error
       if (isTransientError(msg)) {
         log(`\n[agent] Transient error (attempt ${attempt}/${MAX_TRANSIENT_RETRIES}): ${msg}\n`);
+        // Also write to stderr so the CLI spinner subtext can show it.
+        process.stderr.write(
+          `[agent${config.label ? `:${config.label}` : ""}] retry ${attempt}/${MAX_TRANSIENT_RETRIES} — ${msg.slice(0, 140)}\n`,
+        );
         if (attempt < MAX_TRANSIENT_RETRIES) {
           const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 30000);
           log(`[agent] Retrying in ${backoffMs / 1000}s...\n`);
@@ -289,6 +356,8 @@ function isTransientError(msg: string): boolean {
     // OpenRouter SDK parsing failures — model returned malformed/truncated response
     lower.includes("invalid final response") ||
     lower.includes("empty or invalid output") ||
+    lower.includes("stream ended") || // "Stream ended without completion event", "Follow-up stream ended..."
+    lower.includes("without completion") ||
     lower.includes("unexpected end of json") ||
     lower.includes("json parse error") ||
     lower.includes("unterminated string") ||
@@ -320,6 +389,12 @@ export async function runAgentWithSubmit<T>(config: {
   reasoning?: { effort: "high" | "medium" | "low" };
   timeoutMs?: number;
   onProgress?: (text: string) => void;
+  /** Scan session — threaded as OpenRouter session_id across all attempts. */
+  session?: ScanSession;
+  /** Usage accumulator. */
+  usage?: SessionUsage;
+  /** Label for logs. */
+  label?: string;
 }): Promise<AgentResult<T>> {
   const log = config.onProgress ?? (() => {});
 
@@ -348,6 +423,9 @@ export async function runAgentWithSubmit<T>(config: {
     reasoning: config.reasoning,
     timeoutMs: config.timeoutMs,
     onProgress: config.onProgress,
+    session: config.session,
+    usage: config.usage,
+    label: config.label,
   });
 
   if (captured) {
@@ -380,6 +458,9 @@ You did NOT call ${config.submitToolName}. Your analysis above is good, but the 
     reasoning: { effort: "low" },
     timeoutMs: config.timeoutMs,
     onProgress: config.onProgress,
+    session: config.session,
+    usage: config.usage,
+    label: config.label ? `${config.label}:force` : "force-submit",
   });
 
   if (captured) {
@@ -411,6 +492,9 @@ CALL ${config.submitToolName} IMMEDIATELY.`;
     reasoning: { effort: "low" },
     timeoutMs: config.timeoutMs,
     onProgress: config.onProgress,
+    session: config.session,
+    usage: config.usage,
+    label: config.label ? `${config.label}:force-final` : "force-submit-final",
   });
 
   if (captured) {

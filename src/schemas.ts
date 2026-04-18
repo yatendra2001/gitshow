@@ -1,639 +1,624 @@
 /**
- * Zod schemas for all agent I/O validation.
+ * Claim-first Zod schemas for the v2 AI pipeline.
  *
- * These schemas serve two purposes:
- * 1. Define the `submit_*` tool input for each agent (the structured output)
- * 2. Define the final ProfileResult that powers the frontend
+ * Every user-visible string on a profile is a `Claim` — never a bare string.
+ * Claims point into a deduplicated `Artifact` dictionary by `evidence_ids`.
+ * The frontend renders claims; a tooltip/side-panel shows the backing
+ * artifacts; user approves / edits / rejects individual claims without
+ * re-running the whole pipeline.
  *
- * Convention: schemas ending in `Schema` export a corresponding `type` via z.infer.
+ * ## Invariants
+ * - Every Claim has at least one valid evidence_id.
+ * - Every evidence_id resolves to an Artifact in the Profile's artifact dict.
+ * - User edits are preserved across regeneration (status = "user_edited").
+ *
+ * These schemas also serve as the `submit_*` tool input shape for each
+ * worker agent — the Zod validator enforces the evidence contract at the
+ * tool boundary, not by post-hoc checking.
  */
 
 import * as z from "zod/v4";
 
-// ============ SHARED ENUMS ============
-
-export const ArchetypeSchema = z.enum([
-  "backend",
-  "frontend",
-  "infra",
-  "fullstack",
-  "mobile",
-  "ml",
-  "tooling",
-  "other",
-]);
+// ──────────────────────────────────────────────────────────────
+// Enums
+// ──────────────────────────────────────────────────────────────
 
 export const ConfidenceSchema = z.enum(["high", "medium", "low"]);
+export type Confidence = z.infer<typeof ConfidenceSchema>;
 
-export const CodeCategorySchema = z.enum([
-  "ui",
-  "business_logic",
-  "infra",
-  "tests",
-  "config",
-  "data",
-  "docs",
-  "other",
+export const ArtifactTypeSchema = z.enum([
+  "commit",
+  "pr",
+  "repo",
+  "release",
+  "issue",
+  "review",
+  "web",
 ]);
+export type ArtifactType = z.infer<typeof ArtifactTypeSchema>;
 
-export const CommitCategorySchema = z.enum([
-  "feature",
-  "bugfix",
-  "refactor",
-  "test",
-  "infra",
-  "docs",
-  "chore",
-  "noise",
+/**
+ * Which section of the six-beat profile a claim belongs to.
+ * - hook: the one-line tagline at the top
+ * - number: one of the 3 KPIs (custom labels per developer)
+ * - pattern: an insight card body ("5 pivots in 15 days without abandoning")
+ * - disclosure: the optional honest-flaw + comeback
+ * - shipped-line: one line on a shipped-project receipt
+ * - technical-depth: a skill row in the appendix
+ * - radar-axis: one axis on the technical radar
+ */
+export const BeatSchema = z.enum([
+  "hook",
+  "number",
+  "pattern",
+  "disclosure",
+  "shipped-line",
+  "technical-depth",
+  "radar-axis",
 ]);
+export type Beat = z.infer<typeof BeatSchema>;
 
-export const ChartTypeSchema = z.enum(["hbar", "bar", "area"]);
+export const ClaimStatusSchema = z.enum([
+  "ai_draft",       // freshly generated, not yet reviewed
+  "user_approved",  // user clicked ✓
+  "user_edited",    // user hand-edited the text (evidence retained)
+  "user_rejected",  // user cut this claim
+  "worker_failed",  // the source worker failed after retries; placeholder
+]);
+export type ClaimStatus = z.infer<typeof ClaimStatusSchema>;
 
-// ============ EVIDENCE ============
+// ──────────────────────────────────────────────────────────────
+// Artifact — the evidence atom
+// ──────────────────────────────────────────────────────────────
 
-export const EvidenceSchema = z.object({
-  commitSha: z.string().optional().describe("Git SHA (short or long form)"),
-  filePath: z.string().optional().describe("File path within a repo"),
-  repoName: z.string().optional().describe("Which repo this evidence comes from"),
-  description: z
+/**
+ * An Artifact is a single piece of evidence (a commit, PR, repo, web page, etc.).
+ * Artifacts are deduplicated in a Profile-level dictionary keyed by `id`.
+ * Multiple Claims can reference the same Artifact.
+ */
+export const ArtifactSchema = z.object({
+  id: z.string().describe("Stable ID, e.g. 'commit:owner/repo@abcd123', 'pr:owner/repo#123'"),
+  type: ArtifactTypeSchema,
+  source_url: z.string().describe("Clickable URL (GitHub, web, etc.)"),
+  title: z.string().max(300).describe("Short headline: commit message, PR title, page title"),
+  excerpt: z.string().max(2000).optional().describe("Relevant snippet the claim uses"),
+  metadata: z.record(z.string(), z.unknown()).default({}).describe(
+    "Type-specific data: repo/author/date/additions/deletions for commit, " +
+    "state/merged/review count for pr, stars/forks for repo, etc."
+  ),
+  recorded_at: z.string().describe("ISO timestamp when this artifact was fetched"),
+});
+export type Artifact = z.infer<typeof ArtifactSchema>;
+
+// ──────────────────────────────────────────────────────────────
+// Claim — every user-visible string
+// ──────────────────────────────────────────────────────────────
+
+export const ClaimSchema = z.object({
+  id: z.string().describe("Stable claim ID"),
+  beat: BeatSchema,
+  text: z.string().max(600).describe("What renders on the page"),
+  evidence_ids: z
+    .array(z.string())
+    .min(1)
+    .describe("At least one artifact id that backs this claim"),
+  confidence: ConfidenceSchema,
+  status: ClaimStatusSchema.default("ai_draft"),
+  user_override: z.string().optional().describe("Present when status = user_edited"),
+  prompt_version: z
     .string()
-    .max(400)
-    .describe("Short human-readable description"),
-  impact: z
-    .enum(["high", "medium", "low"])
-    .describe("How strongly this evidence supports the score"),
-  kind: z
-    .string()
-    .max(60)
     .optional()
-    .describe(
-      "Tag for transparency UI: survival, deletion_durable, deletion_ephemeral, rewrite_meaningful, rewrite_noise, cleanup_followup, collaboration, self_fix, pattern, early_committer, recent_tech, review_quality, cross_repo"
-    ),
-});
+    .describe("Version tag of the prompt that generated this claim (for targeted regen)"),
 
-// ============ TREND DATA ============
-
-export const TrendPointSchema = z.object({
-  period: z.string().describe("Time label: '2024-Q1', '2024-03', 'M1', 'Jan'"),
-  value: z.number().describe("The metric value for this period"),
-});
-
-// ============ INSIGHT CARDS ============
-
-export const InsightChartDataSchema = z.object({
-  type: ChartTypeSchema,
-  data: z
-    .array(
-      z.object({
-        label: z.string(),
-        value: z.number(),
-      })
-    )
-    .min(2)
-    .max(12)
-    .describe("Chart data points"),
-  unit: z.string().max(20).optional().describe("Value suffix: '%', 'days', 'LOC'"),
-});
-
-export const InsightCardSchema = z.object({
-  stat: z
-    .string()
-    .max(40)
-    .describe("Headline number: '97%', '3.2x', '48hrs', '0'"),
+  // Optional beat-specific fields — let the shape of the claim
+  // adapt to the beat without making every field a giant union.
   label: z
     .string()
     .max(80)
-    .describe("What it measures: 'Infra code durability'"),
-  subtitle: z
-    .string()
-    .max(300)
-    .describe("Human explanation of why this matters"),
-  chart: InsightChartDataSchema.optional().describe("Optional chart for visual insight"),
-  sourceRepos: z
-    .array(z.string())
     .optional()
-    .describe("Which repos this insight draws from"),
-});
-
-// ============ CORE METRICS ============
-
-export const DurabilitySchema = z.object({
-  score: z
-    .number()
-    .min(0)
-    .max(100)
-    .nullable()
-    .describe(
-      "Aggregate durability 0-100. Formula: (linesSurviving + durableReplacedLines) / (linesSurviving + durableReplacedLines + meaningfulRewrites) x 100. Null if insufficient data."
-    ),
-  subtitle: z
-    .string()
-    .max(250)
-    .describe(
-      "Human-readable: 'of code I wrote 6+ months ago is still in production'"
-    ),
-  reasoning: z
-    .string()
-    .max(2000)
-    .describe(
-      "Full audit trail: which repos contributed, the formula with actual numbers, why repos were excluded, any caveats. The user reads this to verify or challenge the score."
-    ),
-  linesSampled: z.number().int().nonnegative(),
-  linesSurviving: z.number().int().nonnegative(),
-  durableReplacedLines: z.number().int().nonnegative().optional(),
-  meaningfulRewrites: z.number().int().nonnegative(),
-  noiseRewrites: z.number().int().nonnegative(),
-  byCategory: z
-    .partialRecord(CodeCategorySchema, z.number().min(0).max(100))
-    .optional()
-    .describe("Per-category durability. Only categories with >=500 LOC."),
-  byRepo: z
-    .array(
-      z.object({
-        repoName: z.string(),
-        score: z.number().min(0).max(100).nullable(),
-        linesSampled: z.number().int().nonnegative(),
-      })
-    )
-    .optional()
-    .describe("Per-repo durability breakdown"),
-  trend: z
-    .array(TrendPointSchema)
-    .optional()
-    .describe("Durability over time (quarterly)"),
-  evidence: z.array(EvidenceSchema).min(1).max(15),
-  confidence: ConfidenceSchema,
-});
-
-export const AdaptabilitySchema = z.object({
-  score: z
-    .number()
-    .min(0)
-    .max(100)
-    .nullable()
-    .describe("Composite adaptability score 0-100"),
-  subtitle: z.string().max(250),
-  reasoning: z
-    .string()
-    .max(2000)
-    .describe(
-      "Full audit trail: how the score was computed, which languages/repos contributed, ramp-up calculation, what 'recent new tech' means specifically."
-    ),
-  rampUpDays: z
-    .number()
-    .nullable()
-    .describe("Median days to first meaningful contribution in new codebase. Null if early-committer."),
-  languages: z
-    .array(
-      z.object({
-        name: z.string().describe("Language name: 'TypeScript', 'Go'"),
-        proficiency: z
-          .number()
-          .min(0)
-          .max(100)
-          .describe("0-100 based on LOC, durability, breadth, recency"),
-      })
-    )
-    .describe("Languages with proficiency scores"),
-  recentNewTech: z
-    .array(z.string())
-    .describe("Technologies picked up in last 12 months"),
-  trend: z.array(TrendPointSchema).optional(),
-  evidence: z.array(EvidenceSchema).min(1).max(15),
-  confidence: ConfidenceSchema,
-});
-
-export const OwnershipSchema = z.object({
-  score: z
-    .number()
-    .min(0)
-    .max(100)
-    .nullable()
-    .describe("Aggregate ownership 0-100. Formula: 100 x (1 - cleanups / analyzed). Null if solo-maintained."),
-  subtitle: z.string().max(250),
-  reasoning: z
-    .string()
-    .max(2000)
-    .describe(
-      "Full audit trail: how many commits analyzed per repo, how cleanups were identified, which repos are solo-maintained and why, review-to-code ratio calculation."
-    ),
-  commitsAnalyzed: z.number().int().nonnegative(),
-  commitsRequiringCleanup: z.number().int().nonnegative(),
-  soloMaintainedRepos: z
-    .array(z.string())
-    .optional()
-    .describe("Repos where the user is the only contributor"),
-  reviewToCodeRatio: z
-    .number()
-    .optional()
-    .describe("PRs reviewed / PRs authored. >1 = reviews more than writes."),
-  totalReviewsSubmitted: z
-    .number()
-    .int()
-    .nonnegative()
-    .optional()
-    .describe("Total PR reviews the user has submitted across all repos"),
-  trend: z.array(TrendPointSchema).optional(),
-  evidence: z.array(EvidenceSchema).min(1).max(15),
-  confidence: ConfidenceSchema,
-});
-
-// ============ RADAR ============
-
-export const RadarDimensionSchema = z.object({
-  trait: z.string().max(30).describe("Axis label: 'Backend', 'Testing', 'DevOps'"),
-  value: z.number().min(0).max(100).describe("Score 0-100"),
-});
-
-// ============ SHIPPED PROJECTS ============
-
-export const ShippedProjectSchema = z.object({
-  name: z.string().max(100).describe("Project name: 'Distributed Task Queue'"),
-  meta: z.string().max(200).describe("Context: 'Solo . 3 wks . Oct 25'"),
-  description: z.string().max(200).describe("One line about what it does: 'Web platform + React Native companion'"),
-  stack: z.array(z.string()).describe("Tech stack tags"),
-  repos: z.array(z.string()).describe("Repo names in this system"),
-  highlight: z
-    .object({
-      label: z.string().max(30).describe("What this metric is: 'Durability', 'Built in', 'Scale', 'Languages'"),
-      value: z.string().max(40).describe("The impressive number: '34%', '10 days', '60+ components', '5 languages'"),
-    })
-    .describe(
-      "The MOST compelling metric for this project. NEVER show N/A. " +
-      "Pick the best available: durability % (if repo >6mo), build velocity (always available), " +
-      "scale (lines/components), stack breadth, or team contribution %."
-    ),
-  kpi: z
+    .describe("For `number` beat: the custom metric label, e.g. '2 weeks' or '27%'"),
+  sublabel: z
     .string()
     .max(200)
-    .nullable()
-    .describe("User-provided impact metric. Null = not yet provided."),
+    .optional()
+    .describe("For `number`/`shipped-line` beat: a one-line explanation under the headline"),
+  extra: z
+    .record(z.string(), z.unknown())
+    .optional()
+    .describe("Escape hatch for beat-specific extras (chart data, stack tags, etc.)"),
 });
+export type Claim = z.infer<typeof ClaimSchema>;
 
-// ============ TECHNICAL DEPTH ============
+// ──────────────────────────────────────────────────────────────
+// Worker output — what each parallel worker submits
+// ──────────────────────────────────────────────────────────────
 
-export const TechnicalDepthSchema = z.object({
-  skill: z.string().max(40).describe("Skill name: 'Go', 'React', 'PostgreSQL'"),
-  level: z.number().min(0).max(100).describe("Proficiency 0-100"),
-  projectCount: z
+/**
+ * Strict output contract for every worker agent.
+ * The submit_worker_output tool is validated against this schema;
+ * a claim missing evidence_ids fails the tool call and the worker retries.
+ */
+export const WorkerOutputSchema = z.object({
+  worker: z
+    .string()
+    .describe("Worker name, e.g. 'cross-repo-patterns'"),
+  claims: z
+    .array(ClaimSchema.omit({ status: true, prompt_version: true }))
+    .max(20)
+    .describe("Claims produced by this worker. Each MUST reference >=1 evidence_id."),
+  new_artifacts: z
+    .array(ArtifactSchema)
+    .default([])
+    .describe(
+      "New artifacts discovered via web/github-search tools that aren't " +
+      "already in the base artifact table. The orchestrator merges these in."
+    ),
+  notes: z
+    .string()
+    .max(1000)
+    .optional()
+    .describe("Short free-form note for the orchestrator/critic (not shown to user)"),
+});
+export type WorkerOutput = z.infer<typeof WorkerOutputSchema>;
+
+// ──────────────────────────────────────────────────────────────
+// Hook-specific schemas (evaluator-optimizer loop)
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * Four mutually-exclusive framing choices for a profile hook. The
+ * angle-selector picks one before the writer runs; the writer then
+ * constrains all 5 candidates to lead with that angle. Route-then-execute
+ * — narrows the writer's solution space so candidates stay focused and
+ * stable across independent runs.
+ */
+export const HookAngleSchema = z.enum([
+  "CREDENTIAL_ANCHOR",
+  "OPERATOR_DENSITY",
+  "BUILD_CADENCE",
+  "DOMAIN_DEPTH",
+]);
+export type HookAngle = z.infer<typeof HookAngleSchema>;
+
+export const HookAngleSelectionSchema = z.object({
+  angle: HookAngleSchema,
+  reason: z
+    .string()
+    .max(400)
+    .describe(
+      "One sentence explaining why this angle dominates for THIS developer. " +
+      "Must cite the specific evidence (maintainer name, product name, team-scale stat, etc.).",
+    ),
+});
+export type HookAngleSelection = z.infer<typeof HookAngleSelectionSchema>;
+
+export const HookCandidateSchema = z.object({
+  text: z.string().max(240).describe("Hook text — 1-3 short declarative sentences, no em-dash punchlines"),
+  voice: z
+    .string()
+    .max(40)
+    .describe(
+      "Voice register label. Standard values: direct, understated, numeric, " +
+      "personality, contrarian. When employment+scale data exists, the writer " +
+      "may use identity-forward variants (direct-detail, numeric-context) — " +
+      "values treated as free-form metadata by the critic.",
+    ),
+  evidence_ids: z
+    .array(z.string())
+    .min(1)
+    .describe("Artifacts this hook draws from"),
+  reasoning: z
+    .string()
+    .max(500)
+    .describe("Why this hook captures this specific developer"),
+});
+export type HookCandidate = z.infer<typeof HookCandidateSchema>;
+
+export const HookWriterOutputSchema = z.object({
+  candidates: z.array(HookCandidateSchema).length(5).describe("Exactly 5 candidates, distinct voices"),
+});
+export type HookWriterOutput = z.infer<typeof HookWriterOutputSchema>;
+
+export const HookCriticOutputSchema = z.object({
+  winner_index: z
     .number()
     .int()
-    .nonnegative()
-    .describe("How many repos/projects use this skill"),
-  description: z
+    .min(0)
+    .max(4)
+    .nullable()
+    .describe("Index of the best candidate, or null if all fail"),
+  scores: z
+    .array(
+      z.object({
+        index: z.number().int(),
+        specific: z.number().min(0).max(10),
+        verifiable: z.number().min(0).max(10),
+        surprising: z.number().min(0).max(10),
+        earned: z.number().min(0).max(10),
+        reasoning: z.string().max(300),
+      })
+    )
+    .length(5),
+  revise_instruction: z
     .string()
-    .max(200)
-    .describe("What depth looks like: 'Concurrency, channels, pprof'"),
-});
-
-// ============ CODE REVIEW PROFILE ============
-
-export const CodeReviewProfileSchema = z.object({
-  totalReviews: z.number().int().nonnegative(),
-  reviewToCodeRatio: z
-    .number()
-    .describe("Reviews submitted / PRs authored"),
-  avgCommentsPerReview: z.number().describe("Average inline comments per review"),
-  depth: z
-    .enum(["surface", "moderate", "thorough"])
-    .describe("Overall review depth assessment"),
-  evidence: z.array(EvidenceSchema).max(5),
-});
-
-// ============ EXTERNAL CONTRIBUTION ============
-
-export const ExternalContributionSchema = z.object({
-  repoFullName: z.string().describe("'facebook/react', 'kubernetes/kubernetes'"),
-  prCount: z.number().int().nonnegative().describe("PRs authored to this repo"),
-  mergedCount: z.number().int().nonnegative(),
-  reviewCount: z.number().int().nonnegative().optional(),
-  significance: z.enum(["high", "medium", "low"]),
-  summary: z.string().max(300).describe("What the user contributed"),
-  languages: z.array(z.string()),
-});
-
-// ============ TEMPORAL DATA ============
-
-export const TemporalDataSchema = z.object({
-  commitsByHour: z
-    .array(z.number())
-    .length(24)
+    .max(500)
     .optional()
-    .describe("Commits per hour of day [0..23]"),
-  commitsByDayOfWeek: z
-    .array(z.number())
-    .length(7)
-    .optional()
-    .describe("Commits per day [Mon..Sun]"),
-  prCycleTimeByMonth: z
-    .array(TrendPointSchema)
-    .optional()
-    .describe("Average PR cycle time (days) by month"),
-  durabilityByQuarter: z
-    .array(TrendPointSchema)
-    .optional()
-    .describe("Durability score trend by quarter"),
-  languageAdoptionTimeline: z
-    .array(
-      z.object({
-        language: z.string(),
-        firstSeen: z.string(),
-        locByQuarter: z.array(TrendPointSchema),
-      })
-    )
-    .optional(),
-  streaks: z
-    .object({
-      longestConsecutiveDays: z.number().int().optional(),
-      currentStreakDays: z.number().int().optional(),
-    })
-    .optional(),
+    .describe("If winner is null, tell the writer what to change for the next round"),
 });
+export type HookCriticOutput = z.infer<typeof HookCriticOutputSchema>;
 
-// ============ PER-REPO ANALYSIS (what repo-analyzer submits) ============
+// ──────────────────────────────────────────────────────────────
+// Discover output
+// ──────────────────────────────────────────────────────────────
 
-export const RepoAnalysisResultSchema = z.object({
-  repoName: z.string(),
-  archetype: ArchetypeSchema,
-
-  repoSummary: z.object({
-    totalCommitsByUser: z.number().int().nonnegative(),
-    totalCommitsInRepo: z.number().int().nonnegative(),
-    firstCommitDate: z.string().nullable(),
-    lastCommitDate: z.string().nullable(),
-    primaryLanguages: z.array(z.string()),
-    activeDays: z.number().int().nonnegative(),
-  }),
-
-  durability: z.object({
-    score: z.number().min(0).max(100).nullable(),
-    reasoning: z.string().max(2000).describe("Show your work: formula with numbers, why null if null, caveats"),
-    linesSampled: z.number().int().nonnegative(),
-    linesSurviving: z.number().int().nonnegative(),
-    durableReplacedLines: z.number().int().nonnegative().optional(),
-    meaningfulRewrites: z.number().int().nonnegative(),
-    noiseRewrites: z.number().int().nonnegative(),
-    byCategory: z
-      .partialRecord(CodeCategorySchema, z.number().min(0).max(100))
-      .optional(),
-    evidence: z.array(EvidenceSchema).min(1).max(10),
-    confidence: ConfidenceSchema,
-  }),
-
-  adaptability: z.object({
-    rampUpDays: z.number().nullable(),
-    reasoning: z.string().max(2000).describe("Show your work: how rampUpDays was calculated, why null if null"),
-    languagesShipped: z.array(z.string()),
-    recentNewTech: z.array(z.string()),
-    evidence: z.array(EvidenceSchema).min(1).max(10),
-    confidence: ConfidenceSchema,
-  }),
-
-  ownership: z.object({
-    score: z.number().min(0).max(100).nullable(),
-    reasoning: z.string().max(2000).describe("Show your work: cleanup count, classification examples, why null if null"),
-    commitsAnalyzed: z.number().int().nonnegative(),
-    commitsRequiringCleanup: z.number().int().nonnegative(),
-    soloMaintained: z.boolean(),
-    evidence: z.array(EvidenceSchema).min(1).max(10),
-    confidence: ConfidenceSchema,
-  }),
-
-  commitClassifications: z
-    .array(
-      z.object({
-        sha: z.string(),
-        date: z.string().optional(),
-        message: z.string().max(200),
-        category: CommitCategorySchema,
-        meaningful: z.boolean(),
-        rationale: z.string().max(300),
-      })
-    )
-    .max(50),
-
-  notes: z.string().max(2000),
-});
-
-// ============ SYSTEM MAPPING (what system-mapper submits) ============
-
-export const SystemMappingResultSchema = z.object({
-  systems: z.array(
-    z.object({
-      name: z.string().max(100),
-      description: z.string().max(300),
-      repos: z.array(z.string()).min(1),
-      archetype: ArchetypeSchema,
-    })
-  ),
-  standalone: z.array(z.string()).describe("Repos not in any system"),
-});
-
-// ============ EVALUATION (what evaluator submits) ============
-
-export const EvaluationResultSchema = z.object({
-  score: z.number().min(0).max(100).describe("Overall quality score"),
-  notes: z.string().max(1000).describe("Specific feedback"),
-  reject: z.boolean().describe("True if profile is too low quality to ship"),
-  suggestions: z
-    .array(z.string().max(300))
+export const DiscoverOutputSchema = z.object({
+  distinctive_paragraph: z
+    .string()
+    .max(2500)
+    .describe(
+      "Free-form paragraph: what makes this developer distinctive? " +
+      "Specific, behavioral, surprising. No structure imposed."
+    ),
+  investigation_angles: z
+    .array(z.string().max(200))
+    .min(3)
     .max(10)
-    .describe("Actionable improvements"),
+    .describe(
+      "Threads worth pulling — concrete questions workers should try to answer " +
+      "(e.g., 'look for whether hackathon wins are mentioned on personal site')"
+    ),
+  primary_shape: z
+    .string()
+    .max(80)
+    .describe(
+      "One-line archetype hint in the developer's own terms — " +
+      "e.g. 'solo AI-app shipper', 'infra owner', 'OSS maintainer'. " +
+      "Used to prime workers, not hard-coded as a category."
+    ),
 });
+export type DiscoverOutput = z.infer<typeof DiscoverOutputSchema>;
 
-// ============ PROFILE RESULT (TOP-LEVEL OUTPUT) ============
+// ──────────────────────────────────────────────────────────────
+// Profile critic output
+// ──────────────────────────────────────────────────────────────
 
-export const ProfileResultSchema = z.object({
-  // Identity
-  handle: z.string(),
-  generatedAt: z.string().describe("ISO timestamp"),
+export const ProfileCriticOutputSchema = z.object({
+  forwardable: z
+    .boolean()
+    .describe("Would a senior engineer forward this profile to a founder? Final verdict."),
+  overall_score: z.number().min(0).max(100),
+  flagged_claims: z
+    .array(
+      z.object({
+        claim_id: z.string(),
+        reason: z.enum(["not_specific", "not_verifiable", "not_surprising", "not_earned", "generic", "factually_wrong"]),
+        note: z.string().max(300),
+      })
+    )
+    .max(30)
+    .describe("Claims that should be regenerated or cut"),
+  top_strengths: z.array(z.string().max(200)).max(5),
+  top_gaps: z.array(z.string().max(200)).max(5),
+});
+export type ProfileCriticOutput = z.infer<typeof ProfileCriticOutputSchema>;
 
-  // AI-generated narrative
-  hook: z
-    .string()
-    .max(120)
-    .describe("One-liner tagline: 'I build interfaces users dont have to think about'"),
-  subtitle: z
-    .string()
-    .max(300)
-    .describe("Role + experience + stack: 'Backend . 3 years . Go, Python . Fintech'"),
+// ──────────────────────────────────────────────────────────────
+// Hiring-manager evaluator — strict six-axis gate
+// ──────────────────────────────────────────────────────────────
+//
+// The profile-critic above flags individual claims. This one runs AFTER
+// everything else and produces an axis-level verdict (PASS / REVISE /
+// BLOCK) with ordered top-three fixes. Models a senior hiring manager
+// reading the profile cold.
 
-  // Core metrics (aggregated across repos)
-  durability: DurabilitySchema,
-  adaptability: AdaptabilitySchema,
-  ownership: OwnershipSchema,
+export const HiringManagerAxisSchema = z.object({
+  score: z.number().int().min(0).max(10),
+  issues: z.array(z.string().max(400)).default([]),
+  suggestions: z.array(z.string().max(400)).default([]),
+});
+export type HiringManagerAxis = z.infer<typeof HiringManagerAxisSchema>;
 
-  // Skill fingerprint (radar chart)
-  radar: z
-    .array(RadarDimensionSchema)
-    .min(4)
-    .max(8)
-    .describe("4-8 dimensions, agent-chosen based on data"),
-
-  // Data-backed insight cards
-  insights: z
-    .array(InsightCardSchema)
-    .min(4)
-    .max(8)
-    .describe("Most compelling data stories about this engineer"),
-
-  // Shipped systems (cross-repo projects)
-  shipped: z.array(ShippedProjectSchema),
-
-  // Technical depth
-  technicalDepth: z.array(TechnicalDepthSchema),
-
-  // Code review profile
-  codeReview: CodeReviewProfileSchema.optional(),
-
-  // Per-repo analysis details (for drill-down)
-  repoAnalyses: z.array(
-    z.object({
-      repoName: z.string(),
-      archetype: ArchetypeSchema,
-      commitCount: z.number().int(),
-      durabilityScore: z.number().min(0).max(100).nullable(),
-      ownershipScore: z.number().min(0).max(100).nullable(),
-      languagesShipped: z.array(z.string()),
-      role: z
-        .string()
-        .max(60)
-        .describe("User's role: 'primary author', 'reviewer', 'contributor'"),
-      system: z
-        .string()
-        .nullable()
-        .describe("Which shipped system this belongs to, or null"),
-    })
-  ),
-
-  // External contributions
-  externalContributions: z.array(ExternalContributionSchema).optional(),
-
-  // Temporal data for frontend charts
-  temporal: TemporalDataSchema.optional(),
-
-  // Evaluation
-  evaluationScore: z.number().min(0).max(100).optional(),
-  evaluationNotes: z.string().max(1000).optional(),
-
-  // User-editable fields (null = not yet provided by user)
-  openTo: z
-    .array(z.string())
-    .nullable()
-    .describe("User-provided availability: ['Full-time', 'Contract']"),
-
-  // Pipeline execution metadata
-  pipelineMeta: z.object({
-    totalReposFound: z.number().int(),
-    significantRepos: z.number().int(),
-    systemsIdentified: z.number().int(),
-    externalReposAnalyzed: z.number().int(),
-    totalDurationMs: z.number().int(),
-    agentCalls: z.number().int(),
-    estimatedCostUsd: z.number().optional(),
+export const HiringManagerOutputSchema = z.object({
+  verdict: z.enum(["PASS", "REVISE", "BLOCK"]),
+  overall_score: z.number().int().min(0).max(100),
+  axes: z.object({
+    hook: HiringManagerAxisSchema,
+    numeric_integrity: HiringManagerAxisSchema,
+    pattern_selection: HiringManagerAxisSchema,
+    voice: HiringManagerAxisSchema,
+    evidence: HiringManagerAxisSchema,
+    disclosure: HiringManagerAxisSchema,
+  }),
+  block_triggers: z.array(z.string().max(400)).default([]),
+  top_three_fixes: z
+    .array(
+      z.object({
+        axis: z.string().max(50),
+        claim_id: z.string().optional(),
+        fix: z.string().max(600),
+      })
+    )
+    .max(5),
+  forwarding_test: z.object({
+    would_a_senior_eng_forward_this: z.boolean(),
+    why_or_why_not: z.string().max(400),
   }),
 });
+export type HiringManagerOutput = z.infer<typeof HiringManagerOutputSchema>;
 
-// ============ PROFILE CARD (lean frontend payload) ============
+// ──────────────────────────────────────────────────────────────
+// Revision events — audit trail for user edits
+// ──────────────────────────────────────────────────────────────
+
+export const RevisionEventSchema = z.object({
+  at: z.string().describe("ISO timestamp"),
+  claim_id: z.string(),
+  kind: z.enum(["approve", "reject", "edit", "regenerate"]),
+  before: z.string().optional(),
+  after: z.string().optional(),
+  reason: z.string().max(500).optional(),
+});
+export type RevisionEvent = z.infer<typeof RevisionEventSchema>;
+
+// ──────────────────────────────────────────────────────────────
+// Scan session — one per profile scan
+// ──────────────────────────────────────────────────────────────
+
+export const ScanSocialsSchema = z.object({
+  twitter: z.string().optional(),
+  linkedin: z.string().optional(),
+  website: z.string().optional(),
+  other: z.array(z.string()).optional(),
+});
+export type ScanSocials = z.infer<typeof ScanSocialsSchema>;
+
+export const ScanSessionSchema = z.object({
+  id: z.string().describe("OpenRouter session_id (and our scan id)"),
+  handle: z.string(),
+  socials: ScanSocialsSchema,
+  context_notes: z.string().optional().describe("User-provided freeform context"),
+  started_at: z.string(),
+  dashboard_url: z.string().describe("OpenRouter session dashboard URL"),
+  model: z.string().describe("Default model, e.g. 'anthropic/claude-sonnet-4.6'"),
+  /**
+   * Advisory cost cap in USD. `Infinity` (default) = no cap; the pipeline
+   * never aborts on cost. Users who want a guardrail can set a number.
+   */
+  cost_cap_usd: z.number().positive().default(Number.POSITIVE_INFINITY),
+});
+export type ScanSession = z.infer<typeof ScanSessionSchema>;
+
+// ──────────────────────────────────────────────────────────────
+// Pipeline metadata
+// ──────────────────────────────────────────────────────────────
+
+export const PipelineMetaSchema = z.object({
+  pipeline_version: z.string().describe("Git sha or semver of the pipeline code"),
+  session: ScanSessionSchema,
+  stage_timings: z
+    .array(
+      z.object({
+        stage: z.string(),
+        started_at: z.string(),
+        finished_at: z.string(),
+        duration_ms: z.number().int().nonnegative(),
+      })
+    )
+    .default([]),
+  llm_calls: z.number().int().nonnegative().default(0),
+  web_calls: z.number().int().nonnegative().default(0),
+  github_search_calls: z.number().int().nonnegative().default(0),
+  total_tokens: z.number().int().nonnegative().default(0),
+  estimated_cost_usd: z.number().nonnegative().default(0),
+  errors: z.array(z.string()).default([]),
+});
+export type PipelineMeta = z.infer<typeof PipelineMetaSchema>;
+
+// ──────────────────────────────────────────────────────────────
+// Profile — the final output
+// ──────────────────────────────────────────────────────────────
+
+export const ProfileSchema = z.object({
+  handle: z.string(),
+  generated_at: z.string(),
+  pipeline_version: z.string(),
+
+  /** Distinctive summary from the discover stage — for debugging and revision UI. */
+  distinctive_paragraph: z.string(),
+
+  /** Every user-visible string. Rendered in six-beat order by beat + display_order. */
+  claims: z.array(ClaimSchema),
+
+  /** Deduped evidence dictionary. */
+  artifacts: z.record(z.string(), ArtifactSchema),
+
+  /** Audit trail (empty on first generation). */
+  revision_history: z.array(RevisionEventSchema).default([]),
+
+  /** Pipeline execution metadata. */
+  meta: PipelineMetaSchema,
+});
+export type Profile = z.infer<typeof ProfileSchema>;
+
+// ──────────────────────────────────────────────────────────────
+// Helpers
+// ──────────────────────────────────────────────────────────────
+
+/** Group claims by beat, for rendering or iteration. */
+export function claimsByBeat(profile: Profile): Record<Beat, Claim[]> {
+  const acc: Record<Beat, Claim[]> = {
+    hook: [],
+    number: [],
+    pattern: [],
+    disclosure: [],
+    "shipped-line": [],
+    "technical-depth": [],
+    "radar-axis": [],
+  };
+  for (const c of profile.claims) acc[c.beat].push(c);
+  return acc;
+}
+
+/** Resolve evidence ids on a claim to full Artifacts. */
+export function evidenceFor(profile: Profile, claim: Claim): Artifact[] {
+  return claim.evidence_ids
+    .map((id) => profile.artifacts[id])
+    .filter((a): a is Artifact => a !== undefined);
+}
+
+// ──────────────────────────────────────────────────────────────
+// ProfileCard — slim projection of Profile for the frontend
+// ──────────────────────────────────────────────────────────────
 //
-// The frontend gets this — concise, no heavy descriptions or reasoning.
-// Reasoning, evidence, and audit trails live in the full ProfileResult
-// which powers the developer dashboard where they iterate on their profile.
+// The full Profile includes the entire Artifact dictionary (often 2–5 MB).
+// ProfileCard strips that to the claim-level essentials the UI actually
+// renders, plus a tiny evidence preview per claim (up to 3 links). A full
+// evidence drill-down still goes against the Profile JSON when needed.
+
+export const CardClaimSchema = z.object({
+  id: z.string(),
+  beat: BeatSchema,
+  text: z.string(),
+  label: z.string().optional(),
+  sublabel: z.string().optional(),
+  confidence: ConfidenceSchema,
+  status: ClaimStatusSchema,
+  evidence_count: z.number().int().nonnegative(),
+  evidence_preview: z
+    .array(
+      z.object({
+        id: z.string(),
+        type: ArtifactTypeSchema,
+        url: z.string(),
+        title: z.string(),
+      })
+    )
+    .max(3),
+  /**
+   * For `pattern` beat only: true = show in the main patterns panel,
+   * false = demote to "additional context". All non-pattern beats
+   * default to `true`. Kept at claim level so a single `patterns[]`
+   * array can be consumed by both old and new UIs.
+   */
+  primary: z.boolean().default(true),
+});
+export type CardClaim = z.infer<typeof CardClaimSchema>;
+
+// Chart-ready data the UI can render directly — no fabrication needed.
+export const TimelineChartEntrySchema = z.object({
+  year: z.number().int(),
+  month: z.number().int().min(1).max(12).optional(),
+  label: z.string(),
+  note: z.string().optional(),
+  type: z.enum(["oss", "job", "solo", "win"]),
+  major: z.boolean().default(false),
+});
+export type TimelineChartEntry = z.infer<typeof TimelineChartEntrySchema>;
+
+export const TeamHistogramSchema = z.object({
+  repo: z.string(),
+  total_commits: z.number().int().nonnegative(),
+  contributors: z.array(
+    z.object({
+      name: z.string(),
+      commits: z.number().int().nonnegative(),
+      is_user: z.boolean().default(false),
+    })
+  ),
+});
+export type TeamHistogram = z.infer<typeof TeamHistogramSchema>;
+
+export const DailyActivitySchema = z.object({
+  repo: z.string(),
+  days: z.array(
+    z.object({
+      date: z.string().describe("YYYY-MM-DD"),
+      ins: z.number().int().nonnegative(),
+      del: z.number().int().nonnegative(),
+      c: z.number().int().nonnegative(),
+    })
+  ),
+});
+export type DailyActivity = z.infer<typeof DailyActivitySchema>;
+
+export const ChartsSchema = z.object({
+  timeline: z.array(TimelineChartEntrySchema).default([]),
+  primary_repo_team: TeamHistogramSchema.nullable().default(null),
+  primary_repo_daily_activity: DailyActivitySchema.nullable().default(null),
+});
+export type Charts = z.infer<typeof ChartsSchema>;
 
 export const ProfileCardSchema = z.object({
   handle: z.string(),
-  generatedAt: z.string(),
-  hook: z.string(),
-  subtitle: z.string(),
+  generated_at: z.string(),
+  pipeline_version: z.string(),
+  primary_shape: z.string().optional(),
+  distinctive_paragraph: z.string(),
 
-  durability: z.object({
-    score: z.number().min(0).max(100).nullable(),
-    subtitle: z.string(),
+  hook: CardClaimSchema.nullable(),
+  numbers: z.array(CardClaimSchema),
+  patterns: z.array(CardClaimSchema),
+  disclosure: CardClaimSchema.nullable(),
+  shipped: z.array(CardClaimSchema),
+
+  charts: ChartsSchema.default({ timeline: [], primary_repo_team: null, primary_repo_daily_activity: null }),
+
+  critic: z
+    .object({
+      forwardable: z.boolean(),
+      overall_score: z.number(),
+      top_strengths: z.array(z.string()),
+      top_gaps: z.array(z.string()),
+      flagged_claim_ids: z.array(z.string()),
+    })
+    .optional(),
+
+  meta: z.object({
+    session_id: z.string(),
+    session_url: z.string(),
+    total_claims: z.number().int().nonnegative(),
+    total_artifacts: z.number().int().nonnegative(),
+    llm_calls: z.number().int().nonnegative(),
+    web_calls: z.number().int().nonnegative(),
+    github_search_calls: z.number().int().nonnegative(),
+    estimated_cost_usd: z.number(),
+    elapsed_ms: z.number().int().nonnegative(),
+    errors: z.number().int().nonnegative(),
+    /**
+     * Always-on hook stability signal. Low similarity means the hook prompt
+     * produced noticeably different hooks across two independent runs on the
+     * same input.
+     */
+    stability: z
+      .object({
+        hook_similarity: z.number().min(0).max(1),
+        verdict: z.enum(["stable", "mixed", "unstable", "skipped"]),
+        note: z.string(),
+      })
+      .optional(),
+    /**
+     * Senior hiring-manager verdict + top-three fixes. The UI should show
+     * a prominent banner for REVISE/BLOCK and (optionally) the fix list as
+     * edit suggestions.
+     */
+    hiring_review: z
+      .object({
+        verdict: z.enum(["PASS", "REVISE", "BLOCK"]),
+        overall_score: z.number().int().min(0).max(100),
+        would_forward: z.boolean(),
+        why: z.string(),
+        block_triggers: z.array(z.string()).default([]),
+        top_fixes: z
+          .array(
+            z.object({
+              axis: z.string(),
+              claim_id: z.string().optional(),
+              fix: z.string(),
+            })
+          )
+          .default([]),
+      })
+      .optional(),
   }),
-  adaptability: z.object({
-    score: z.number().min(0).max(100).nullable(),
-    subtitle: z.string(),
-    languages: z.array(z.object({ name: z.string(), proficiency: z.number() })),
-  }),
-  ownership: z.object({
-    score: z.number().min(0).max(100).nullable(),
-    subtitle: z.string(),
-  }),
-
-  radar: z.array(z.object({ trait: z.string(), value: z.number() })),
-
-  insights: z.array(z.object({
-    stat: z.string(),
-    label: z.string(),
-    subtitle: z.string(),
-    chart: InsightChartDataSchema.optional(),
-  })),
-
-  shipped: z.array(z.object({
-    name: z.string(),
-    meta: z.string(),
-    description: z.string(),
-    stack: z.array(z.string()),
-    highlight: z.object({ label: z.string(), value: z.string() }),
-    kpi: z.string().nullable(),
-  })),
-
-  technicalDepth: z.array(z.object({
-    skill: z.string(),
-    level: z.number(),
-    projectCount: z.number(),
-    description: z.string(),
-  })),
-
-  codeReview: z.object({
-    totalReviews: z.number(),
-    reviewToCodeRatio: z.number(),
-    depth: z.string(),
-  }).optional(),
-
-  openTo: z.array(z.string()).nullable(),
 });
-
-/**
- * Derive the lean frontend card from the full profile result.
- * Strips: reasoning, evidence, per-repo details, temporal data, pipeline meta.
- */
-export function toProfileCard(full: ProfileResult): ProfileCard {
-  return {
-    handle: full.handle,
-    generatedAt: full.generatedAt,
-    hook: full.hook,
-    subtitle: full.subtitle,
-    durability: { score: full.durability.score, subtitle: full.durability.subtitle },
-    adaptability: { score: full.adaptability.score, subtitle: full.adaptability.subtitle, languages: full.adaptability.languages },
-    ownership: { score: full.ownership.score, subtitle: full.ownership.subtitle },
-    radar: full.radar,
-    insights: full.insights.map((i) => ({ stat: i.stat, label: i.label, subtitle: i.subtitle, chart: i.chart })),
-    shipped: full.shipped.map((s) => ({ name: s.name, meta: s.meta, description: s.description, stack: s.stack, highlight: s.highlight, kpi: s.kpi })),
-    technicalDepth: full.technicalDepth,
-    codeReview: full.codeReview ? { totalReviews: full.codeReview.totalReviews, reviewToCodeRatio: full.codeReview.reviewToCodeRatio, depth: full.codeReview.depth } : undefined,
-    openTo: full.openTo,
-  };
-}
-
-// ============ TYPE EXPORTS ============
-
 export type ProfileCard = z.infer<typeof ProfileCardSchema>;
-export type Archetype = z.infer<typeof ArchetypeSchema>;
-export type Confidence = z.infer<typeof ConfidenceSchema>;
-export type CodeCategory = z.infer<typeof CodeCategorySchema>;
-export type Evidence = z.infer<typeof EvidenceSchema>;
-export type TrendPoint = z.infer<typeof TrendPointSchema>;
-export type InsightCard = z.infer<typeof InsightCardSchema>;
-export type InsightChartData = z.infer<typeof InsightChartDataSchema>;
-export type RadarDimension = z.infer<typeof RadarDimensionSchema>;
-export type ShippedProject = z.infer<typeof ShippedProjectSchema>;
-export type TechnicalDepth = z.infer<typeof TechnicalDepthSchema>;
-export type CodeReviewProfile = z.infer<typeof CodeReviewProfileSchema>;
-export type ExternalContribution = z.infer<typeof ExternalContributionSchema>;
-export type TemporalData = z.infer<typeof TemporalDataSchema>;
-export type RepoAnalysisResult = z.infer<typeof RepoAnalysisResultSchema>;
-export type SystemMappingResult = z.infer<typeof SystemMappingResultSchema>;
-export type EvaluationResultOutput = z.infer<typeof EvaluationResultSchema>;
-export type ProfileResult = z.infer<typeof ProfileResultSchema>;
-
