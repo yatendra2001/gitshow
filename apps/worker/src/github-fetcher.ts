@@ -5,6 +5,7 @@
 
 import { execFile as execFileCb } from "node:child_process";
 import { promisify } from "node:util";
+import { logger } from "./util.js";
 import type {
   GitHubData,
   GitHubProfile,
@@ -15,6 +16,7 @@ import type {
 } from "./types.js";
 
 const execFile = promisify(execFileCb);
+const ghLog = logger.child({ src: "gh-fetcher" });
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -48,21 +50,27 @@ async function ghJson<T>(args: string[]): Promise<T> {
 
       if (isRetryable && attempt < MAX_GH_RETRIES) {
         const backoffMs = 1000 * Math.pow(2, attempt - 1);
-        console.warn(
-          `[gh] Transient error (attempt ${attempt}/${MAX_GH_RETRIES}): ${msg.slice(0, 100)}`
+        ghLog.warn(
+          { attempt, max_attempts: MAX_GH_RETRIES, backoff_ms: backoffMs, error: msg.slice(0, 200) },
+          "transient error, retrying",
         );
-        console.warn(`[gh] Retrying in ${backoffMs / 1000}s...`);
         await new Promise((r) => setTimeout(r, backoffMs));
         continue;
       }
 
       // Non-retryable or exhausted retries — return empty
-      console.warn(`[gh] command failed: gh ${args.join(" ")}\n  ${msg.slice(0, 200)}`);
+      ghLog.warn(
+        { args: args.join(" "), error: msg.slice(0, 400) },
+        "command failed, returning empty",
+      );
       return [] as unknown as T;
     }
   }
 
-  console.warn(`[gh] Exhausted retries: gh ${args.join(" ")}\n  ${lastError.slice(0, 200)}`);
+  ghLog.warn(
+    { args: args.join(" "), last_error: lastError.slice(0, 400) },
+    "exhausted retries, returning empty",
+  );
   return [] as unknown as T;
 }
 
@@ -462,9 +470,14 @@ export async function fetchGitHubData(handle: string): Promise<GitHubData> {
   // Reviews depend on events, so run after
   const submittedReviews = await fetchReviews(handle, recentEvents);
 
-  console.warn(
-    `[gh] Fetched: ${ownedRepos.length} repos (${orgRepos.length} from orgs), ` +
-    `${authoredPRs.length} PRs, ${submittedReviews.length} reviews`
+  ghLog.info(
+    {
+      owned_repos: ownedRepos.length,
+      org_repos: orgRepos.length,
+      prs: authoredPRs.length,
+      reviews: submittedReviews.length,
+    },
+    "github-fetch complete",
   );
 
   return {

@@ -35,6 +35,7 @@ import { runHookWriter } from "../src/agents/hook/writer.js";
 import { runHookCritic } from "../src/agents/hook/critic.js";
 import { runNumbersAgent } from "../src/agents/numbers.js";
 import { runDisclosureAgent } from "../src/agents/disclosure.js";
+import { logger, requireEnv } from "../src/util.js";
 import type {
   Profile,
   Claim,
@@ -48,7 +49,7 @@ const HEARTBEAT_INTERVAL_MS = 30_000;
 
 async function main() {
   if (process.env.GITSHOW_CLOUD_MODE !== "1") {
-    console.error("revise-claim: GITSHOW_CLOUD_MODE must be '1'");
+    logger.error("revise-claim: GITSHOW_CLOUD_MODE must be '1'");
     process.exit(1);
   }
 
@@ -56,22 +57,23 @@ async function main() {
   const claimId = requireEnv("CLAIM_ID");
   const guidance = (process.env.GUIDANCE || "").trim();
   if (!guidance) {
-    console.error("revise-claim: GUIDANCE env is empty — a revise requires user steering");
+    logger.error("revise-claim: GUIDANCE env is empty — a revise requires user steering");
     process.exit(1);
   }
 
   const r2 = R2Client.fromEnv();
   const d1 = D1Client.fromEnv();
+  const reviseLog = logger.child({ scan_id: scanId, claim_id: claimId });
 
-  log({ at: "boot", scan_id: scanId, claim_id: claimId, guidance_len: guidance.length });
+  reviseLog.info({ guidance_len: guidance.length }, "boot");
 
   const scanRow = await fetchScanRow(d1, scanId);
   const claimRow = await fetchClaimRow(d1, scanId, claimId);
-  log({ at: "loaded", handle: scanRow.handle, beat: claimRow.beat });
+  reviseLog.info({ handle: scanRow.handle, beat: claimRow.beat }, "loaded");
 
   const heartbeat = setInterval(() => {
     void d1.heartbeat(scanId).catch((err) => {
-      console.error("[heartbeat] failed:", err);
+      reviseLog.error({ err }, "heartbeat failed");
     });
   }, HEARTBEAT_INTERVAL_MS);
 
@@ -88,7 +90,7 @@ async function main() {
     const localDir = join(BASE_DIR, sanitizeHandle(scanRow.handle));
     await mkdir(localDir, { recursive: true });
     const hydrated = await r2.hydrateToLocal(scanId, localDir);
-    log({ at: "hydrated", files_from_r2: hydrated });
+    reviseLog.info({ files_from_r2: hydrated }, "hydrated");
 
     const discover = await readJson<DiscoverOutput>(join(localDir, "05-discover.json"));
     // 06-workers.json is saved as `{outputs, artifactsSnapshot}` (see pipeline.ts
@@ -143,21 +145,21 @@ async function main() {
     });
 
     clearInterval(heartbeat);
-    log({
-      at: "done",
-      scan_id: scanId,
-      claim_id: claimId,
-      beat: claimRow.beat,
-      llm_calls: usage.llmCalls,
-      cost_usd: usage.estimatedCostUsd,
-      elapsed_ms: elapsedMs,
-      d1_failure_count: d1.failureCount,
-    });
+    reviseLog.info(
+      {
+        beat: claimRow.beat,
+        llm_calls: usage.llmCalls,
+        cost_usd: usage.estimatedCostUsd,
+        elapsed_ms: elapsedMs,
+        d1_failure_count: d1.failureCount,
+      },
+      "done",
+    );
     process.exit(0);
   } catch (err) {
     clearInterval(heartbeat);
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[revise-claim] failed:", err);
+    reviseLog.error({ err }, "revise-claim failed");
     await d1
       .insertEvent(scanId, {
         kind: "error",
@@ -404,19 +406,7 @@ async function readJson<T>(path: string): Promise<T> {
   return JSON.parse(raw) as T;
 }
 
-function log(obj: Record<string, unknown>): void {
-  console.log(JSON.stringify({ ts: new Date().toISOString(), ...obj }));
-}
-
-function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v || v.length === 0) {
-    throw new Error(`missing required env var: ${name}`);
-  }
-  return v;
-}
-
 main().catch((err) => {
-  console.error(err);
+  logger.error({ err }, "revise-claim: unhandled error");
   process.exit(1);
 });

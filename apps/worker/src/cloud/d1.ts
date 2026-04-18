@@ -18,6 +18,7 @@
  * event log) still need their own `.catch` but can surface the shared
  * `failureCount` at end-of-run so silently-dropped writes become visible.
  */
+import { logger, requireEnv, sleep } from "../util.js";
 
 export interface D1Config {
   accountId: string;
@@ -152,13 +153,7 @@ export class D1Client {
       error: lastErr instanceof Error ? lastErr.message : String(lastErr),
       status: lastStatus,
     };
-    console.error(
-      JSON.stringify({
-        at: "d1.query.failed",
-        ts: new Date().toISOString(),
-        ...failure,
-      }),
-    );
+    logger.error(failure, "d1.query.failed");
     this.onFailure?.(failure);
     throw lastErr;
   }
@@ -315,21 +310,9 @@ export class D1Client {
   }
 }
 
-function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v || v.length === 0) {
-    throw new Error(`missing required env var: ${name}`);
-  }
-  return v;
-}
-
 function isRetriableStatus(status: number): boolean {
   // 5xx = server / transient. 429 = rate limit. Everything else in 4xx is
   // a permanent client error (bad SQL, auth, validation) — retrying won't
   // help and just burns latency.
   return status >= 500 || status === 429;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

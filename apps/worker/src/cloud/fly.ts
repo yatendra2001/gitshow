@@ -1,15 +1,14 @@
 /**
  * Minimal Fly Machines API client.
  *
- * Used by:
- *   - scripts/spawn-test-scan.ts (local smoke test)
- *   - apps/web POST /api/scan (production — spawn one machine per scan)
- *   - apps/web POST /api/scan/:id/retry (spawn a replacement machine against
- *     the same SCAN_ID to resume from R2 checkpoints).
- *
- * fetch-only, no Node-specific APIs, so this module is portable to the
- * Cloudflare Workers runtime when apps/web wires it up.
+ * Used by scripts/spawn-test-scan.ts + spawn-test-revise.ts today, and by
+ * the future web app (Next.js on Cloudflare Workers) for POST /api/scan
+ * and POST /api/scan/:id/retry. fetch-only, no Node-specific APIs — stays
+ * portable to the Workers runtime.
  */
+import { logger, requireEnv } from "../util.js";
+
+const flyLog = logger.child({ src: "fly" });
 
 const MACHINES_API = "https://api.machines.dev/v1";
 const GRAPHQL_API = "https://api.fly.io/graphql";
@@ -106,15 +105,42 @@ export class FlyClient {
       },
     };
 
-    return this.request<FlyMachine>("POST", `/apps/${this.appName}/machines`, body);
+    try {
+      const machine = await this.request<FlyMachine>(
+        "POST",
+        `/apps/${this.appName}/machines`,
+        body,
+      );
+      flyLog.info(
+        {
+          scan_id: input.scanId,
+          machine_id: machine.id,
+          machine_name: machine.name,
+          region: machine.region,
+          image,
+          init_cmd: input.initCmd ?? null,
+        },
+        "machine spawned",
+      );
+      return machine;
+    } catch (err) {
+      flyLog.error({ err, scan_id: input.scanId, image }, "machine spawn failed");
+      throw err;
+    }
   }
 
   async destroyMachine(machineId: string, force = true): Promise<void> {
     const qs = force ? "?force=true" : "";
-    await this.request<void>(
-      "DELETE",
-      `/apps/${this.appName}/machines/${machineId}${qs}`,
-    );
+    try {
+      await this.request<void>(
+        "DELETE",
+        `/apps/${this.appName}/machines/${machineId}${qs}`,
+      );
+      flyLog.info({ machine_id: machineId, force }, "machine destroyed");
+    } catch (err) {
+      flyLog.error({ err, machine_id: machineId }, "machine destroy failed");
+      throw err;
+    }
   }
 
   async getMachine(machineId: string): Promise<FlyMachine> {
@@ -155,16 +181,24 @@ export class FlyClient {
         }
       }
     `;
-    const resp = await fetch(GRAPHQL_API, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${this.apiToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ query, variables: { name: this.appName } }),
-    });
+    let resp: Response;
+    try {
+      resp = await fetch(GRAPHQL_API, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${this.apiToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ query, variables: { name: this.appName } }),
+      });
+    } catch (err) {
+      flyLog.error({ err, app: this.appName }, "graphql fetch failed");
+      throw err;
+    }
     if (!resp.ok) {
-      throw new Error(`fly graphql: ${resp.status} ${await resp.text()}`);
+      const text = await resp.text();
+      flyLog.error({ status: resp.status, body: text.slice(0, 300), app: this.appName }, "graphql http error");
+      throw new Error(`fly graphql: ${resp.status} ${text}`);
     }
     const json = (await resp.json()) as {
       data?: {
@@ -176,9 +210,9 @@ export class FlyClient {
       errors?: Array<{ message: string }>;
     };
     if (json.errors && json.errors.length > 0) {
-      throw new Error(
-        `fly graphql: ${json.errors.map((e) => e.message).join("; ")}`,
-      );
+      const messages = json.errors.map((e) => e.message).join("; ");
+      flyLog.error({ errors: messages, app: this.appName }, "graphql returned errors");
+      throw new Error(`fly graphql: ${messages}`);
     }
     const app = json.data?.app;
     const ref =
@@ -186,10 +220,12 @@ export class FlyClient {
       app?.currentRelease?.imageRef ??
       null;
     if (!ref) {
+      flyLog.error({ app: this.appName }, "graphql returned no image — app not yet deployed?");
       throw new Error(
         `fly graphql: no image for app ${this.appName} — has it been deployed?`,
       );
     }
+    flyLog.debug({ app: this.appName, image: ref }, "resolved current image");
     return ref;
   }
 
@@ -213,12 +249,4 @@ export class FlyClient {
     if (resp.status === 204 || method === "DELETE") return undefined as T;
     return (await resp.json()) as T;
   }
-}
-
-function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v || v.length === 0) {
-    throw new Error(`missing required env var: ${name}`);
-  }
-  return v;
 }

@@ -16,6 +16,7 @@
 import "dotenv/config";
 import { D1Client } from "../src/cloud/d1.js";
 import { FlyClient } from "../src/cloud/fly.js";
+import { sleep } from "../src/util.js";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -140,8 +141,6 @@ async function main() {
   console.log(`\nscan_id: ${scanId}`);
   console.log(`machine_id: ${machine.id}`);
 }
-
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 main().catch((err) => {
   console.error(err);

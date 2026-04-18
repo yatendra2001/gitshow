@@ -27,6 +27,7 @@ import { ScanCheckpoint } from "../src/checkpoint.js";
 import { sanitizeHandle } from "../src/session.js";
 import { R2Client } from "../src/cloud/r2.js";
 import { D1Client } from "../src/cloud/d1.js";
+import { logger, requireEnv } from "../src/util.js";
 import type { ScanSession, ScanSocials } from "../src/schemas.js";
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -34,7 +35,7 @@ const BASE_DIR = "profiles";
 
 async function main() {
   if (process.env.GITSHOW_CLOUD_MODE !== "1") {
-    console.error(
+    logger.error(
       "run-scan: GITSHOW_CLOUD_MODE is not '1' — refusing to run in cloud mode. " +
         "For local runs use `bun run profile` (src/scan.ts).",
     );
@@ -64,8 +65,9 @@ async function main() {
 
   const r2 = R2Client.fromEnv();
   const d1 = D1Client.fromEnv();
+  const scanLog = logger.child({ scan_id: scanId, handle });
 
-  log({ at: "boot", scan_id: scanId, handle, model, fly_machine_id: flyMachineId });
+  scanLog.info({ model, fly_machine_id: flyMachineId }, "boot");
 
   await d1.updateScanStatus(scanId, {
     status: "running",
@@ -75,7 +77,7 @@ async function main() {
 
   const heartbeat = setInterval(() => {
     void d1.heartbeat(scanId).catch((err) => {
-      console.error("[heartbeat] failed:", err);
+      scanLog.error({ err }, "heartbeat failed");
     });
   }, HEARTBEAT_INTERVAL_MS);
 
@@ -90,7 +92,7 @@ async function main() {
         error: `interrupted by ${signal}`,
       });
     } catch (err) {
-      console.error("[shutdown] failed to mark scan as failed:", err);
+      scanLog.error({ err }, "shutdown mark-failed write failed");
     }
     process.exit(143);
   };
@@ -100,7 +102,7 @@ async function main() {
   try {
     const localDir = join(BASE_DIR, sanitizeHandle(handle));
     const hydratedCount = await r2.hydrateToLocal(scanId, localDir);
-    log({ at: "hydrated", files_from_r2: hydratedCount, local_dir: localDir });
+    scanLog.info({ files_from_r2: hydratedCount, local_dir: localDir }, "hydrated");
 
     const ckpt = new ScanCheckpoint(session, BASE_DIR, async (filename, data) => {
       await r2.uploadStageFile(scanId, filename, data);
@@ -134,7 +136,7 @@ async function main() {
             : Promise.resolve();
 
       void Promise.all([eventInsert, statusUpdate]).catch((err) => {
-        console.error(`[event-log] ${ev.kind} failed:`, err);
+        scanLog.error({ err, kind: ev.kind }, "event-log write failed");
       });
     };
 
@@ -169,26 +171,27 @@ async function main() {
     });
 
     clearInterval(heartbeat);
-    log({
-      at: "done",
-      scan_id: scanId,
-      claims: profile.claims.length,
-      cost_usd: profile.meta.estimated_cost_usd,
-      llm_calls: profile.meta.llm_calls,
-      // Number of D1 writes that exhausted their retry budget. Expect 0 in
-      // normal ops; non-zero means we silently dropped heartbeats/events
-      // and someone should look at the d1.query.failed log lines.
-      d1_failure_count: d1.failureCount,
-    });
+    scanLog.info(
+      {
+        claims: profile.claims.length,
+        cost_usd: profile.meta.estimated_cost_usd,
+        llm_calls: profile.meta.llm_calls,
+        // D1 writes that exhausted their retry budget. Expect 0 in normal
+        // ops; non-zero means we silently dropped heartbeats/events and
+        // someone should check the `d1.query.failed` lines above.
+        d1_failure_count: d1.failureCount,
+      },
+      "done",
+    );
     process.exit(0);
   } catch (err) {
     clearInterval(heartbeat);
     const msg = err instanceof Error ? err.message : String(err);
-    console.error("[pipeline] failed:", err);
+    scanLog.error({ err }, "pipeline failed");
     try {
       await d1.updateScanStatus(scanId, { status: "failed", error: msg.slice(0, 2000) });
     } catch (dbErr) {
-      console.error("[pipeline] failed to mark scan as failed:", dbErr);
+      scanLog.error({ err: dbErr }, "failed to mark scan as failed");
     }
     process.exit(1);
   }
@@ -217,19 +220,7 @@ async function readCardMeta(localDir: string): Promise<{
   }
 }
 
-function log(obj: Record<string, unknown>): void {
-  console.log(JSON.stringify({ ts: new Date().toISOString(), ...obj }));
-}
-
-function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v || v.length === 0) {
-    throw new Error(`missing required env var: ${name}`);
-  }
-  return v;
-}
-
 main().catch((err) => {
-  console.error(err);
+  logger.error({ err }, "run-scan: unhandled error");
   process.exit(1);
 });

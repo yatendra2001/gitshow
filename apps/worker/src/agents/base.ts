@@ -13,6 +13,9 @@ import type { StreamableOutputItem } from "@openrouter/agent";
 import * as z from "zod/v4";
 import type { ScanSession } from "../schemas.js";
 import type { SessionUsage } from "../session.js";
+import { logger } from "../util.js";
+
+const agentLog = logger.child({ src: "agent" });
 
 // ---------- types ----------
 
@@ -306,6 +309,17 @@ export async function runAgentLoop(config: AgentRunConfig): Promise<{
         process.stderr.write(
           `[agent${config.label ? `:${config.label}` : ""}] retry ${attempt}/${MAX_TRANSIENT_RETRIES} — ${msg.slice(0, 140)}\n`,
         );
+        // Structured log so cloud deploys see transient retries without
+        // needing GITSHOW_DEBUG. Pipeline events stream to D1 separately.
+        agentLog.warn(
+          {
+            label: config.label ?? null,
+            attempt,
+            max_attempts: MAX_TRANSIENT_RETRIES,
+            error: msg.slice(0, 200),
+          },
+          "transient error, retrying",
+        );
         if (attempt < MAX_TRANSIENT_RETRIES) {
           const backoffMs = Math.min(1000 * Math.pow(2, attempt - 1), 30000);
           log(`[agent] Retrying in ${backoffMs / 1000}s...\n`);
@@ -315,6 +329,15 @@ export async function runAgentLoop(config: AgentRunConfig): Promise<{
       }
 
       // Non-transient or exhausted retries — rethrow
+      agentLog.error(
+        {
+          err: lastError,
+          label: config.label ?? null,
+          attempt,
+          transient: isTransientError(msg),
+        },
+        "agent loop failed",
+      );
       throw lastError;
     }
   }

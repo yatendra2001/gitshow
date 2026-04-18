@@ -16,6 +16,9 @@ import {
 } from "@aws-sdk/client-s3";
 import { writeFile, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
+import { logger, requireEnv } from "../util.js";
+
+const r2Log = logger.child({ src: "r2" });
 
 export interface R2Config {
   accountId: string;
@@ -57,46 +60,62 @@ export class R2Client {
     filename: string,
     data: unknown,
   ): Promise<void> {
+    const key = this.scanKey(scanId, filename);
     const body =
       typeof data === "string" ? data : JSON.stringify(data, null, 2);
-    await this.client.send(
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: this.scanKey(scanId, filename),
-        Body: body,
-        ContentType: "application/json",
-      }),
-    );
+    try {
+      await this.client.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: body,
+          ContentType: "application/json",
+        }),
+      );
+    } catch (err) {
+      r2Log.error({ err, scan_id: scanId, key, bytes: body.length }, "upload failed");
+      throw err;
+    }
   }
 
   async listScanKeys(scanId: string): Promise<string[]> {
     const prefix = `scans/${scanId}/`;
     const keys: string[] = [];
     let continuationToken: string | undefined;
-    do {
-      const resp = await this.client.send(
-        new ListObjectsV2Command({
-          Bucket: this.bucket,
-          Prefix: prefix,
-          ContinuationToken: continuationToken,
-        }),
-      );
-      for (const obj of resp.Contents ?? []) {
-        const k = (obj as _Object).Key;
-        if (k) keys.push(k);
-      }
-      continuationToken = resp.IsTruncated ? resp.NextContinuationToken : undefined;
-    } while (continuationToken);
+    try {
+      do {
+        const resp = await this.client.send(
+          new ListObjectsV2Command({
+            Bucket: this.bucket,
+            Prefix: prefix,
+            ContinuationToken: continuationToken,
+          }),
+        );
+        for (const obj of resp.Contents ?? []) {
+          const k = (obj as _Object).Key;
+          if (k) keys.push(k);
+        }
+        continuationToken = resp.IsTruncated ? resp.NextContinuationToken : undefined;
+      } while (continuationToken);
+    } catch (err) {
+      r2Log.error({ err, scan_id: scanId, prefix }, "list failed");
+      throw err;
+    }
     return keys;
   }
 
   async downloadKey(key: string): Promise<string> {
-    const resp = await this.client.send(
-      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
-    );
-    const body = resp.Body;
-    if (!body) throw new Error(`r2: empty body for key ${key}`);
-    return await body.transformToString();
+    try {
+      const resp = await this.client.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      const body = resp.Body;
+      if (!body) throw new Error(`r2: empty body for key ${key}`);
+      return await body.transformToString();
+    } catch (err) {
+      r2Log.error({ err, key }, "download failed");
+      throw err;
+    }
   }
 
   /**
@@ -107,7 +126,10 @@ export class R2Client {
   async hydrateToLocal(scanId: string, localDir: string): Promise<number> {
     const prefix = `scans/${scanId}/`;
     const keys = await this.listScanKeys(scanId);
-    if (keys.length === 0) return 0;
+    if (keys.length === 0) {
+      r2Log.info({ scan_id: scanId, local_dir: localDir }, "nothing to hydrate (fresh scan)");
+      return 0;
+    }
 
     await mkdir(localDir, { recursive: true });
     let count = 0;
@@ -119,14 +141,7 @@ export class R2Client {
       await writeFile(dest, body, "utf-8");
       count++;
     }
+    r2Log.info({ scan_id: scanId, files: count, local_dir: localDir }, "hydrated");
     return count;
   }
-}
-
-function requireEnv(name: string): string {
-  const v = process.env[name];
-  if (!v || v.length === 0) {
-    throw new Error(`missing required env var: ${name}`);
-  }
-  return v;
 }
