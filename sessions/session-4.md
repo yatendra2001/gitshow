@@ -47,6 +47,7 @@ completed state: D1 (row + events + claims), R2 (full profile + card + per-stage
 ```
 
 Why spawn-per-scan and not a pool:
+
 - Scans are 25–45 min; parallel scans on a shared worker fight for CPU + disk.
 - Per-scan isolation: one user's scan can't clog another's.
 - Idle cost is literally $0 because no machine exists between scans.
@@ -167,9 +168,9 @@ Live validation this session:
 
 Session 3 ended with a suspicion that D1 writes were silently failing mid-scan (heartbeat appeared stale while the pipeline was still logging progress). Fix:
 
-- **`query()` retries on transient failures.** 5xx responses, 429 rate limits, and network errors → retry up to 3 attempts with exponential backoff (500ms → 1s → 2s) and ±25% jitter. 4xx non-429 + SQL errors → fail fast, no retry burn.
-- **`failureCount` instance counter.** Increments once per fully-failed query. Both run-scan and revise-claim surface `d1_failure_count` in their final `done` log. Non-zero → check the `d1.query.failed` lines; something's actually wrong.
-- **`onFailure` callback hook.** Consumers can register arbitrary behaviour (e.g. a web app could write failed-write records to a debug table).
+- `**query()` retries on transient failures.** 5xx responses, 429 rate limits, and network errors → retry up to 3 attempts with exponential backoff (500ms → 1s → 2s) and ±25% jitter. 4xx non-429 + SQL errors → fail fast, no retry burn.
+- `**failureCount` instance counter.** Increments once per fully-failed query. Both run-scan and revise-claim surface `d1_failure_count` in their final `done` log. Non-zero → check the `d1.query.failed` lines; something's actually wrong.
+- `**onFailure` callback hook.** Consumers can register arbitrary behaviour (e.g. a web app could write failed-write records to a debug table).
 
 Verified via [d1-retry-check.ts](../apps/worker/scripts/d1-retry-check.ts):
 
@@ -195,20 +196,22 @@ Replaced ad-hoc `console.log(JSON.stringify(…))` + `console.error` across the 
 
 ### Coverage table
 
-| Module | Logger | Covers |
-|---|---|---|
-| **Entrypoints** (`run-scan.ts`, `revise-claim.ts`) | `scanLog = logger.child({ scan_id, handle })` | boot, hydrated, done (incl. `d1_failure_count`), all error paths, heartbeat/event-log failures |
-| **D1 client** (`cloud/d1.ts`) | `logger.error` | query failures after retry exhaustion — sql preview, actual attempts, status |
-| **R2 client** (`cloud/r2.ts`) | `r2Log = logger.child({ src: "r2" })` | hydrate success (info), upload/list/download errors with `scan_id` + `key` |
-| **Fly client** (`cloud/fly.ts`) | `flyLog = logger.child({ src: "fly" })` | machine spawn (info w/ `machine_id`, `image`, `init_cmd`), destroy (info), GraphQL resolve (debug on success, error with body on failure) |
-| **GitHub fetcher** (`github-fetcher.ts`) | `ghLog = logger.child({ src: "gh-fetcher" })` | transient retries with `attempt` + `backoff_ms`, terminal failures, completion summary |
-| **Agent base** (`agents/base.ts`) | `agentLog = logger.child({ src: "agent" })` | transient LLM retries (was stderr-only → invisible in cloud unless `GITSHOW_DEBUG`), agent loop final failure |
-| **Migration runner** (`scripts/run-migration.ts`) | `migrateLog = logger.child({ src: "migration" })` | applying, per-statement ok/failed, done — matters because it runs in CI |
+
+| Module                                             | Logger                                            | Covers                                                                                                                                    |
+| -------------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| **Entrypoints** (`run-scan.ts`, `revise-claim.ts`) | `scanLog = logger.child({ scan_id, handle })`     | boot, hydrated, done (incl. `d1_failure_count`), all error paths, heartbeat/event-log failures                                            |
+| **D1 client** (`cloud/d1.ts`)                      | `logger.error`                                    | query failures after retry exhaustion — sql preview, actual attempts, status                                                              |
+| **R2 client** (`cloud/r2.ts`)                      | `r2Log = logger.child({ src: "r2" })`             | hydrate success (info), upload/list/download errors with `scan_id` + `key`                                                                |
+| **Fly client** (`cloud/fly.ts`)                    | `flyLog = logger.child({ src: "fly" })`           | machine spawn (info w/ `machine_id`, `image`, `init_cmd`), destroy (info), GraphQL resolve (debug on success, error with body on failure) |
+| **GitHub fetcher** (`github-fetcher.ts`)           | `ghLog = logger.child({ src: "gh-fetcher" })`     | transient retries with `attempt` + `backoff_ms`, terminal failures, completion summary                                                    |
+| **Agent base** (`agents/base.ts`)                  | `agentLog = logger.child({ src: "agent" })`       | transient LLM retries (was stderr-only → invisible in cloud unless `GITSHOW_DEBUG`), agent loop final failure                             |
+| **Migration runner** (`scripts/run-migration.ts`)  | `migrateLog = logger.child({ src: "migration" })` | applying, per-statement ok/failed, done — matters because it runs in CI                                                                   |
+
 
 ### What's intentionally still `console` or `stderr`
 
 - **[src/scan.ts](../apps/worker/src/scan.ts)** (3 calls) — interactive CLI uses chalk + clack + ora. Structured JSON would destroy the UX.
-- **`process.stderr.write`** in 3 places (revise-loop's `[revise]` events, agent retry CLI subtext in `base.ts`, `scan.ts` debug stream) — documented bypasses of the CLI's stream-event filter, needed for live spinner updates.
+- `**process.stderr.write`** in 3 places (revise-loop's `[revise]` events, agent retry CLI subtext in `base.ts`, `scan.ts` debug stream) — documented bypasses of the CLI's stream-event filter, needed for live spinner updates.
 - **Dev scripts** (spawn-test-*, scan-status, *-check) — print human-readable tables where pino-pretty mangles column alignment.
 
 ---
@@ -216,8 +219,8 @@ Replaced ad-hoc `console.log(JSON.stringify(…))` + `console.error` across the 
 ## CI/CD — three workflows, zero-touch after first push
 
 - **[.github/workflows/ci.yml](../.github/workflows/ci.yml)** — `bun install --frozen-lockfile` + `bun run typecheck` on every PR and every push to main. ~13s.
-- **[.github/workflows/deploy-worker.yml](../.github/workflows/deploy-worker.yml)** — fires on push to main when `apps/worker/**`, `package.json`, or `bun.lock` change. Runs `flyctl deploy -c apps/worker/fly.toml .`, then scans `flyctl machines list -j` and destroys any machine whose name doesn't start with `scan-` or `revise-` — i.e. the Fly-created "standby" zombie that accompanies every deploy. Live scan/revise machines are preserved by the name filter. ~41s.
-- **[.github/workflows/migrate-d1.yml](../.github/workflows/migrate-d1.yml)** — fires when `migrations/**` changes. Runs every `.sql` file through `scripts/run-migration.ts` (the same thing used manually). All DDL uses `CREATE … IF NOT EXISTS`, so the whole thing is idempotent — safe to re-run on every push. ~17s.
+- **[.github/workflows/deploy-worker.yml](../.github/workflows/deploy-worker.yml)** — fires on push to main when `apps/worker/`**, `package.json`, or `bun.lock` change. Runs `flyctl deploy -c apps/worker/fly.toml .`, then scans `flyctl machines list -j` and destroys any machine whose name doesn't start with `scan-` or `revise-` — i.e. the Fly-created "standby" zombie that accompanies every deploy. Live scan/revise machines are preserved by the name filter. ~41s.
+- **[.github/workflows/migrate-d1.yml](../.github/workflows/migrate-d1.yml)** — fires when `migrations/`** changes. Runs every `.sql` file through `scripts/run-migration.ts` (the same thing used manually). All DDL uses `CREATE … IF NOT EXISTS`, so the whole thing is idempotent — safe to re-run on every push. ~17s.
 
 Four GitHub secrets required: `FLY_API_TOKEN`, `CF_ACCOUNT_ID`, `CF_API_TOKEN`, `D1_DATABASE_ID`. Set via `gh secret set NAME --body "$(grep ^NAME apps/worker/.env | cut -d= -f2-)"`. R2 creds + `OPENROUTER_API_KEY` stay on Fly (`fly secrets set`); CI doesn't need them.
 
@@ -227,19 +230,21 @@ First push on 2026-04-19 ran all three green on the first try.
 
 ## Bug log + fixes shipped this session
 
-| Bug | Fix |
-|---|---|
-| `fly deploy -c apps/worker/fly.toml .` errored with `apps/worker/apps/worker/Dockerfile not found` | `dockerfile` in fly.toml is resolved relative to the config file's dir, not the build context. Changed from `"apps/worker/Dockerfile"` → `"Dockerfile"`. |
-| Fly auto-creates a "standby" app machine on every deploy that immediately crashloops because `run-scan.ts` requires `SCAN_ID` | Added `restart: { policy: "no" }` + `auto_destroy: true` in the Machines API spawn config. CI destroys any post-deploy zombies filtered by name — live scans preserved. |
-| `registry.fly.io/gitshow-worker:latest` 404 even after `--build-only --image-label latest` | That flag doesn't update the app's `currentRelease` on Fly. Added `FlyClient.getCurrentImage()` via Fly GraphQL API. `resolveImage()` runs before every spawn; code works regardless of tag convention. |
-| `TypeError: undefined is not a function (near '...w of workers...')` inside revise-claim | `06-workers.json` is persisted as `{outputs: WorkerOutput[], artifactsSnapshot: number}` (see `pipeline.ts` `saveWorkers`), not a bare array. Unwrapped `.outputs` before passing to sub-agents. |
-| spawn-test-revise tail was picking up events from earlier buggy runs and short-circuiting on a stale `kind: "error"` | Baseline `MAX(id)` at spawn time, filter events with `id > baseline`. Negative elapsed times were the tell. |
-| `claims` table CHECK constraint missed `'worker_failed'` | Dropped + recreated with the full enum (5 statuses). |
-| D1 writes failing silently into `.catch()` with no signal anything was lost | Retry with backoff for transient errors; `failureCount` counter + `onFailure` hook; `d1_failure_count` surfaced in every entrypoint's `done` summary. |
-| Transient LLM retries in agent base.ts were only visible via stderr → invisible in cloud unless `GITSHOW_DEBUG=1` | Added a pino warn alongside the stderr write. CLI UX unchanged; cloud logs now capture retry counts + errors structured. |
-| GH CLI `console.warn` lines (retries, fetched-summary) not structured | `ghLog = logger.child({ src: "gh-fetcher" })`; rate-limit hits now show `attempt`, `backoff_ms`, `error` as fields. |
-| Ad-hoc `console.log(JSON.stringify({ ts, … }))` everywhere + no pretty-print for local dev | Pino. JSON in prod, pino-pretty in dev. Child loggers per scan for auto-bound context. |
-| `requireEnv` / `sleep` / `log` duplicated across 5+ files | Extracted to `src/util.ts`; one source of truth. |
+
+| Bug                                                                                                                           | Fix                                                                                                                                                                                                     |
+| ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fly deploy -c apps/worker/fly.toml .` errored with `apps/worker/apps/worker/Dockerfile not found`                            | `dockerfile` in fly.toml is resolved relative to the config file's dir, not the build context. Changed from `"apps/worker/Dockerfile"` → `"Dockerfile"`.                                                |
+| Fly auto-creates a "standby" app machine on every deploy that immediately crashloops because `run-scan.ts` requires `SCAN_ID` | Added `restart: { policy: "no" }` + `auto_destroy: true` in the Machines API spawn config. CI destroys any post-deploy zombies filtered by name — live scans preserved.                                 |
+| `registry.fly.io/gitshow-worker:latest` 404 even after `--build-only --image-label latest`                                    | That flag doesn't update the app's `currentRelease` on Fly. Added `FlyClient.getCurrentImage()` via Fly GraphQL API. `resolveImage()` runs before every spawn; code works regardless of tag convention. |
+| `TypeError: undefined is not a function (near '...w of workers...')` inside revise-claim                                      | `06-workers.json` is persisted as `{outputs: WorkerOutput[], artifactsSnapshot: number}` (see `pipeline.ts` `saveWorkers`), not a bare array. Unwrapped `.outputs` before passing to sub-agents.        |
+| spawn-test-revise tail was picking up events from earlier buggy runs and short-circuiting on a stale `kind: "error"`          | Baseline `MAX(id)` at spawn time, filter events with `id > baseline`. Negative elapsed times were the tell.                                                                                             |
+| `claims` table CHECK constraint missed `'worker_failed'`                                                                      | Dropped + recreated with the full enum (5 statuses).                                                                                                                                                    |
+| D1 writes failing silently into `.catch()` with no signal anything was lost                                                   | Retry with backoff for transient errors; `failureCount` counter + `onFailure` hook; `d1_failure_count` surfaced in every entrypoint's `done` summary.                                                   |
+| Transient LLM retries in agent base.ts were only visible via stderr → invisible in cloud unless `GITSHOW_DEBUG=1`             | Added a pino warn alongside the stderr write. CLI UX unchanged; cloud logs now capture retry counts + errors structured.                                                                                |
+| GH CLI `console.warn` lines (retries, fetched-summary) not structured                                                         | `ghLog = logger.child({ src: "gh-fetcher" })`; rate-limit hits now show `attempt`, `backoff_ms`, `error` as fields.                                                                                     |
+| Ad-hoc `console.log(JSON.stringify({ ts, … }))` everywhere + no pretty-print for local dev                                    | Pino. JSON in prod, pino-pretty in dev. Child loggers per scan for auto-bound context.                                                                                                                  |
+| `requireEnv` / `sleep` / `log` duplicated across 5+ files                                                                     | Extracted to `src/util.ts`; one source of truth.                                                                                                                                                        |
+
 
 ---
 
@@ -290,7 +295,7 @@ Typecheck clean. Deploys zero-touch. Logs structured everywhere they matter. Bac
 
 The frontend is the remaining piece. Scope decided earlier this session:
 
-- **Stack:** Next.js on Cloudflare Workers via OpenNext, R2 + D1 bindings, NextAuth v5 + `@auth/d1-adapter` + GitHub provider with `repo read:user user:email`.
+- **Stack:** Next.js 16 on Cloudflare Workers via OpenNext, R2 + D1 bindings, NextAuth v5 + `@auth/d1-adapter` + GitHub provider with `repo read:user user:email`.
 - **Scan scope (MVP):** users can only scan their own GitHub handle (locked to OAuth login).
 - **Endpoints:**
   - `POST /api/scan` — insert `scans` row, spawn Fly machine, return `{ scan_id }`
