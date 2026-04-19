@@ -13,6 +13,7 @@
 import * as React from "react";
 import type { ScanEventEnvelope } from "@gitshow/shared/events";
 import { Plan } from "@/components/ai-elements/plan";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Terminal } from "@/components/ai-elements/terminal";
 import { Queue, type QueueRow } from "@/components/ai-elements/queue";
 import { Reasoning } from "@/components/ai-elements/reasoning";
@@ -29,6 +30,7 @@ import {
   type PhaseState,
 } from "@/lib/use-scan-stream";
 import { PHASE_COPY, PHASE_ORDER, humanizeWorker } from "@/lib/phase-copy";
+import { Sparkles } from "lucide-react";
 
 export interface AgentProgressProps {
   /** Full envelope stream — we slice to the visible window internally. */
@@ -68,10 +70,19 @@ export function AgentProgress({
     return envelopes.filter((e) => e.at >= sinceAt);
   }, [envelopes, sinceAt]);
 
-  const phases = React.useMemo(
-    () => projectPhases(scoped, PHASE_ORDER),
-    [scoped],
-  );
+  // Scoped window with zero events → the Fly machine is still booting.
+  // Render a warm-up card so the user sees something move immediately.
+  const isWarmingUp = !!sinceAt && scoped.length === 0;
+
+  const phases = React.useMemo(() => {
+    const all = projectPhases(scoped, PHASE_ORDER);
+    if (!sinceAt) return all;
+    // In scoped mode we're watching a slice of the pipeline (typically
+    // a revise). Drop still-pending scan phases — otherwise the Queue
+    // shows "Reading your GitHub" as upcoming even though that phase
+    // ran to completion days ago on the original scan.
+    return all.filter((p) => p.status !== "pending");
+  }, [scoped, sinceAt]);
   const cur = currentPhase(phases);
 
   const cotSteps = React.useMemo(() => buildCoTSteps(scoped), [scoped]);
@@ -100,7 +111,9 @@ export function AgentProgress({
   return (
     <div className={className}>
       <div className={compact ? "space-y-2" : "space-y-4"}>
-        {!compact && (planTitle ?? inferredTitle) && (
+        {isWarmingUp && <WarmUpCard compact={compact} />}
+
+        {!compact && (planTitle ?? inferredTitle) && !isWarmingUp && (
           <Plan
             title={planTitle ?? inferredTitle ?? "Working on it"}
             description={planDescription ?? inferredDesc ?? undefined}
@@ -159,6 +172,55 @@ export function AgentProgress({
           />
         )}
       </div>
+    </div>
+  );
+}
+
+/**
+ * Warm-up placeholder shown during the gap between "/api/revise
+ * returned" and "first real event arrived". Fly needs 10–30s to boot
+ * a cold machine; without this the chat pane went dead for that
+ * entire window, which read as the app being broken. Three thin rows,
+ * each shimmering, then the real events overwrite us.
+ */
+function WarmUpCard({ compact }: { compact: boolean }) {
+  return (
+    <div
+      className={`gs-enter rounded-xl border border-border bg-card/70 p-3.5 backdrop-blur-sm ${
+        compact ? "" : "space-y-2"
+      }`}
+    >
+      <div className="flex items-center gap-2">
+        <Sparkles className="size-4 text-blue-400 gs-pulse" />
+        <Shimmer className="text-sm font-medium text-foreground" duration={2}>
+          Waking up the worker…
+        </Shimmer>
+      </div>
+      <div className="mt-2 space-y-1.5">
+        <WarmupLine delay={0} text="Spinning up a fresh machine" />
+        <WarmupLine delay={0.4} text="Pulling your latest profile" />
+        <WarmupLine delay={0.8} text="Planning the rewrite" />
+      </div>
+    </div>
+  );
+}
+
+function WarmupLine({ delay, text }: { delay: number; text: string }) {
+  return (
+    <div
+      className="flex items-center gap-2 text-[12px] leading-relaxed text-muted-foreground"
+      style={{ animationDelay: `${delay}s` }}
+    >
+      <span
+        className="relative mt-0.5 flex size-1.5 shrink-0"
+        style={{ animationDelay: `${delay}s` }}
+      >
+        <span className="absolute inline-flex size-full animate-ping rounded-full bg-blue-500/60" />
+        <span className="relative inline-flex size-1.5 rounded-full bg-blue-500/80" />
+      </span>
+      <Shimmer className="text-muted-foreground" duration={2.4}>
+        {text}
+      </Shimmer>
     </div>
   );
 }
