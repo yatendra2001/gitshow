@@ -56,6 +56,7 @@ import { runProfileCritic } from "./agents/profile-critic.js";
 import { runCopyEditor } from "./agents/copy-editor.js";
 import { runTimelineAgent } from "./agents/timeline.js";
 import { runHiringReviseLoop } from "./revise-loop.js";
+import { ScanStoppedError } from "./control.js";
 
 import type {
   GitHubData,
@@ -135,6 +136,13 @@ export interface RunPipelineInput {
   checkpoint?: ScanCheckpoint;
   /** Scope every emitted event to a user-initiated turn. Default: none. */
   messageId?: string;
+  /**
+   * Called at every stage boundary. If it returns true, the pipeline
+   * throws ScanStoppedError and the caller is expected to handle the
+   * cancelled status. Lets the worker wire its ControlPoller without
+   * coupling pipeline.ts to D1.
+   */
+  shouldStop?: () => boolean;
 }
 
 export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
@@ -164,7 +172,14 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
   const usage = new SessionUsage();
   const stageTimings: PipelineMeta["stage_timings"] = [];
 
+  const checkStop = () => {
+    if (input.shouldStop?.()) {
+      throw new ScanStoppedError();
+    }
+  };
+
   const withStage = async <T>(stage: StageName, fn: () => Promise<T>, detail?: string): Promise<T> => {
+    checkStop();
     emitScoped({ kind: "stage-start", stage, detail });
     const t0 = Date.now();
     const startedAt = new Date().toISOString();
@@ -180,6 +195,10 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
       emitScoped({ kind: "stage-end", stage, duration_ms, detail });
       return result;
     } catch (err) {
+      if (err instanceof ScanStoppedError) {
+        emitScoped({ kind: "stage-warn", stage, message: "cancelled by user" });
+        throw err;
+      }
       const msg = err instanceof Error ? err.message : String(err);
       usage.recordError(`${stage}: ${msg}`);
       ckpt.addError(`${stage}: ${msg}`);
