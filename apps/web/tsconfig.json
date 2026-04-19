@@ -19,8 +19,7 @@
     "incremental": true,
     "types": [
       "node",
-      "@cloudflare/workers-types",
-      "./cloudflare-env.d.ts"
+      "@cloudflare/workers-types"
     ],
     "plugins": [
       {
