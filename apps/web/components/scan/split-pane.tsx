@@ -85,7 +85,7 @@ export function SplitPane({
     claimId,
     guidance,
   }: {
-    claimId: string;
+    claimId?: string;
     guidance: string;
   }) => {
     setMessages((prev) => [
@@ -102,31 +102,54 @@ export function SplitPane({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         scanId: scan.id,
-        claimId,
+        ...(claimId ? { claimId } : {}),
         guidance,
       }),
     });
+
     if (!resp.ok) {
-      const body = await resp.text();
-      toast.error(`Revise failed: ${body.slice(0, 140)}`);
+      let bodyMsg = "";
+      try {
+        const data = (await resp.json()) as { detail?: string; error?: string };
+        bodyMsg = data.detail ?? data.error ?? "";
+      } catch {
+        bodyMsg = await resp.text();
+      }
+      const friendly = bodyMsg.slice(0, 220) || "Something went wrong.";
+      toast.error(friendly);
       setMessages((prev) => [
         ...prev,
         {
           id: nanoid(8),
           from: "assistant",
-          text: `Couldn't start revise: ${body.slice(0, 140)}`,
+          text: friendly,
         },
       ]);
-      throw new Error(body);
+      throw new Error(bodyMsg);
     }
 
-    setRevisePending({ title: `Revising @${claimId.split(":")[0]}` });
+    const data = (await resp.json().catch(() => ({}))) as {
+      summary?: string;
+      dispatched?: Array<{ ok: boolean; beat: string }>;
+    };
+    const beats = (data.dispatched ?? [])
+      .filter((d) => d.ok)
+      .map((d) => d.beat);
+    const title =
+      beats.length === 0
+        ? "Rewriting…"
+        : beats.length === 1
+          ? `Rewriting ${humanBeat(beats[0]!)}`
+          : `Rewriting ${beats.length} parts in parallel`;
+    setRevisePending({ title });
     setMessages((prev) => [
       ...prev,
       {
         id: nanoid(8),
         from: "assistant",
-        text: "Spawning a fly machine to re-run that beat. Usually 2–6 min.",
+        text:
+          data.summary ??
+          "Spawning the rewrite now. This usually takes 2–6 min.",
       },
     ]);
   };
@@ -153,6 +176,13 @@ export function SplitPane({
       />
     </div>
   );
+}
+
+function humanBeat(beat: string): string {
+  if (beat === "hook") return "the hero hook";
+  if (beat === "number") return "your numbers";
+  if (beat === "disclosure") return "the disclosure";
+  return beat;
 }
 
 async function refreshCard(scanId: string): Promise<ProfileCard | null> {
