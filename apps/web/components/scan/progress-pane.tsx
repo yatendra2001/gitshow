@@ -8,7 +8,7 @@ import {
   TestResults,
   type TestStatus,
 } from "@/components/ai-elements/test-results";
-import { CostPill, HudPill } from "@/components/ai-elements/context";
+import { HudPill } from "@/components/ai-elements/context";
 import {
   Artifact,
   ArtifactContent,
@@ -85,6 +85,14 @@ export function ProgressPane({
   const sources = React.useMemo(() => buildSources(envelopes), [envelopes]);
   const queue = React.useMemo(() => buildQueue(phases), [phases]);
   const tools = React.useMemo(() => buildTools(envelopes), [envelopes]);
+  // Terminal content: synthesize log lines from structured events so the
+  // log panel is never empty, then append any real stream lines we've
+  // received over WS. If streams are flowing we get both granularities;
+  // if the realtime endpoint isn't reachable we still have narration.
+  const effectiveLog = React.useMemo(
+    () => [...synthLogLines(envelopes), ...terminalLines],
+    [envelopes, terminalLines],
+  );
 
   const finalCard = card ?? partialCard;
   const isRunning = scan.status === "running" || scan.status === "queued";
@@ -94,7 +102,7 @@ export function ProgressPane({
     <div className="relative flex h-full flex-col overflow-hidden">
       <span className="gs-noise" aria-hidden />
 
-      {/* HUD — plan headline, cost, verdict */}
+      {/* HUD — just the current phase + reviewer verdict (no cost noise) */}
       <div className="flex items-center gap-2 overflow-x-auto border-b border-border/80 px-5 py-2.5 backdrop-blur-sm">
         {isRunning && cur && cur.phase in PHASE_COPY ? (
           <HudPill
@@ -105,10 +113,6 @@ export function ProgressPane({
         ) : isDone ? (
           <HudPill icon={<Sparkles />} label="status" value="Ready" />
         ) : null}
-        <CostPill
-          costCents={usage?.cost_cents ?? scan.cost_cents}
-          llmCalls={usage?.llm_calls ?? scan.llm_calls}
-        />
         {scan.hiring_verdict && (
           <HudPill
             icon={<ActivityIcon />}
@@ -221,9 +225,11 @@ export function ProgressPane({
           />
         )}
 
-        {/* TERMINAL — always visible */}
-        {(isRunning || terminalLines.length > 0) && (
-          <Terminal lines={terminalLines} title="Live log" />
+        {/* TERMINAL — always visible during a run, even when the DO isn't
+            delivering raw stream lines. effectiveLog falls back to a
+            narrated log built from structured events. */}
+        {(isRunning || effectiveLog.length > 0) && (
+          <Terminal lines={effectiveLog} title="Live log" />
         )}
 
         {/* ARTIFACT */}
@@ -495,4 +501,62 @@ function safeHost(url: string): string {
   } catch {
     return url;
   }
+}
+
+/**
+ * Build narrated log lines from the structured event stream so the
+ * Live log panel is never empty, even when the realtime DO can't
+ * deliver raw pipeline output (publisher misconfig, mobile proxy,
+ * etc.). Timestamps are derived from `env.at`, formatted HH:mm:ss.
+ */
+function synthLogLines(envelopes: ScanEventEnvelope[]): string[] {
+  const out: string[] = [];
+  for (const env of envelopes) {
+    const t = fmtTime(env.at);
+    const e = env.event;
+    if (e.kind === "stage-start" && e.stage) {
+      const copy = (PHASE_COPY as Record<string, { activity: string; done: string; title: string }>)[e.stage];
+      out.push(`[${t}] info  ${copy?.title ?? e.stage} starting…`);
+      if (copy?.activity) out.push(`[${t}]         ${copy.activity}`);
+    } else if (e.kind === "stage-end" && e.stage) {
+      const copy = (PHASE_COPY as Record<string, { activity: string; done: string; title: string }>)[e.stage];
+      const dur = e.duration_ms ? ` ${Math.round(e.duration_ms / 100) / 10}s` : "";
+      out.push(`[${t}] ok    ${copy?.done ?? e.stage} done${dur}${e.detail ? ` · ${e.detail}` : ""}`);
+    } else if (e.kind === "stage-warn") {
+      out.push(`[${t}] warn  ${e.stage ? `${e.stage}: ` : ""}${e.message}`);
+    } else if (e.kind === "worker-update" && e.worker) {
+      const name = humanizeWorker(e.worker);
+      if (e.status === "running") {
+        out.push(`[${t}] running ${name}…`);
+      } else if (e.status === "done") {
+        out.push(`[${t}] ok     ${name}${e.detail ? ` · ${e.detail}` : ""}`);
+      } else if (e.status === "failed") {
+        out.push(`[${t}] error  ${name}${e.detail ? ` · ${e.detail}` : ""}`);
+      }
+    } else if (e.kind === "reasoning") {
+      // Truncate long reasoning bodies so the terminal stays skimmable.
+      const txt = e.text.length > 160 ? `${e.text.slice(0, 160)}…` : e.text;
+      out.push(`[${t}] think  ${humanizeAgent(e.agent)}: ${txt}`);
+    } else if (e.kind === "error") {
+      out.push(`[${t}] error  ${e.stage ? `${e.stage}: ` : ""}${e.message}`);
+    } else if (e.kind === "usage") {
+      out.push(
+        `[${t}] usage  ${e.llm_calls} calls · ${(e.total_tokens).toLocaleString()} tokens`,
+      );
+    } else if (e.kind === "plan") {
+      out.push(`[${t}] plan   ${e.title}${e.description ? ` — ${e.description}` : ""}`);
+    } else if (e.kind === "test-result") {
+      const s = e.status === "pass" ? "ok" : e.status === "fail" ? "error" : "warn";
+      out.push(`[${t}] ${s.padEnd(6)} ${e.agent} · ${e.name}${e.detail ? ` — ${e.detail}` : ""}`);
+    }
+  }
+  return out;
+}
+
+function fmtTime(ms: number): string {
+  const d = new Date(ms);
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  const ss = String(d.getSeconds()).padStart(2, "0");
+  return `${hh}:${mm}:${ss}`;
 }
