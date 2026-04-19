@@ -30,6 +30,12 @@ export function SplitPane({
   const [revisePending, setRevisePending] = React.useState<{
     title: string;
   } | null>(null);
+  // Millis at which the current revise was dispatched. Lets the chat
+  // pane scope inline progress to the events that belong to that
+  // revise (rather than showing the entire scan history).
+  const [reviseStartedAt, setReviseStartedAt] = React.useState<number | null>(
+    null,
+  );
   const [highlightClaimId, setHighlightClaimId] = React.useState<string | null>(
     null,
   );
@@ -58,6 +64,7 @@ export function SplitPane({
       );
     if (!latestReviseEnd) return;
     setRevisePending(null);
+    setReviseStartedAt(null);
     void refreshCard(scan.id).then((next) => {
       if (next) {
         setCard(next);
@@ -142,6 +149,7 @@ export function SplitPane({
           ? `Rewriting ${humanBeat(beats[0]!)}`
           : `Rewriting ${beats.length} parts in parallel`;
     setRevisePending({ title });
+    setReviseStartedAt(Date.now());
     setMessages((prev) => [
       ...prev,
       {
@@ -163,6 +171,9 @@ export function SplitPane({
         messages={messages}
         onSendRevise={onSendRevise}
         revisePending={!!revisePending}
+        envelopes={envelopes}
+        terminalLines={terminalLines}
+        reviseStartedAt={reviseStartedAt}
       />
       <ProgressPane
         scan={scan}
@@ -172,7 +183,6 @@ export function SplitPane({
         card={card}
         highlightClaimId={highlightClaimId}
         onClaimClick={onClaimClick}
-        revisePending={revisePending}
       />
     </div>
   );

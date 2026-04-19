@@ -3,6 +3,7 @@
 import * as React from "react";
 import { toast } from "sonner";
 import type { ProfileCard } from "@gitshow/shared/schemas";
+import type { ScanEventEnvelope } from "@gitshow/shared/events";
 import type { ScanRow } from "@/lib/scans";
 import {
   Conversation,
@@ -25,6 +26,7 @@ import {
   type MentionedClaim,
 } from "@/components/scan/mention-input";
 import { PromptInputFooterHint } from "@/components/ai-elements/prompt-input";
+import { AgentProgress } from "@/components/scan/agent-progress";
 
 /**
  * Left pane. Once the scan has succeeded this is a revise chat —
@@ -49,6 +51,9 @@ export function ChatPane({
   messages,
   onSendRevise,
   revisePending,
+  envelopes,
+  terminalLines,
+  reviseStartedAt,
 }: {
   scan: ScanRow;
   card: ProfileCard | null;
@@ -59,6 +64,12 @@ export function ChatPane({
     guidance: string;
   }) => Promise<void>;
   revisePending: boolean;
+  /** Live event stream — same shape the right pane uses. */
+  envelopes: ScanEventEnvelope[];
+  terminalLines: string[];
+  /** Millis timestamp of the latest revise dispatch. Used to scope
+   *  the inline progress to events after the revise started. */
+  reviseStartedAt: number | null;
 }) {
   const [value, setValue] = React.useState("");
   const [mentionedClaim, setMentionedClaim] =
@@ -148,6 +159,21 @@ export function ChatPane({
     <div className="flex h-full flex-col overflow-hidden border-r border-border">
       <Conversation className="flex-1">
         <ConversationContent>
+          {/* When a revise is in flight, show the agent stack inline.
+              Scoped to events after the revise started so earlier scan
+              history doesn't bleed in. */}
+          {revisePending && reviseStartedAt && (
+            <div className="px-4 py-2">
+              <AgentProgress
+                envelopes={envelopes}
+                terminalLines={terminalLines}
+                sinceAt={reviseStartedAt}
+                planStreaming
+                compact
+              />
+            </div>
+          )}
+
           {messages.length === 0 ? (
             canRevise ? (
               <ConversationEmptyState
