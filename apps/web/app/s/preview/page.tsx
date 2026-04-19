@@ -204,6 +204,9 @@ export default function PreviewPage() {
         messages={messages}
         onSendRevise={async () => {}}
         revisePending={false}
+        envelopes={SEED_ENVELOPES}
+        terminalLines={SEED_TERMINAL}
+        reviseStartedAt={null}
       />
       <ProgressPane
         scan={SEED_SCAN}
@@ -211,7 +214,6 @@ export default function PreviewPage() {
         terminalLines={SEED_TERMINAL}
         partialCard={null}
         card={null}
-        revisePending={null}
       />
     </div>
   );
