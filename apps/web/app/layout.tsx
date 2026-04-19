@@ -20,13 +20,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="dark" suppressHydrationWarning>
       <body
         className={cn(
           sans.variable,
           serif.variable,
           mono.variable,
-          "font-sans bg-background text-foreground min-h-screen antialiased",
+          "font-sans bg-background text-foreground min-h-screen antialiased selection:bg-blue-500/30",
         )}
       >
         {children}

@@ -135,10 +135,27 @@ export function ChatPane({
       <Conversation className="flex-1">
         <ConversationContent>
           {messages.length === 0 ? (
-            <ConversationEmptyState
-              title="Tell gitshow how to refine your profile"
-              description='Type `@` to target the hero hook, a specific pattern, your KPI numbers, or the disclosure. The LLM re-runs only that beat — usually 2–6 min.'
-            />
+            canRevise ? (
+              <ConversationEmptyState
+                title="Want to tweak anything?"
+                description="Type @ and pick a part of your profile, then tell gitshow what you'd like to change. Only that piece gets rewritten — the rest stays put."
+              />
+            ) : scan.status === "running" || scan.status === "queued" ? (
+              <ConversationEmptyState
+                title="Reading your code…"
+                description="Follow along on the right. When it's done you'll be able to tweak any part of your profile from here."
+              />
+            ) : scan.status === "failed" ? (
+              <ConversationEmptyState
+                title="That one didn't land"
+                description="Head back to your dashboard and try again — retries are free."
+              />
+            ) : (
+              <ConversationEmptyState
+                title="Waiting…"
+                description="We'll be ready for you in a moment."
+              />
+            )
           ) : (
             messages.map((m) =>
               m.from === "user" ? (
@@ -168,16 +185,16 @@ export function ChatPane({
           disabled={!canRevise}
           placeholder={
             canRevise
-              ? "Tell gitshow what to fix. Try @hook or @numbers…"
+              ? "Type @ to pick a part, then say what you want…"
               : scan.status === "running"
-                ? "Scan in progress. You'll be able to revise in a moment."
+                ? "You'll be able to tweak things in a moment."
                 : scan.status === "failed"
-                  ? "Scan failed. Retry from the dashboard."
-                  : "Waiting for scan to finish…"
+                  ? "Something went wrong. Try again from your dashboard."
+                  : "Waiting for your profile to finish…"
           }
         />
         <PromptInputFooterHint>
-          press ⌨ @ to scope a revise · enter to send · shift+enter for newline
+          @ mentions a part · enter to send · shift+enter for a new line
         </PromptInputFooterHint>
       </div>
     </div>

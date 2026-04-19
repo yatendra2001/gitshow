@@ -132,7 +132,7 @@ export function SplitPane({
   };
 
   return (
-    <div className="grid h-screen w-full grid-cols-[minmax(340px,40%)_1fr]">
+    <div className="grid h-screen w-full grid-cols-[minmax(280px,25%)_1fr]">
       <ChatPane
         scan={scan}
         card={card}

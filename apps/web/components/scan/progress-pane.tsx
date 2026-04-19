@@ -2,18 +2,28 @@
 
 import * as React from "react";
 import type { ScanEventEnvelope } from "@gitshow/shared/events";
-import { PIPELINE_PHASES, type PipelinePhase } from "@gitshow/shared/events";
-import {
-  estimateRemainingMs,
-  formatDuration,
-  progressPercent,
-} from "@gitshow/shared/eta";
 import { Plan } from "@/components/ai-elements/plan";
-import { Task, TaskItem } from "@/components/ai-elements/task";
 import { Terminal } from "@/components/ai-elements/terminal";
-import { TestResults, type TestStatus } from "@/components/ai-elements/test-results";
-import { CostPill, EtaPill, HudPill } from "@/components/ai-elements/context";
-import { Artifact, ArtifactContent, ArtifactHeader, ArtifactTitle } from "@/components/ai-elements/artifact";
+import {
+  TestResults,
+  type TestStatus,
+} from "@/components/ai-elements/test-results";
+import { CostPill, HudPill } from "@/components/ai-elements/context";
+import {
+  Artifact,
+  ArtifactContent,
+  ArtifactHeader,
+  ArtifactTitle,
+} from "@/components/ai-elements/artifact";
+import { Queue, type QueueRow } from "@/components/ai-elements/queue";
+import { Reasoning } from "@/components/ai-elements/reasoning";
+import {
+  ChainOfThought,
+  type CoTStep,
+} from "@/components/ai-elements/chain-of-thought";
+import { Sources, type SourceItem } from "@/components/ai-elements/sources";
+import { Tool, type ToolStatus } from "@/components/ai-elements/tool";
+import { Task } from "@/components/ai-elements/task";
 import { ProfileCardView } from "@/components/scan/profile-card";
 import {
   projectPhases,
@@ -21,22 +31,24 @@ import {
   latestUsage,
   latestEvalAxes,
 } from "@/lib/use-scan-stream";
+import { PHASE_COPY, PHASE_ORDER, humanizeWorker } from "@/lib/phase-copy";
 import type { ScanRow } from "@/lib/scans";
 import type { ProfileCard, CardClaim } from "@gitshow/shared/schemas";
-import { Activity, Terminal as TerminalIcon, Sparkles } from "lucide-react";
+import { Activity as ActivityIcon, Sparkles } from "lucide-react";
 
 /**
- * Right pane. Renders one of four states depending on scan status:
+ * Right pane. The full agent-UI stack, always showing what the model is
+ * doing — no ETA, no percent, just live signal:
  *
- *   1. queued / running → Plan at top, Task stack in middle, Terminal
- *      collapsed at bottom, Artifact (live card preview) at the very
- *      bottom when any claims exist yet.
- *   2. succeeded        → Artifact full-height, Plan + Tasks collapsed
- *      into a "scan history" drawer.
- *   3. failed           → Tasks stack with the failing phase red,
- *      error banner at top.
- *   4. (special) revise in flight → Plan morphs into "Reframing hook"
- *      (handled by parent passing a revisePending prop).
+ *   1. HUD (plan headline, cost, verdict once it lands)
+ *   2. Chain of Thought — narrative of the active phase with source chips
+ *   3. Reasoning — streaming monologue from the active agent
+ *   4. Queue — Running + Done, AI-Elements style
+ *   5. Tool calls — per-worker invocations with status badges
+ *   6. Sources — accumulating citations
+ *   7. Terminal — always visible raw log tail
+ *   8. TestResults — hiring-manager axes when they land
+ *   9. Artifact — profile card once the scan succeeds
  */
 export function ProgressPane({
   scan,
@@ -51,156 +63,152 @@ export function ProgressPane({
   scan: ScanRow;
   envelopes: ScanEventEnvelope[];
   terminalLines: string[];
-  /** Partial card synthesized from incremental claims during a running scan. */
   partialCard: ProfileCard | null;
-  /** Final card from R2 once succeeded. */
   card: ProfileCard | null;
   highlightClaimId?: string | null;
   onClaimClick?: (claimId: string, beat: CardClaim["beat"]) => void;
-  revisePending?: { title: string; etaMs?: number } | null;
+  revisePending?: { title: string } | null;
 }) {
   const phases = React.useMemo(
-    () => projectPhases(envelopes, PIPELINE_PHASES),
+    () => projectPhases(envelopes, PHASE_ORDER),
     [envelopes],
   );
   const cur = currentPhase(phases);
-  const lastCompleted = React.useMemo(() => {
-    const done = phases.filter((p) => p.status === "done");
-    return (done[done.length - 1]?.phase ?? null) as PipelinePhase | null;
-  }, [phases]);
-  const remaining = estimateRemainingMs(
-    lastCompleted,
-    (cur?.phase ?? null) as PipelinePhase | null,
-  );
-  const progress = progressPercent(
-    lastCompleted,
-    (cur?.phase ?? null) as PipelinePhase | null,
-  );
-
   const usage = latestUsage(envelopes);
   const evalAxes = latestEvalAxes(envelopes);
 
-  const [terminalOpen, setTerminalOpen] = React.useState(false);
+  const cotSteps = React.useMemo(() => buildCoTSteps(envelopes), [envelopes]);
+  const reasoning = React.useMemo(
+    () => buildReasoningBlock(envelopes),
+    [envelopes],
+  );
+  const sources = React.useMemo(() => buildSources(envelopes), [envelopes]);
+  const queue = React.useMemo(() => buildQueue(phases), [phases]);
+  const tools = React.useMemo(() => buildTools(envelopes), [envelopes]);
 
   const finalCard = card ?? partialCard;
   const isRunning = scan.status === "running" || scan.status === "queued";
+  const isDone = scan.status === "succeeded";
 
   return (
-    <div className="flex h-full flex-col overflow-hidden">
-      {/* HUD */}
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5 overflow-x-auto">
-        {isRunning && cur && (
+    <div className="relative flex h-full flex-col overflow-hidden">
+      <span className="gs-noise" aria-hidden />
+
+      {/* HUD — plan headline, cost, verdict */}
+      <div className="flex items-center gap-2 overflow-x-auto border-b border-border/80 px-5 py-2.5 backdrop-blur-sm">
+        {isRunning && cur && cur.phase in PHASE_COPY ? (
           <HudPill
             icon={<Sparkles />}
-            label="phase"
-            value={cur.phase}
+            label="now"
+            value={PHASE_COPY[cur.phase as keyof typeof PHASE_COPY].title}
           />
-        )}
+        ) : isDone ? (
+          <HudPill icon={<Sparkles />} label="status" value="Ready" />
+        ) : null}
         <CostPill
           costCents={usage?.cost_cents ?? scan.cost_cents}
           llmCalls={usage?.llm_calls ?? scan.llm_calls}
         />
-        {isRunning && <EtaPill etaMs={remaining} />}
         {scan.hiring_verdict && (
           <HudPill
-            icon={<Activity />}
-            label="verdict"
+            icon={<ActivityIcon />}
+            label="reviewer"
             value={`${scan.hiring_verdict} ${scan.hiring_score ?? "—"}/100`}
           />
         )}
       </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        {/* Plan card */}
+      <div className="gs-pane-scroll relative flex-1 space-y-4 overflow-y-auto px-5 py-5">
+        {/* PLAN */}
         {revisePending ? (
           <Plan
             title={revisePending.title}
-            description="The pipeline is running a single-beat regenerator. The artifact will update when it lands."
-            eta={revisePending.etaMs ? formatDuration(revisePending.etaMs) : undefined}
+            description="Just the piece you pinned is being rewritten. The rest of your profile stays put."
             isStreaming
           />
         ) : isRunning ? (
           <Plan
             title={
-              cur
-                ? `Running · ${cur.phase}`
+              cur && cur.phase in PHASE_COPY
+                ? PHASE_COPY[cur.phase as keyof typeof PHASE_COPY].title
                 : scan.status === "queued"
-                  ? "Queued — spinning up machine"
-                  : "Starting pipeline"
+                  ? "Waking things up"
+                  : "Getting started"
             }
-            description={`About ${formatDuration(remaining)} remaining · ${progress}% complete`}
-            eta={formatDuration(remaining)}
+            description={
+              cur && cur.phase in PHASE_COPY
+                ? PHASE_COPY[cur.phase as keyof typeof PHASE_COPY].activity
+                : "Reading everything public about your GitHub handle."
+            }
             isStreaming
           />
-        ) : scan.status === "succeeded" ? (
+        ) : isDone ? (
           <Plan
-            title="Scan complete"
-            description={`${usage?.llm_calls ?? scan.llm_calls} LLM calls · $${((usage?.cost_cents ?? scan.cost_cents) / 100).toFixed(2)} · click any claim in the artifact to revise`}
+            title="Your profile is ready"
+            description="Click any piece on the right to tweak it — open the chat and tell gitshow what to change."
           />
         ) : (
           <Plan
-            title="Scan failed"
-            description={scan.error ?? "The pipeline failed. Review the phase log below."}
+            title="Something went sideways"
+            description={
+              scan.error ?? "The pipeline failed. Try again from your dashboard."
+            }
           />
         )}
 
-        {/* Task list */}
-        {isRunning && (
-          <section className="space-y-2">
-            {phases.map((p) => (
-              <Task
-                key={p.phase}
-                status={p.status}
-                title={p.phase}
-                subtitle={p.detail}
-                defaultOpen={p.status === "running" || p.status === "warn" || p.status === "failed"}
-                rightSlot={
-                  p.duration_ms ? (
-                    <span className="font-mono text-[10px] text-muted-foreground">
-                      {formatDuration(p.duration_ms)}
-                    </span>
-                  ) : null
-                }
-              >
-                {p.workers.length > 0 && (
-                  <div className="space-y-0.5">
-                    {p.workers.map((w) => (
-                      <TaskItem
-                        key={w.name}
-                        status={
-                          w.status === "running"
-                            ? "running"
-                            : w.status === "done"
-                              ? "done"
-                              : "failed"
-                        }
-                      >
-                        <span className="text-foreground/80">{w.name}</span>
-                        {w.detail && (
-                          <span className="ml-2 text-muted-foreground">· {w.detail}</span>
-                        )}
-                      </TaskItem>
-                    ))}
-                  </div>
-                )}
-                {p.warnings.length > 0 && (
-                  <div className="mt-2 space-y-0.5">
-                    {p.warnings.map((w, i) => (
-                      <TaskItem key={i} status="warn">
-                        {w}
-                      </TaskItem>
-                    ))}
-                  </div>
-                )}
-              </Task>
-            ))}
-          </section>
+        {/* CHAIN OF THOUGHT */}
+        {cotSteps.length > 0 && (
+          <ChainOfThought steps={cotSteps} streaming={isRunning} />
         )}
 
-        {/* Evaluator TestResults */}
+        {/* REASONING */}
+        {reasoning.text.length > 0 && (
+          <Reasoning
+            text={reasoning.text}
+            streaming={isRunning && !reasoning.done}
+            label={reasoning.label}
+          />
+        )}
+
+        {/* QUEUE */}
+        {(isRunning || queue.done.length > 0) && (
+          <Queue
+            running={queue.running}
+            upNext={queue.upNext}
+            done={queue.done}
+          />
+        )}
+
+        {/* TOOL CALLS */}
+        {tools.length > 0 && (
+          <Task
+            title="Tools"
+            subtitle={`${tools.length} call${tools.length === 1 ? "" : "s"}`}
+            status={isRunning ? "running" : "done"}
+            defaultOpen
+          >
+            <div className="space-y-1.5">
+              {tools.map((t) => (
+                <Tool
+                  key={t.id}
+                  name={t.name}
+                  status={t.status}
+                  subtitle={t.subtitle}
+                  output={t.output}
+                  error={t.error}
+                />
+              ))}
+            </div>
+          </Task>
+        )}
+
+        {/* SOURCES */}
+        {sources.length > 0 && <Sources items={sources} />}
+
+        {/* TEST RESULTS — hiring-manager axes */}
         {evalAxes && (
           <TestResults
-            title={`Hiring-manager eval · round ${evalAxes.round}`}
+            title="Reviewer feedback"
             verdict={evalAxes.verdict}
             overallScore={evalAxes.overall_score}
             tests={evalAxes.axes.map((a) => ({
@@ -213,44 +221,28 @@ export function ProgressPane({
           />
         )}
 
-        {/* Terminal drawer */}
-        {isRunning && (
-          <div>
-            <button
-              type="button"
-              onClick={() => setTerminalOpen((v) => !v)}
-              className="inline-flex items-center gap-1.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground hover:text-foreground"
-            >
-              <TerminalIcon className="size-3" />
-              {terminalOpen ? "hide log" : "show raw log"}
-            </button>
-            {terminalOpen && (
-              <div className="mt-2">
-                <Terminal lines={terminalLines} />
-              </div>
-            )}
-          </div>
+        {/* TERMINAL — always visible */}
+        {(isRunning || terminalLines.length > 0) && (
+          <Terminal lines={terminalLines} title="Live log" />
         )}
 
-        {/* Artifact — live or final */}
+        {/* ARTIFACT */}
         {finalCard && (
           <Artifact className="min-h-[60vh]">
             <ArtifactHeader>
-              <ArtifactTitle>
-                profile · @{finalCard.handle}
-              </ArtifactTitle>
+              <ArtifactTitle>your profile · @{finalCard.handle}</ArtifactTitle>
               {card && (
                 <a
                   href={`/p/${finalCard.handle}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="font-mono text-[10px] text-muted-foreground hover:text-foreground"
+                  className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground"
                 >
-                  open ↗
+                  open public view ↗
                 </a>
               )}
             </ArtifactHeader>
-            <ArtifactContent className="bg-[var(--color-background)]">
+            <ArtifactContent className="bg-[#FAFAF7]">
               <ProfileCardView
                 card={finalCard}
                 chrome={false}
@@ -269,4 +261,238 @@ function axisStatus(score: number): TestStatus {
   if (score >= 8) return "pass";
   if (score >= 5) return "warn";
   return "fail";
+}
+
+// ─── Event projections ─────────────────────────────────────────────
+
+function buildCoTSteps(envelopes: ScanEventEnvelope[]): CoTStep[] {
+  const byStage = new Map<
+    string,
+    {
+      title: string;
+      chips: { id: string; label: string; url?: string }[];
+      done: boolean;
+    }
+  >();
+  const stageOrder: string[] = [];
+
+  for (const env of envelopes) {
+    const e = env.event;
+    if (e.kind === "stage-start" && e.stage && e.stage in PHASE_COPY) {
+      if (!byStage.has(e.stage)) {
+        stageOrder.push(e.stage);
+        byStage.set(e.stage, {
+          title: PHASE_COPY[e.stage as keyof typeof PHASE_COPY].activity,
+          chips: [],
+          done: false,
+        });
+      }
+    }
+    if (e.kind === "stage-end" && e.stage && byStage.has(e.stage)) {
+      const row = byStage.get(e.stage)!;
+      row.done = true;
+      row.title = PHASE_COPY[e.stage as keyof typeof PHASE_COPY].done;
+    }
+    if (e.kind === "worker-update" && e.worker) {
+      const last = stageOrder[stageOrder.length - 1];
+      if (!last) continue;
+      const row = byStage.get(last);
+      if (!row) continue;
+      if (e.detail) {
+        const urls = e.detail.match(/https?:\/\/[^\s)]+/g) ?? [];
+        for (const u of urls) {
+          if (!row.chips.find((c) => c.url === u)) {
+            const host = safeHost(u);
+            row.chips.push({
+              id: `${env.id}-${row.chips.length}`,
+              label: host,
+              url: u,
+            });
+          }
+        }
+      }
+      const name = humanizeWorker(e.worker);
+      if (!row.chips.find((c) => c.label === name)) {
+        row.chips.push({
+          id: `${env.id}-w${row.chips.length}`,
+          label: name,
+        });
+      }
+    }
+  }
+
+  return stageOrder.map<CoTStep>((phase) => {
+    const row = byStage.get(phase)!;
+    return {
+      id: phase,
+      title: row.title,
+      chips: row.chips.slice(0, 6),
+      done: row.done,
+    };
+  });
+}
+
+function buildReasoningBlock(
+  envelopes: ScanEventEnvelope[],
+): { text: string; label: string; done: boolean } {
+  const parts: string[] = [];
+  let label = "Thinking";
+  let mostRecentAt = 0;
+  for (const env of envelopes) {
+    if (env.event.kind === "reasoning") {
+      parts.push(env.event.text);
+      label = humanizeAgent(env.event.agent);
+      mostRecentAt = env.at;
+    }
+  }
+  const done = mostRecentAt > 0 && Date.now() - mostRecentAt > 4000;
+  return {
+    text: parts.join("\n\n"),
+    label,
+    done,
+  };
+}
+
+function humanizeAgent(agent: string): string {
+  switch (agent) {
+    case "discover":
+      return "Looking for what's distinctive";
+    case "hook-writer":
+      return "Writing your opening line";
+    case "hook-critic":
+      return "Picking the strongest candidate";
+    case "numbers":
+      return "Choosing your three numbers";
+    case "disclosure":
+      return "Writing the honest flaw";
+    case "shipped":
+      return "Cataloging what you've shipped";
+    case "copy-editor":
+      return "Copy-editing for voice";
+    case "profile-critic":
+      return "Double-checking every claim";
+    case "hiring-manager":
+      return "Reviewer reading your profile";
+    default:
+      return agent.replace(/[-_]/g, " ");
+  }
+}
+
+function buildSources(envelopes: ScanEventEnvelope[]): SourceItem[] {
+  const seen = new Set<string>();
+  const out: SourceItem[] = [];
+  for (const env of envelopes) {
+    const e = env.event;
+    const detail =
+      e.kind === "worker-update"
+        ? e.detail
+        : e.kind === "stage-end"
+          ? e.detail
+          : undefined;
+    if (!detail) continue;
+    const urls = detail.match(/https?:\/\/[^\s)]+/g) ?? [];
+    for (const u of urls) {
+      if (seen.has(u)) continue;
+      seen.add(u);
+      out.push({ id: `${env.id}-${seen.size}`, url: u });
+    }
+  }
+  return out;
+}
+
+function buildTools(
+  envelopes: ScanEventEnvelope[],
+): Array<{
+  id: string;
+  name: string;
+  subtitle?: string;
+  status: ToolStatus;
+  output?: string;
+  error?: string;
+}> {
+  const byWorker = new Map<
+    string,
+    {
+      status: ToolStatus;
+      subtitle?: string;
+      output?: string;
+      error?: string;
+    }
+  >();
+  for (const env of envelopes) {
+    const e = env.event;
+    if (e.kind !== "worker-update" || !e.worker) continue;
+    const prior =
+      byWorker.get(e.worker) ?? {
+        status: "pending" as ToolStatus,
+      };
+    if (e.status === "running") prior.status = "running";
+    else if (e.status === "done") prior.status = "completed";
+    else if (e.status === "failed") prior.status = "error";
+    if (e.detail) {
+      if (e.status === "done") prior.output = e.detail;
+      else if (e.status === "failed") prior.error = e.detail;
+      else prior.subtitle = e.detail;
+    }
+    byWorker.set(e.worker, prior);
+  }
+
+  return Array.from(byWorker.entries()).map(([name, state]) => ({
+    id: name,
+    name: humanizeWorker(name),
+    subtitle: state.subtitle,
+    status: state.status,
+    output: state.output,
+    error: state.error,
+  }));
+}
+
+function buildQueue(
+  phases: ReturnType<typeof projectPhases>,
+): {
+  running: QueueRow[];
+  upNext: QueueRow[];
+  done: QueueRow[];
+} {
+  const running: QueueRow[] = [];
+  const upNext: QueueRow[] = [];
+  const done: QueueRow[] = [];
+
+  for (const p of phases) {
+    const copy = (PHASE_COPY as Record<
+      string,
+      { title: string; activity: string; done: string }
+    >)[p.phase];
+    if (!copy) continue;
+    if (p.status === "running" || p.status === "warn") {
+      running.push({
+        id: p.phase,
+        title: copy.title,
+        subtitle: copy.activity,
+      });
+    } else if (p.status === "done") {
+      done.push({ id: p.phase, title: copy.done });
+    } else if (p.status === "failed") {
+      running.push({
+        id: p.phase,
+        title: `${copy.title} — hit a snag`,
+        subtitle: p.warnings?.[0] ?? "Continuing with what worked.",
+      });
+    } else {
+      upNext.push({ id: p.phase, title: copy.title });
+    }
+  }
+  return {
+    running,
+    upNext: upNext.slice(0, 4),
+    done: done.reverse(),
+  };
+}
+
+function safeHost(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
