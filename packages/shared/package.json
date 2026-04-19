@@ -1,0 +1,31 @@
+{
+  "name": "@gitshow/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Schemas, event types, and cloud clients shared between the Fly worker and the Next.js web app.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schemas": "./src/schemas.ts",
+    "./events": "./src/events.ts",
+    "./eta": "./src/eta.ts",
+    "./util": "./src/util.ts",
+    "./cloud/d1": "./src/cloud/d1.ts",
+    "./cloud/r2": "./src/cloud/r2.ts",
+    "./cloud/fly": "./src/cloud/fly.ts",
+    "./cloud/do-client": "./src/cloud/do-client.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.1032.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.6.3"
+  }
+}

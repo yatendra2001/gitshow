@@ -1,0 +1,84 @@
+name: Deploy web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/web/**"
+      - "packages/shared/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/deploy-web.yml"
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "packages/shared/**"
+  workflow_dispatch:
+
+concurrency:
+  # Prod deploys can't cancel each other (lost work) — separate group.
+  # PR previews can cancel each other on the same branch.
+  group: deploy-web-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event_name == 'pull_request' && 'preview' || 'production' }}
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2"
+
+      - name: Install deps (frozen lockfile)
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck web + shared
+        run: |
+          bun --filter @gitshow/shared typecheck
+          bun --filter @gitshow/web typecheck
+
+      - name: OpenNext build
+        working-directory: apps/web
+        run: bunx opennextjs-cloudflare build
+
+      - name: Deploy (production)
+        if: github.event_name != 'pull_request'
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          workingDirectory: apps/web
+          wranglerVersion: "4"
+          command: deploy --config wrangler.jsonc
+
+      - name: Deploy (PR preview)
+        if: github.event_name == 'pull_request'
+        uses: cloudflare/wrangler-action@v3
+        id: preview
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          workingDirectory: apps/web
+          wranglerVersion: "4"
+          command: deploy --config wrangler.jsonc --name gitshow-web-pr-${{ github.event.pull_request.number }}
+
+      - name: Comment preview URL
+        if: github.event_name == 'pull_request' && steps.preview.outputs.deployment-url != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = "${{ steps.preview.outputs.deployment-url }}";
+            const body = `🧪 **Preview deployed** → ${url}\n\n(Live bindings use the prod D1/R2/DO. Scans spawned here bill the prod Fly account — keep PR testing light.)`;
+            github.rest.issues.createComment({
+              issue_number: context.payload.pull_request.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body,
+            });

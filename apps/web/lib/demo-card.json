@@ -1,0 +1,3639 @@
+{
+  "handle": "yatendra2001",
+  "generated_at": "2026-04-18T12:55:02.249Z",
+  "pipeline_version": "0.2.0-v2",
+  "primary_shape": "top committer on doac-stuff/Flightcast media product; serial AI-app builder",
+  "distinctive_paragraph": "Yatendra's clearest signal is being the single top committer on `doac-stuff/flightcast-core` — 2688 of 9971 commits across a 27-person team over roughly 20 months — on what appears to be a TypeScript-heavy media distribution product backed by Lambda functions, a Cloudflare YouTube-upload worker, and a Kubernetes media system, all living in the same `doac-stuff` org, suggesting a substantive employer relationship still active as of early 2026. Before that professional engagement solidified, he built a recognizable personal pattern of iterating on AI-powered product ideas in rapid cycles: the `memcast` idea alone spans at least three separate repos (memcast, memcast-podcast-search-engine, memcast-v2) exploring podcast intelligence extraction, while `ai_buddy` accumulated 231 stars as a Gemini-plus-Flutter assistant and `twitterGPT` targeted AI-augmented social — he hit these themes early and kept rebuilding until something stuck. He has a competitive-build credential worth verifying: the `Tevo-SIH-2022-Winner` repo (★8, five-person team, 158-day window) claims a Smart India Hackathon win, which would be a national-level result. His 14/14 merged PRs into CommandDash represent meaningful OSS investment specifically in Flutter developer tooling, not just casual Hacktoberfest drive-bys. The PR throughput pattern — 739 of 773 PRs are internal to his own repos, nearly all merged — points to high cadence, low waste: discrete shippable increments rather than long-running topic branches, consistent across both personal and team work.",
+  "hook": {
+    "id": "hook:fjdoHwGP",
+    "beat": "hook",
+    "text": "Founding engineer at Flightcast, #1 of 27 committers at 2,688 of 9,971 commits over 20 months. He won Smart India Hackathon 2022 from 1.5 million participants and shipped a Rust plugin into AppFlowy's 69.8k-star codebase in 104 days.",
+    "confidence": "high",
+    "status": "ai_draft",
+    "evidence_count": 6,
+    "evidence_preview": [
+      {
+        "id": "inventory:doac-stuff/flightcast-core",
+        "type": "repo",
+        "url": "https://github.com/doac-stuff/flightcast-core",
+        "title": "Inventory for doac-stuff/flightcast-core"
+      },
+      {
+        "id": "web:f45073e1d157",
+        "type": "web",
+        "url": "https://github.com/doac-stuff",
+        "title": "-"
+      },
+      {
+        "id": "web:d4bfbff7389d",
+        "type": "web",
+        "url": "https://dev.to/yatendra2001/how-does-participating-in-hackathons-competitions-skyrocket-my-career-in-2022-3e80",
+        "title": "How does participating in hackathons & competitions skyrocket my career in 2022? - DEV Community"
+      }
+    ],
+    "primary": true
+  },
+  "numbers": [
+    {
+      "id": "kpi-competitive-selections",
+      "beat": "number",
+      "text": "SIH 2022 winner (1.5M entrants, <1% reach finals), ETHForAll 2023 winner (9,700+ global devs), Google Startup Bootcamp top 81 of 1,500+ — three external juries, three domains.",
+      "label": "3 competitive selections",
+      "sublabel": "SIH 2022 winner (1.5M entrants, <1% reach finals), ETHForAll 2023 winner (9,700+ global devs), Google Startup Bootcamp top 81 of 1,500+ — three external juries, three domains.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 5,
+      "evidence_preview": [
+        {
+          "id": "web:d4bfbff7389d",
+          "type": "web",
+          "url": "https://dev.to/yatendra2001/how-does-participating-in-hackathons-competitions-skyrocket-my-career-in-2022-3e80",
+          "title": "How does participating in hackathons & competitions skyrocket my career in 2022? - DEV Community"
+        },
+        {
+          "id": "web:b53b78338d71",
+          "type": "web",
+          "url": "https://github.com/yatendra2001/Tevo-SIH-2022-Winner",
+          "title": "-"
+        },
+        {
+          "id": "web:c45b1d8353aa",
+          "type": "web",
+          "url": "https://www.linkedin.com/pulse/winning-indias-biggest-hackathon-syed-ibrahim-maaz",
+          "title": "-"
+        }
+      ],
+      "primary": true
+    },
+    {
+      "id": "kpi-flightcast-prod-output",
+      "beat": "number",
+      "text": "1,003 features + 641 bug fixes shipped to Flightcast's live platform as #1 of 27 contributors over 20 months — features and fixes drawn from flightcast-core's 2,688 personal commits.",
+      "label": "1,644 prod deliverables",
+      "sublabel": "1,003 features + 641 bug fixes shipped to Flightcast's live platform as #1 of 27 contributors over 20 months — features and fixes drawn from flightcast-core's 2,688 personal commits.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 1,
+      "evidence_preview": [
+        {
+          "id": "inventory:doac-stuff/flightcast-core",
+          "type": "repo",
+          "url": "https://github.com/doac-stuff/flightcast-core",
+          "title": "Inventory for doac-stuff/flightcast-core"
+        }
+      ],
+      "primary": true
+    },
+    {
+      "id": "kpi-appflowy-arc",
+      "beat": "number",
+      "text": "Four sequential PRs into AppFlowy (69.8k★) — formatting fix → mentorship acceptance → bug fix with tests → net-new Rust OpenAI crate — 104 days, none rejected.",
+      "label": "4 PRs, 0 misfires",
+      "sublabel": "Four sequential PRs into AppFlowy (69.8k★) — formatting fix → mentorship acceptance → bug fix with tests → net-new Rust OpenAI crate — 104 days, none rejected.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 4,
+      "evidence_preview": [
+        {
+          "id": "pr:AppFlowy-IO/AppFlowy#3302",
+          "type": "pr",
+          "url": "https://github.com/AppFlowy-IO/AppFlowy/pull/3302",
+          "title": "feat: integrated openAI rust plugin "
+        },
+        {
+          "id": "pr:AppFlowy-IO/AppFlowy#2725",
+          "type": "pr",
+          "url": "https://github.com/AppFlowy-IO/AppFlowy/pull/2725",
+          "title": "feat: added analysis options + formatted complete code"
+        },
+        {
+          "id": "pr:AppFlowy-IO/AppFlowy-Docs#101",
+          "type": "pr",
+          "url": "https://github.com/AppFlowy-IO/AppFlowy-Docs/pull/101",
+          "title": "docs: complete ai-writers project proposal"
+        }
+      ],
+      "primary": true
+    }
+  ],
+  "patterns": [
+    {
+      "id": "appflowy-ramp-speed",
+      "beat": "pattern",
+      "text": "Yatendra's AppFlowy arc compressed into 104 days: formatting fix (June 7, merged by LucasXu0) → accepted into mentorship program → AI-writers proposal doc (June 25) → UI bug fix with 100%-coverage integration tests (July 17, two maintainer approvals) → brand-new Rust AI plugin crate as mentorship deliverable (Sept 19). Four PRs across two repos, zero misfires, each step more complex than the last.",
+      "label": "104 days",
+      "sublabel": "first AppFlowy commit → new Rust AI backend crate merged into a 69.8k-star project",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 8,
+      "evidence_preview": [
+        {
+          "id": "pr:AppFlowy-IO/AppFlowy#2725",
+          "type": "pr",
+          "url": "https://github.com/AppFlowy-IO/AppFlowy/pull/2725",
+          "title": "feat: added analysis options + formatted complete code"
+        },
+        {
+          "id": "pr:AppFlowy-IO/AppFlowy-Docs#101",
+          "type": "pr",
+          "url": "https://github.com/AppFlowy-IO/AppFlowy-Docs/pull/101",
+          "title": "docs: complete ai-writers project proposal"
+        },
+        {
+          "id": "pr:AppFlowy-IO/AppFlowy#3009",
+          "type": "pr",
+          "url": "https://github.com/AppFlowy-IO/AppFlowy/pull/3009",
+          "title": "fix: row banner overlay"
+        }
+      ],
+      "primary": true
+    },
+    {
+      "id": "temporal-catalyst-sprint",
+      "beat": "pattern",
+      "text": "The `catalyst` repo is a 16-calendar-day lifecycle: App Store rejection response by day 6 (June 27), RevenueCat paywall integrated June 28–29 then fully deleted July 4 (−1,637 lines), voice provider swapped ElevenLabs→gTTS July 5, storage migrated Supabase→Cloudflare R2 with 'bring your own Gemini key' added July 6. Launch → rejection → monetization-in → monetization-out → two infra swaps, all in 135 commits / 15 active days with a 10-day consecutive streak.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 6,
+      "evidence_preview": [
+        {
+          "id": "inventory:yatendra2001/catalyst",
+          "type": "repo",
+          "url": "https://github.com/yatendra2001/catalyst",
+          "title": "Inventory for yatendra2001/catalyst"
+        },
+        {
+          "id": "commit:yatendra2001/catalyst@bc9d99b",
+          "type": "commit",
+          "url": "https://github.com/yatendra2001/catalyst/commit/bc9d99b567e411df2f48be666eac3b17390ae2dc",
+          "title": "feat: bunch of fixes after first appstore rejection"
+        },
+        {
+          "id": "commit:yatendra2001/catalyst@8e3cef5",
+          "type": "commit",
+          "url": "https://github.com/yatendra2001/catalyst/commit/8e3cef54e8ceb176b4a0d6d8f44fe1c574cb6c39",
+          "title": "feat: remove revenuecat paywall integration"
+        }
+      ],
+      "primary": true
+    },
+    {
+      "id": "temporal-memcast-relay",
+      "beat": "pattern",
+      "text": "The memcast idea ran as a three-repo relay: `memcast` ended Jan 4 2025 → `memcast-podcast-search-engine` opened Jan 16 (12-day reset) → closed Feb 20 → `memcast-v2` opened Mar 13 (21-day reset) → ran through Jul 26. Each repo ends with a working feature tier, not abandoned WIP. The identical ~2-week gap repeated twice — not distraction, just a reset pattern.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 6,
+      "evidence_preview": [
+        {
+          "id": "inventory:yatendra2001/memcast",
+          "type": "repo",
+          "url": "https://github.com/yatendra2001/memcast",
+          "title": "Inventory for yatendra2001/memcast"
+        },
+        {
+          "id": "inventory:yatendra2001/memcast-podcast-search-engine",
+          "type": "repo",
+          "url": "https://github.com/yatendra2001/memcast-podcast-search-engine",
+          "title": "Inventory for yatendra2001/memcast-podcast-search-engine"
+        },
+        {
+          "id": "inventory:yatendra2001/memcast-v2",
+          "type": "repo",
+          "url": "https://github.com/yatendra2001/memcast-v2",
+          "title": "Inventory for yatendra2001/memcast-v2"
+        }
+      ],
+      "primary": true
+    },
+    {
+      "id": "temporal-hotfix-density",
+      "beat": "pattern",
+      "text": "In 70 days (Jan 26–Apr 5 2026) `flightcast-core` logged at least 50 commits explicitly prefixed 'hotfix:' — one every 1.4 days on average — in tight clusters: 7 hotfixes Mar 18–20 (spotify identifier, keyword coercion, build size), 6 hotfixes Mar 29–31 (sequential steps, ad-sync date, cuepoints), 7 hotfixes Feb 25–28 (onboarding redirect, backfill queue, email triggers). Not catch-up work — the density holds steady month over month, a consistent same-day ship, same-day patch cycle.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 7,
+      "evidence_preview": [
+        {
+          "id": "inventory:doac-stuff/flightcast-core",
+          "type": "repo",
+          "url": "https://github.com/doac-stuff/flightcast-core",
+          "title": "Inventory for doac-stuff/flightcast-core"
+        },
+        {
+          "id": "commit:doac-stuff/flightcast-core@c6be46076",
+          "type": "commit",
+          "url": "https://github.com/doac-stuff/flightcast-core/commit/c6be460767f0d39e83a0faa8065b5ce3693304d3",
+          "title": "hotfix: proper sequential steps"
+        },
+        {
+          "id": "commit:doac-stuff/flightcast-core@3e5854ce9",
+          "type": "commit",
+          "url": "https://github.com/doac-stuff/flightcast-core/commit/3e5854ce95bc6d011220ab746c728392a8bb0b43",
+          "title": "hotfix: correct verification data"
+        }
+      ],
+      "primary": true
+    },
+    {
+      "id": "hotfeat-invented-label",
+      "beat": "pattern",
+      "text": "Yatendra invented a `hotfeat:` commit prefix — a portmanteau of `hotfix` urgency and `feat` scope — used exclusively in flightcast-core (20+ instances, none in personal repos). It signals deploy channel (trunk-direct, no ceremony), not work size: entries span from '+24/-0 add overcast' to '+941/-6 add autosync to pricing.' The label means 'ship this now' — urgency and scope are separate decisions that don't require separate branches.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 6,
+      "evidence_preview": [
+        {
+          "id": "commit:doac-stuff/flightcast-core@0c9fb0a47",
+          "type": "commit",
+          "url": "https://github.com/doac-stuff/flightcast-core/commit/0c9fb0a4791b3a2b8fe150c2c92911547a142c7e",
+          "title": "hotfeat: another admin tool to connect youtube playlist"
+        },
+        {
+          "id": "commit:doac-stuff/flightcast-core@49925feb5",
+          "type": "commit",
+          "url": "https://github.com/doac-stuff/flightcast-core/commit/49925feb5d4be974e8a63c2bd953ff12f4720845",
+          "title": "hotfeat: add autosync to pricing + learn more step"
+        },
+        {
+          "id": "commit:doac-stuff/flightcast-core@980e38d1f",
+          "type": "commit",
+          "url": "https://github.com/doac-stuff/flightcast-core/commit/980e38d1f3d2e78da39ec7284c60db5eb6746718",
+          "title": "hotfeat: add megaphone sync ad slots admin tool"
+        }
+      ],
+      "primary": true
+    },
+    {
+      "id": "appflowy-rust-review",
+      "beat": "pattern",
+      "text": "AppFlowy's core maintainer (`appflowy`, who also merged) and collaborator LucasXu0 gave 8 rounds of substantive review on Yatendra's OpenAI Rust plugin PR into the 69.8k-star AppFlowy project: recommending specific Rust crates (async-openai, openai-api-rs), correcting logging ('don't use print, use Log.debug'), and directing removal of unnecessary platform configs. After 26 commits addressing all feedback, it was merged — a genuine technical dialogue in Rust, well outside his primary Flutter/TypeScript stack.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 6,
+      "evidence_preview": [
+        {
+          "id": "review:AppFlowy-IO/AppFlowy#3302:1606964809",
+          "type": "review",
+          "url": "https://github.com/AppFlowy-IO/AppFlowy/pull/3302#pullrequestreview-1606964809",
+          "title": "appflowy commented on PR #3302"
+        },
+        {
+          "id": "review:AppFlowy-IO/AppFlowy#3302:1607829102",
+          "type": "review",
+          "url": "https://github.com/AppFlowy-IO/AppFlowy/pull/3302#pullrequestreview-1607829102",
+          "title": "appflowy commented on PR #3302"
+        },
+        {
+          "id": "review-comment:AppFlowy-IO/AppFlowy#3302:1313059970",
+          "type": "review",
+          "url": "https://github.com/AppFlowy-IO/AppFlowy/pull/3302#discussion_r1313059970",
+          "title": "appflowy inline on frontend/rust-lib/flowy-plugins/src/event_handler.rs:1"
+        }
+      ],
+      "primary": true
+    },
+    {
+      "id": "appflowy-rust-plugin",
+      "beat": "pattern",
+      "text": "As a Dart/Flutter developer, Yatendra crossed into Rust to create a net-new `flowy-plugins` crate integrating OpenAI GPT-3.5-turbo into AppFlowy (69.8k★). PR #3302 carried 26 commits and a 19-day review cycle; maintainers (appflowy + LucasXu0) pushed back on print statements, unused imports, and Xcode config drift before approving. He simultaneously wired the Rust API layer to the Flutter UI sidebar — neither half being his native territory in AppFlowy.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 2,
+      "evidence_preview": [
+        {
+          "id": "pr:AppFlowy-IO/AppFlowy#3302",
+          "type": "pr",
+          "url": "https://github.com/AppFlowy-IO/AppFlowy/pull/3302",
+          "title": "feat: integrated openAI rust plugin "
+        },
+        {
+          "id": "web:eaa7e8acc9b1",
+          "type": "web",
+          "url": "https://github.com/AppFlowy-IO/AppFlowy/pull/3302",
+          "title": "-"
+        }
+      ],
+      "primary": false
+    },
+    {
+      "id": "commanddash-internal-contributor",
+      "beat": "pattern",
+      "text": "The 14 CommandDash PRs are internal team work, not external OSS contributions. Every PR was self-merged by Yatendra (he has repo write access); the batch spans exactly 31 days (Dec 21, 2023 – Jan 21, 2024); titles include \"Prep for release 0.2.3\" and \"Merge develop into main for release 0.2.3\" — gating duties held by employees, not guest contributors. Reviewer doitwithdk approved one PR with \"LGTM … Good work!\" The CommandDash record is a sprint of paid engineering, not public OSS participation.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 5,
+      "evidence_preview": [
+        {
+          "id": "pr:CommandDash/commanddash#185",
+          "type": "pr",
+          "url": "https://github.com/CommandDash/commanddash/pull/185",
+          "title": "[Feat]: Centralised commmand registration"
+        },
+        {
+          "id": "pr:CommandDash/commanddash#179",
+          "type": "pr",
+          "url": "https://github.com/CommandDash/commanddash/pull/179",
+          "title": "[Chore]: Merge develop into main for release 0.2.3"
+        },
+        {
+          "id": "pr:CommandDash/commanddash#189",
+          "type": "pr",
+          "url": "https://github.com/CommandDash/commanddash/pull/189",
+          "title": "chore: prep for release 0.2.4"
+        }
+      ],
+      "primary": false
+    },
+    {
+      "id": "hotfix-scope-range",
+      "beat": "pattern",
+      "text": "In flightcast-core, `hotfix:` is a deployment-urgency marker, not a complexity limit. The range runs from \"+2/-2 coerce int to string\" (a literal type coercion) to \"+1147/-1092 refactor campaign performance table\" and \"+919/-736 autosync copy + providers crisp fixx.\" One hotfix erased 56,484 lines of fake data in a single push (+88/-56484). The label encodes \"ship now\" — scope is irrelevant to the decision to use it.",
+      "label": "+2 to +1,147 lines, all \"hotfix\"",
+      "sublabel": "The hotfix prefix signals deploy urgency not patch size — the biggest labeled hotfix is a 1,147-line campaign-table refactor",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 5,
+      "evidence_preview": [
+        {
+          "id": "commit:doac-stuff/flightcast-core@f03596c3f",
+          "type": "commit",
+          "url": "https://github.com/doac-stuff/flightcast-core/commit/f03596c3fb11fd43e7884b52e3b8e500b3c5633b",
+          "title": "hotfix: coerce int to string for keywords"
+        },
+        {
+          "id": "commit:doac-stuff/flightcast-core@51203141b",
+          "type": "commit",
+          "url": "https://github.com/doac-stuff/flightcast-core/commit/51203141bd12af22f8010f6e922ddeb8016fe238",
+          "title": "hotfix: refactor campaign performance table"
+        },
+        {
+          "id": "commit:doac-stuff/flightcast-core@aad2dddc4",
+          "type": "commit",
+          "url": "https://github.com/doac-stuff/flightcast-core/commit/aad2dddc4d37d9a247de73f98d2c1c3188112ad9",
+          "title": "hotfix: autosync copy + providers crisp fixx"
+        }
+      ],
+      "primary": false
+    },
+    {
+      "id": "near-zero-test-commits",
+      "beat": "pattern",
+      "text": "Across 2,504 catalogued commits — personal AI apps, hackathon repos, and the production flightcast-core codebase spanning 2022–2026 — only 4 commits are categorized [test]. All 4 are informal exploratory probes: \"test 2\", \"webhook test\", \"admin tool to test shorts\", \"test input too.\" Not one commit reads \"add unit tests for X\" or \"ci: add testing framework.\" Shipping without automated test infrastructure is stable across every context, not a phase he grew out of.",
+      "label": "4 test commits total",
+      "sublabel": "None add an automated test suite — all 4 are ad hoc manual probes (\"test 2\", \"webhook test\", \"admin tool to test shorts\")",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 4,
+      "evidence_preview": [
+        {
+          "id": "commit:yatendra2001/catalyst@7f9fc0e",
+          "type": "commit",
+          "url": "https://github.com/yatendra2001/catalyst/commit/7f9fc0ea3bcb5a9507b8d5f5c853b11afa9f02f9",
+          "title": "test input too"
+        },
+        {
+          "id": "commit:yatendra2001/memcast-v2@11bb988",
+          "type": "commit",
+          "url": "https://github.com/yatendra2001/memcast-v2/commit/11bb9889908ef990d792f9b11ac65deea04ffec1",
+          "title": "test 2"
+        },
+        {
+          "id": "commit:yatendra2001/memcast-v2@aba889f",
+          "type": "commit",
+          "url": "https://github.com/yatendra2001/memcast-v2/commit/aba889fe8a049a722be3bea0f2ce8b44bb3d74ad",
+          "title": "webhook test"
+        }
+      ],
+      "primary": false
+    },
+    {
+      "id": "self-rewrites-favor-deletion",
+      "beat": "pattern",
+      "text": "When Yatendra refactors his own prior code, he erases more than he adds — full-module replacement, not layer-on-top cleanup. The four largest labeled refactor commits all have higher deletion than addition counts: \"best refactor\" (+261/-947, 78% delete), \"refactor rewrite for campaigns table\" (+1118/-941), \"refactor ad creation panel\" (+927/-790), \"hotfix: refactor campaign performance table\" (+1147/-1092). The unironic message \"best refactor\" attached to a net -686 line commit signals he actively prefers deletion as the outcome of a rework.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 4,
+      "evidence_preview": [
+        {
+          "id": "commit:doac-stuff/flightcast-core@41be1d319",
+          "type": "commit",
+          "url": "https://github.com/doac-stuff/flightcast-core/commit/41be1d319c6b67f7d77f8feb49545c677dd25e02",
+          "title": "best refactor"
+        },
+        {
+          "id": "commit:doac-stuff/flightcast-core@5bd32f4d2",
+          "type": "commit",
+          "url": "https://github.com/doac-stuff/flightcast-core/commit/5bd32f4d2aa622e2292c73104022645f762eb8a9",
+          "title": "feat: refactor rewrite for campaigns table"
+        },
+        {
+          "id": "commit:doac-stuff/flightcast-core@e33dd81b0",
+          "type": "commit",
+          "url": "https://github.com/doac-stuff/flightcast-core/commit/e33dd81b01a2f2de3fb387f3a800bd5017c8ecb8",
+          "title": "feat: refactor editcampaignpanel"
+        }
+      ],
+      "primary": false
+    },
+    {
+      "id": "employer-founding-engineer-flightcast",
+      "beat": "pattern",
+      "text": "Yatendra is a Founding Engineer at Flightcast — a video-first podcast hosting platform whose GitHub org (doac-stuff) is registered as ROX WORKS LLC. His LinkedIn profile displays 'Flightcast' as his current employer with 4K followers, and his personal site identifies the role as 'founding engineer, building a video first podcast hosting platform.'",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 3,
+      "evidence_preview": [
+        {
+          "id": "web:f45073e1d157",
+          "type": "web",
+          "url": "https://github.com/doac-stuff",
+          "title": "-"
+        },
+        {
+          "id": "web:7ea615cc9294",
+          "type": "web",
+          "url": "https://yatendrakumar.com/",
+          "title": "Yatendra Kumar - - - - - X X"
+        },
+        {
+          "id": "web:e5e240d1d742",
+          "type": "web",
+          "url": "https://www.linkedin.com/posts/iamyatendrak_woke-up-to-100-github-stars-on-ai-buddy-activity-7178661876061335552-UM04",
+          "title": "-"
+        }
+      ],
+      "primary": false
+    },
+    {
+      "id": "sih-2022-national-win",
+      "beat": "pattern",
+      "text": "Yatendra's team won Smart India Hackathon 2022 — described by multiple independent sources as the world's largest hackathon, with 1.5 million participants across India and only 12,000 reaching the grand finale (< 1% selection ratio). His team built Tevo, a social progress-tracking app in Flutter + Firebase, and won their problem-set at the 48-hour Chennai finals in August 2022. A teammate's LinkedIn post independently corroborates the win.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 3,
+      "evidence_preview": [
+        {
+          "id": "web:d4bfbff7389d",
+          "type": "web",
+          "url": "https://dev.to/yatendra2001/how-does-participating-in-hackathons-competitions-skyrocket-my-career-in-2022-3e80",
+          "title": "How does participating in hackathons & competitions skyrocket my career in 2022? - DEV Community"
+        },
+        {
+          "id": "web:b53b78338d71",
+          "type": "web",
+          "url": "https://github.com/yatendra2001/Tevo-SIH-2022-Winner",
+          "title": "-"
+        },
+        {
+          "id": "web:c45b1d8353aa",
+          "type": "web",
+          "url": "https://www.linkedin.com/pulse/winning-indias-biggest-hackathon-syed-ibrahim-maaz",
+          "title": "-"
+        }
+      ],
+      "primary": false
+    },
+    {
+      "id": "ai-buddy-stars",
+      "beat": "pattern",
+      "text": "ai_buddy — Yatendra's open-source Flutter + Gemini personal AI assistant (PDF chat, image Q&A, on-device vector search via Hive) — has 231 GitHub stars and 65 forks. He announced the 100-star milestone publicly on LinkedIn. Three shipped releases.",
+      "label": "231 ★ open-source Flutter AI app",
+      "sublabel": "65 forks; 3 shipped releases; on-device Gemini vector embeddings",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 2,
+      "evidence_preview": [
+        {
+          "id": "web:3bc9bf703671",
+          "type": "web",
+          "url": "https://github.com/yatendra2001/ai_buddy",
+          "title": "-"
+        },
+        {
+          "id": "web:e5e240d1d742",
+          "type": "web",
+          "url": "https://www.linkedin.com/posts/iamyatendrak_woke-up-to-100-github-stars-on-ai-buddy-activity-7178661876061335552-UM04",
+          "title": "-"
+        }
+      ],
+      "primary": false
+    },
+    {
+      "id": "employer-flightcast",
+      "beat": "pattern",
+      "text": "Yatendra works at ROX WORKS LLC — a creator-tech startup run by 'Rox' (ex-MrBeast collaborator, ex-Facebook/Microsoft) — building Flightcast (flightcast.com), a video-first podcast hosting platform. Flightcast lets podcasters upload once and distribute to YouTube, Spotify, Apple Podcasts, and RSS simultaneously, with unified cross-platform analytics, AI-generated chapters, programmatic ad insertion, and proprietary migration tooling that imports listener history from Megaphone, Anchor, Transistor, Libsyn, and 6 other legacy hosts.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 4,
+      "evidence_preview": [
+        {
+          "id": "web:dcd813fc85a0",
+          "type": "web",
+          "url": "https://flightcast.com",
+          "title": "- - - - Flightcast | Podcast hosting platform made for video -"
+        },
+        {
+          "id": "web:8555f8bbbfdf",
+          "type": "web",
+          "url": "https://rox.works",
+          "title": "Hi, I&#x27;m Rox! - I Build Creator Tools - - - Open main menu"
+        },
+        {
+          "id": "web:f45073e1d157",
+          "type": "web",
+          "url": "https://github.com/doac-stuff",
+          "title": "-"
+        }
+      ],
+      "primary": false
+    },
+    {
+      "id": "rank-commits",
+      "beat": "pattern",
+      "text": "Yatendra is the single top committer on flightcast-core: 2,688 of 9,971 total commits across a 27-person team — 83% more than the second-ranked engineer (Alex Lane, 1,463). His first commit landed August 14, 2024; he was still shipping daily as of April 17, 2026, carrying a 19-day streak. That is 20+ continuous months of daily-cadence work on a live production platform.",
+      "label": "#1 of 27 contributors",
+      "sublabel": "2,688 of 9,971 commits over 20 months — 83% more than #2 (Alex Lane, 1,463)",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 1,
+      "evidence_preview": [
+        {
+          "id": "inventory:doac-stuff/flightcast-core",
+          "type": "repo",
+          "url": "https://github.com/doac-stuff/flightcast-core",
+          "title": "Inventory for doac-stuff/flightcast-core"
+        }
+      ],
+      "primary": false
+    },
+    {
+      "id": "architecture-scale",
+      "beat": "pattern",
+      "text": "Flightcast runs across 9 Cloudflare Workers apps (API, Next.js frontend, media-proxy ×2, RSS, analytics, queues, VAST ad server, browser extension), 6 Go microservices, and a Tinybird/ClickHouse analytics pipeline with 60+ query endpoints — all in flightcast-core — plus a separate Kubernetes cluster (media-system-k8) running 6 more Go services. Yatendra's 183k TSX + 156k TS + 7.4k Go insertions span every layer: tRPC procedures, Drizzle ORM migrations, Cloudflare Queue workers, and React UI.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 3,
+      "evidence_preview": [
+        {
+          "id": "inventory:doac-stuff/flightcast-core",
+          "type": "repo",
+          "url": "https://github.com/doac-stuff/flightcast-core",
+          "title": "Inventory for doac-stuff/flightcast-core"
+        },
+        {
+          "id": "inventory:doac-stuff/media-system-k8",
+          "type": "repo",
+          "url": "https://github.com/doac-stuff/media-system-k8",
+          "title": "Inventory for doac-stuff/media-system-k8"
+        },
+        {
+          "id": "commit:flightcast-core-readme",
+          "type": "web",
+          "url": "https://github.com/doac-stuff/flightcast-core/blob/main/README.md",
+          "title": "flightcast-core README — monorepo apps and services list"
+        }
+      ],
+      "primary": false
+    },
+    {
+      "id": "megaphone-migration-shipped",
+      "beat": "pattern",
+      "text": "Feb–Mar 2026: Yatendra architected Flightcast's Megaphone migration system solo. Deliverables: DB table with pending→email_sent→backfilling→completed state machine; a 234-line Cloudflare Queue worker orchestrating invite emails, job pre-creation, and backfill dispatch; four tRPC onboarding procedures with polling UI; blocking onboarding wizard steps gating advancement until migration completes; Tornado webhook `job_skipped` handling; and admin batch-unpublish/retry tools restricted to @flightcast.com email.",
+      "sublabel": "End-to-end platform-migration system: cron queue, DB state machine, onboarding wizard, webhook bus, admin fleet tools — solely authored over ~5 weeks",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 4,
+      "evidence_preview": [
+        {
+          "id": "commit:flightcast-core-auto-migration",
+          "type": "commit",
+          "url": "https://github.com/doac-stuff/flightcast-core/commit/bbea97786b1718d30dcc8322acaa78bcc8d2776e",
+          "title": "feat: the big boy task to process auto migration"
+        },
+        {
+          "id": "commit:flightcast-core-changelog-megaphone-v2",
+          "type": "web",
+          "url": "https://github.com/doac-stuff/flightcast-core/blob/main/CHANGELOGS_AND_DECISIONS/2026-02-24-yatendra-kumar-megaphone-onboarding-migration-v2.md",
+          "title": "Changelog: Megaphone migration v2 into onboarding + admin episode controls"
+        },
+        {
+          "id": "pr:doac-stuff/flightcast-core#2467",
+          "type": "pr",
+          "url": "https://github.com/doac-stuff/flightcast-core/pull/2467",
+          "title": "Feat/auto complete migration"
+        }
+      ],
+      "primary": false
+    },
+    {
+      "id": "integration-stack-ownership",
+      "beat": "pattern",
+      "text": "Yatendra's git history reveals consistent full-stack ownership of every external-platform integration: Spotify (analytics cron backfilling to 2015, upload webhooks, GUID routing in K8s RSS service); Megaphone (migration, admin, onboarding); YouTube (playlist sync, webhook handlers for the Go youtube-downloader); podcast embed player (9-commit sprint, Nov 8 2025). For each integration he writes the DB migration, tRPC procedure, Cloudflare Queue worker, and React UI — feature owner, not layer specialist.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 4,
+      "evidence_preview": [
+        {
+          "id": "inventory:doac-stuff/flightcast-core",
+          "type": "repo",
+          "url": "https://github.com/doac-stuff/flightcast-core",
+          "title": "Inventory for doac-stuff/flightcast-core"
+        },
+        {
+          "id": "inventory:doac-stuff/media-system-k8",
+          "type": "repo",
+          "url": "https://github.com/doac-stuff/media-system-k8",
+          "title": "Inventory for doac-stuff/media-system-k8"
+        },
+        {
+          "id": "pr:doac-stuff/flightcast-core#2539",
+          "type": "pr",
+          "url": "https://github.com/doac-stuff/flightcast-core/pull/2539",
+          "title": "Feat/onboarding flow spotify"
+        }
+      ],
+      "primary": false
+    },
+    {
+      "id": "flightcast-deploy-autonomy",
+      "beat": "pattern",
+      "text": "Across 200+ sampled PRs in doac-stuff/flightcast-core and doac-stuff/media-system-k8, the vast majority carry zero peer review. The handful that do (e.g. #2490, media-system-k8 #131, #136, #119) received only a bare 'approved' from ACPixel — no inline comments, no pushback. Yatendra sets his own bar and ships to production on his own cadence, consistent with being the org's #1 committer with nearly double the commits of the next contributor.",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 4,
+      "evidence_preview": [
+        {
+          "id": "review:doac-stuff/flightcast-core#2490:3870655988",
+          "type": "review",
+          "url": "https://github.com/doac-stuff/flightcast-core/pull/2490#pullrequestreview-3870655988",
+          "title": "ACPixel approved on PR #2490"
+        },
+        {
+          "id": "review:doac-stuff/media-system-k8#131:3821199066",
+          "type": "review",
+          "url": "https://github.com/doac-stuff/media-system-k8/pull/131#pullrequestreview-3821199066",
+          "title": "ACPixel approved on PR #131"
+        },
+        {
+          "id": "review:doac-stuff/media-system-k8#136:3949044564",
+          "type": "review",
+          "url": "https://github.com/doac-stuff/media-system-k8/pull/136#pullrequestreview-3949044564",
+          "title": "ACPixel approved on PR #136"
+        }
+      ],
+      "primary": false
+    }
+  ],
+  "disclosure": {
+    "id": "disclosure-testing-gap",
+    "beat": "disclosure",
+    "text": "Across 2,504 catalogued commits spanning personal AI apps, hackathon repos, and the production flightcast-core codebase from 2022–2026, only 4 commits touch tests — all informal probes ('test 2', 'webhook test', 'admin tool to test shorts') with zero unit or CI testing infrastructure in any codebase he owns, a pattern stable across every context. When external maintainers set the bar, however, the capability is there: AppFlowy PR #3009 landed a UI bug fix with 100%-coverage integration tests and earned two maintainer approvals. He can write tests. Just doesn't yet impose that on himself.",
+    "confidence": "high",
+    "status": "ai_draft",
+    "evidence_count": 5,
+    "evidence_preview": [
+      {
+        "id": "commit:yatendra2001/catalyst@7f9fc0e",
+        "type": "commit",
+        "url": "https://github.com/yatendra2001/catalyst/commit/7f9fc0ea3bcb5a9507b8d5f5c853b11afa9f02f9",
+        "title": "test input too"
+      },
+      {
+        "id": "commit:yatendra2001/memcast-v2@11bb988",
+        "type": "commit",
+        "url": "https://github.com/yatendra2001/memcast-v2/commit/11bb9889908ef990d792f9b11ac65deea04ffec1",
+        "title": "test 2"
+      },
+      {
+        "id": "commit:yatendra2001/memcast-v2@aba889f",
+        "type": "commit",
+        "url": "https://github.com/yatendra2001/memcast-v2/commit/aba889fe8a049a722be3bea0f2ce8b44bb3d74ad",
+        "title": "webhook test"
+      }
+    ],
+    "primary": true
+  },
+  "shipped": [
+    {
+      "id": "shipped-flightcast",
+      "beat": "shipped-line",
+      "text": "Flightcast — video-first podcast hosting platform; upload once, auto-distribute to YouTube, Spotify, Apple Podcasts, and RSS with unified analytics, AI chapters, and programmatic ad insertion",
+      "label": "#1 of 27 engineers · 2,688 of 9,971 commits · 20+ months",
+      "sublabel": "Founding Engineer · Aug 2024–Apr 2026 · TypeScript · Cloudflare Workers · Go · Kubernetes · tRPC",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 10,
+      "evidence_preview": [
+        {
+          "id": "repo:doac-stuff/flightcast-core",
+          "type": "repo",
+          "url": "https://github.com/doac-stuff/flightcast-core",
+          "title": "flightcast-core"
+        },
+        {
+          "id": "repo:doac-stuff/flightcast-lambdas",
+          "type": "repo",
+          "url": "https://github.com/doac-stuff/flightcast-lambdas",
+          "title": "flightcast-lambdas"
+        },
+        {
+          "id": "repo:doac-stuff/flightcast-cf-youtube-upload-worker",
+          "type": "repo",
+          "url": "https://github.com/doac-stuff/flightcast-cf-youtube-upload-worker",
+          "title": "flightcast-cf-youtube-upload-worker"
+        }
+      ],
+      "primary": true
+    },
+    {
+      "id": "shipped-tevo",
+      "beat": "shipped-line",
+      "text": "Tevo — social progress-tracking mobile app for sharing daily goals and streaks with friends, built and won at India's Smart India Hackathon 2022 grand finale in Chennai",
+      "label": "Smart India Hackathon 2022 winner — 1.5M+ participants, <1% reach the finale",
+      "sublabel": "5-person team · 158 days · Aug 2022 · Flutter · Firebase · Dart",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 5,
+      "evidence_preview": [
+        {
+          "id": "repo:yatendra2001/Tevo-SIH-2022-Winner",
+          "type": "repo",
+          "url": "https://github.com/yatendra2001/Tevo-SIH-2022-Winner",
+          "title": "Tevo-SIH-2022-Winner"
+        },
+        {
+          "id": "inventory:yatendra2001/Tevo-SIH-2022-Winner",
+          "type": "repo",
+          "url": "https://github.com/yatendra2001/Tevo-SIH-2022-Winner",
+          "title": "Inventory for yatendra2001/Tevo-SIH-2022-Winner"
+        },
+        {
+          "id": "web:d4bfbff7389d",
+          "type": "web",
+          "url": "https://dev.to/yatendra2001/how-does-participating-in-hackathons-competitions-skyrocket-my-career-in-2022-3e80",
+          "title": "How does participating in hackathons & competitions skyrocket my career in 2022? - DEV Community"
+        }
+      ],
+      "primary": true
+    },
+    {
+      "id": "shipped-ai-buddy",
+      "beat": "shipped-line",
+      "text": "ai_buddy — free open-source Flutter AI assistant with PDF chat, image Q&A, and on-device vector search, running on iOS, Android, and desktop via Gemini",
+      "label": "231 GitHub stars · 65 forks · 3 shipped releases",
+      "sublabel": "Solo · 386 active days · Flutter · Gemini · Hive",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 4,
+      "evidence_preview": [
+        {
+          "id": "repo:yatendra2001/ai_buddy",
+          "type": "repo",
+          "url": "https://github.com/yatendra2001/ai_buddy",
+          "title": "ai_buddy"
+        },
+        {
+          "id": "inventory:yatendra2001/ai_buddy",
+          "type": "repo",
+          "url": "https://github.com/yatendra2001/ai_buddy",
+          "title": "Inventory for yatendra2001/ai_buddy"
+        },
+        {
+          "id": "web:3bc9bf703671",
+          "type": "web",
+          "url": "https://github.com/yatendra2001/ai_buddy",
+          "title": "-"
+        }
+      ],
+      "primary": true
+    },
+    {
+      "id": "shipped-appflowy-rust-plugin",
+      "beat": "shipped-line",
+      "text": "AppFlowy OpenAI plugin — brand-new Rust crate wiring GPT-3.5-turbo AI writing assistance into AppFlowy's sidebar UI, merged into the 69.8k-star open-source Notion alternative after 26 commits and 8 rounds of maintainer review",
+      "label": "Merged into 69.8k★ AppFlowy — 104 days from first PR to delivery",
+      "sublabel": "Open-source contribution · Jun–Sep 2023 · Rust · Flutter · Dart · OpenAI",
+      "confidence": "high",
+      "status": "ai_draft",
+      "evidence_count": 6,
+      "evidence_preview": [
+        {
+          "id": "pr:AppFlowy-IO/AppFlowy#3302",
+          "type": "pr",
+          "url": "https://github.com/AppFlowy-IO/AppFlowy/pull/3302",
+          "title": "feat: integrated openAI rust plugin "
+        },
+        {
+          "id": "pr:AppFlowy-IO/AppFlowy#3009",
+          "type": "pr",
+          "url": "https://github.com/AppFlowy-IO/AppFlowy/pull/3009",
+          "title": "fix: row banner overlay"
+        },
+        {
+          "id": "pr:AppFlowy-IO/AppFlowy#2725",
+          "type": "pr",
+          "url": "https://github.com/AppFlowy-IO/AppFlowy/pull/2725",
+          "title": "feat: added analysis options + formatted complete code"
+        }
+      ],
+      "primary": true
+    }
+  ],
+  "charts": {
+    "timeline": [
+      {
+        "year": 2022,
+        "month": 8,
+        "label": "Tevo SIH 2022 winner",
+        "note": "Flutter + Firebase progress-tracking app; 48-h Chennai finale, top <1% of 1.5M participants",
+        "type": "win",
+        "major": true
+      },
+      {
+        "year": 2023,
+        "month": 2,
+        "label": "AI Muse ETHForAll winner",
+        "note": "DALL-E NFT-minting Flutter app won global Ethereum hackathon; 9,700+ devs, 70+ countries",
+        "type": "win",
+        "major": true
+      },
+      {
+        "year": 2023,
+        "month": 6,
+        "label": "AppFlowy first PR merged",
+        "note": "Formatting fix merged by LucasXu0 on Jun 7; opens 104-day OSS mentorship arc",
+        "type": "oss",
+        "major": false
+      },
+      {
+        "year": 2023,
+        "month": 9,
+        "label": "AppFlowy Rust plugin merged",
+        "note": "PR #3302: new flowy-plugins crate wiring GPT-3.5-turbo into 69.8k★ AppFlowy; 26 commits, 8 review rounds",
+        "type": "oss",
+        "major": true
+      },
+      {
+        "year": 2023,
+        "month": 12,
+        "label": "CommandDash release sprint",
+        "note": "14 PRs in 31 days (Dec 21–Jan 21) shipping release 0.2.3 on Flutter dev-tooling platform",
+        "type": "job",
+        "major": false
+      },
+      {
+        "year": 2024,
+        "month": 8,
+        "label": "Flightcast founding engineer",
+        "note": "#1 committer starts Aug 14; 2,688 of 9,971 commits across 27-person team over 20+ months",
+        "type": "job",
+        "major": true
+      },
+      {
+        "year": 2025,
+        "month": 1,
+        "label": "Memcast v1 ships",
+        "note": "First of three podcast-intelligence repos; deliberate 2-week reset rhythm repeats across Jan–Jul 2025 relay",
+        "type": "solo",
+        "major": false
+      },
+      {
+        "year": 2025,
+        "month": 6,
+        "label": "Catalyst app ships",
+        "note": "16-day sprint: App Store launch → rejection → RevenueCat in/out → two infra swaps → 135 commits",
+        "type": "solo",
+        "major": false
+      },
+      {
+        "year": 2025,
+        "month": 7,
+        "label": "Memcast v2 ships",
+        "note": "Third-generation AI podcast platform; relay ends Jul 26 with working feature tier",
+        "type": "solo",
+        "major": false
+      }
+    ],
+    "primary_repo_team": {
+      "repo": "doac-stuff/flightcast-core",
+      "total_commits": 9971,
+      "contributors": [
+        {
+          "name": "yatendra2001",
+          "commits": 2688,
+          "is_user": true
+        },
+        {
+          "name": "Alex Lane",
+          "commits": 1463,
+          "is_user": false
+        },
+        {
+          "name": "Pixel",
+          "commits": 946,
+          "is_user": false
+        },
+        {
+          "name": "Rox Codes",
+          "commits": 893,
+          "is_user": false
+        },
+        {
+          "name": "Talha Azeem",
+          "commits": 803,
+          "is_user": false
+        },
+        {
+          "name": "ACPixel",
+          "commits": 512,
+          "is_user": false
+        },
+        {
+          "name": "Blake",
+          "commits": 408,
+          "is_user": false
+        },
+        {
+          "name": "RoxCodes",
+          "commits": 404,
+          "is_user": false
+        }
+      ]
+    },
+    "primary_repo_daily_activity": {
+      "repo": "doac-stuff/flightcast-core",
+      "days": [
+        {
+          "date": "2024-08-14",
+          "ins": 916,
+          "del": 104,
+          "c": 1
+        },
+        {
+          "date": "2024-08-21",
+          "ins": 540,
+          "del": 13,
+          "c": 1
+        },
+        {
+          "date": "2024-08-26",
+          "ins": 6475,
+          "del": 39,
+          "c": 2
+        },
+        {
+          "date": "2024-08-29",
+          "ins": 3541,
+          "del": 16,
+          "c": 1
+        },
+        {
+          "date": "2024-09-01",
+          "ins": 504,
+          "del": 38,
+          "c": 1
+        },
+        {
+          "date": "2024-09-02",
+          "ins": 87,
+          "del": 48,
+          "c": 1
+        },
+        {
+          "date": "2024-09-04",
+          "ins": 278,
+          "del": 1010,
+          "c": 3
+        },
+        {
+          "date": "2024-09-05",
+          "ins": 85,
+          "del": 37,
+          "c": 1
+        },
+        {
+          "date": "2024-09-10",
+          "ins": 369,
+          "del": 26,
+          "c": 1
+        },
+        {
+          "date": "2024-09-11",
+          "ins": 1957,
+          "del": 212,
+          "c": 2
+        },
+        {
+          "date": "2024-09-12",
+          "ins": 178,
+          "del": 80,
+          "c": 1
+        },
+        {
+          "date": "2024-09-17",
+          "ins": 168,
+          "del": 50,
+          "c": 1
+        },
+        {
+          "date": "2024-09-27",
+          "ins": 2234,
+          "del": 49,
+          "c": 1
+        },
+        {
+          "date": "2024-10-08",
+          "ins": 6398,
+          "del": 2797,
+          "c": 1
+        },
+        {
+          "date": "2024-10-09",
+          "ins": 901,
+          "del": 849,
+          "c": 1
+        },
+        {
+          "date": "2024-10-15",
+          "ins": 3187,
+          "del": 3287,
+          "c": 1
+        },
+        {
+          "date": "2024-10-19",
+          "ins": 4202,
+          "del": 383,
+          "c": 3
+        },
+        {
+          "date": "2024-10-26",
+          "ins": 220,
+          "del": 25,
+          "c": 1
+        },
+        {
+          "date": "2024-10-29",
+          "ins": 4544,
+          "del": 68,
+          "c": 1
+        },
+        {
+          "date": "2024-10-31",
+          "ins": 740,
+          "del": 364,
+          "c": 7
+        },
+        {
+          "date": "2024-11-01",
+          "ins": 2,
+          "del": 2,
+          "c": 2
+        },
+        {
+          "date": "2024-11-02",
+          "ins": 4026,
+          "del": 3872,
+          "c": 6
+        },
+        {
+          "date": "2024-11-03",
+          "ins": 12,
+          "del": 17,
+          "c": 1
+        },
+        {
+          "date": "2024-11-04",
+          "ins": 4581,
+          "del": 4264,
+          "c": 6
+        },
+        {
+          "date": "2024-11-06",
+          "ins": 10408,
+          "del": 8347,
+          "c": 2
+        },
+        {
+          "date": "2024-11-07",
+          "ins": 424,
+          "del": 149,
+          "c": 1
+        },
+        {
+          "date": "2024-11-08",
+          "ins": 300,
+          "del": 12,
+          "c": 1
+        },
+        {
+          "date": "2024-11-09",
+          "ins": 397,
+          "del": 89,
+          "c": 1
+        },
+        {
+          "date": "2024-11-11",
+          "ins": 534,
+          "del": 94,
+          "c": 3
+        },
+        {
+          "date": "2024-11-12",
+          "ins": 18,
+          "del": 13,
+          "c": 2
+        },
+        {
+          "date": "2024-11-13",
+          "ins": 386,
+          "del": 176,
+          "c": 9
+        },
+        {
+          "date": "2024-11-21",
+          "ins": 1218,
+          "del": 43,
+          "c": 3
+        },
+        {
+          "date": "2024-11-22",
+          "ins": 1123,
+          "del": 1,
+          "c": 1
+        },
+        {
+          "date": "2024-11-23",
+          "ins": 1218,
+          "del": 1,
+          "c": 1
+        },
+        {
+          "date": "2024-11-24",
+          "ins": 247,
+          "del": 63,
+          "c": 2
+        },
+        {
+          "date": "2024-11-25",
+          "ins": 51,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2024-11-27",
+          "ins": 505,
+          "del": 259,
+          "c": 1
+        },
+        {
+          "date": "2024-11-28",
+          "ins": 198,
+          "del": 1,
+          "c": 3
+        },
+        {
+          "date": "2024-12-01",
+          "ins": 433,
+          "del": 176,
+          "c": 1
+        },
+        {
+          "date": "2024-12-02",
+          "ins": 3,
+          "del": 3,
+          "c": 1
+        },
+        {
+          "date": "2024-12-04",
+          "ins": 88,
+          "del": 117,
+          "c": 3
+        },
+        {
+          "date": "2024-12-05",
+          "ins": 1334,
+          "del": 29,
+          "c": 12
+        },
+        {
+          "date": "2024-12-06",
+          "ins": 148,
+          "del": 747,
+          "c": 5
+        },
+        {
+          "date": "2024-12-07",
+          "ins": 52,
+          "del": 18,
+          "c": 2
+        },
+        {
+          "date": "2024-12-11",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2024-12-12",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2024-12-13",
+          "ins": 509,
+          "del": 49,
+          "c": 14
+        },
+        {
+          "date": "2024-12-14",
+          "ins": 56,
+          "del": 5,
+          "c": 2
+        },
+        {
+          "date": "2024-12-15",
+          "ins": 249,
+          "del": 80,
+          "c": 5
+        },
+        {
+          "date": "2024-12-16",
+          "ins": 2290,
+          "del": 5,
+          "c": 4
+        },
+        {
+          "date": "2024-12-17",
+          "ins": 6310,
+          "del": 15129,
+          "c": 5
+        },
+        {
+          "date": "2024-12-18",
+          "ins": 5976,
+          "del": 26,
+          "c": 8
+        },
+        {
+          "date": "2024-12-20",
+          "ins": 244,
+          "del": 214,
+          "c": 6
+        },
+        {
+          "date": "2024-12-23",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2024-12-26",
+          "ins": 18575,
+          "del": 2188,
+          "c": 3
+        },
+        {
+          "date": "2024-12-30",
+          "ins": 180,
+          "del": 65,
+          "c": 3
+        },
+        {
+          "date": "2025-01-02",
+          "ins": 4,
+          "del": 1,
+          "c": 2
+        },
+        {
+          "date": "2025-01-03",
+          "ins": 26,
+          "del": 4,
+          "c": 7
+        },
+        {
+          "date": "2025-01-04",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-01-06",
+          "ins": 207,
+          "del": 80,
+          "c": 6
+        },
+        {
+          "date": "2025-01-07",
+          "ins": 4188,
+          "del": 2,
+          "c": 4
+        },
+        {
+          "date": "2025-01-08",
+          "ins": 858,
+          "del": 39,
+          "c": 2
+        },
+        {
+          "date": "2025-01-09",
+          "ins": 4426,
+          "del": 930,
+          "c": 22
+        },
+        {
+          "date": "2025-01-10",
+          "ins": 101,
+          "del": 25,
+          "c": 7
+        },
+        {
+          "date": "2025-01-11",
+          "ins": 429,
+          "del": 58,
+          "c": 17
+        },
+        {
+          "date": "2025-01-13",
+          "ins": 2133,
+          "del": 60,
+          "c": 6
+        },
+        {
+          "date": "2025-01-14",
+          "ins": 35,
+          "del": 38,
+          "c": 2
+        },
+        {
+          "date": "2025-01-16",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-01-17",
+          "ins": 310,
+          "del": 275,
+          "c": 2
+        },
+        {
+          "date": "2025-01-18",
+          "ins": 67,
+          "del": 86,
+          "c": 5
+        },
+        {
+          "date": "2025-01-20",
+          "ins": 2258,
+          "del": 4,
+          "c": 4
+        },
+        {
+          "date": "2025-01-21",
+          "ins": 197,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-01-22",
+          "ins": 82,
+          "del": 21,
+          "c": 5
+        },
+        {
+          "date": "2025-01-25",
+          "ins": 2265,
+          "del": 503,
+          "c": 12
+        },
+        {
+          "date": "2025-01-26",
+          "ins": 4330,
+          "del": 12,
+          "c": 6
+        },
+        {
+          "date": "2025-01-31",
+          "ins": 183,
+          "del": 4,
+          "c": 4
+        },
+        {
+          "date": "2025-02-01",
+          "ins": 63,
+          "del": 10,
+          "c": 1
+        },
+        {
+          "date": "2025-02-04",
+          "ins": 0,
+          "del": 0,
+          "c": 2
+        },
+        {
+          "date": "2025-02-05",
+          "ins": 17,
+          "del": 8,
+          "c": 1
+        },
+        {
+          "date": "2025-02-06",
+          "ins": 67,
+          "del": 19,
+          "c": 1
+        },
+        {
+          "date": "2025-02-07",
+          "ins": 428,
+          "del": 47,
+          "c": 5
+        },
+        {
+          "date": "2025-02-08",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-02-12",
+          "ins": 92,
+          "del": 92,
+          "c": 1
+        },
+        {
+          "date": "2025-02-13",
+          "ins": 228,
+          "del": 14,
+          "c": 6
+        },
+        {
+          "date": "2025-02-14",
+          "ins": 218,
+          "del": 148,
+          "c": 11
+        },
+        {
+          "date": "2025-02-15",
+          "ins": 50,
+          "del": 64,
+          "c": 6
+        },
+        {
+          "date": "2025-02-16",
+          "ins": 140,
+          "del": 202,
+          "c": 12
+        },
+        {
+          "date": "2025-02-17",
+          "ins": 955,
+          "del": 403,
+          "c": 15
+        },
+        {
+          "date": "2025-02-18",
+          "ins": 230,
+          "del": 93,
+          "c": 6
+        },
+        {
+          "date": "2025-02-19",
+          "ins": 1,
+          "del": 1,
+          "c": 2
+        },
+        {
+          "date": "2025-02-20",
+          "ins": 147,
+          "del": 50,
+          "c": 11
+        },
+        {
+          "date": "2025-02-21",
+          "ins": 1590,
+          "del": 496,
+          "c": 18
+        },
+        {
+          "date": "2025-02-22",
+          "ins": 9,
+          "del": 4,
+          "c": 5
+        },
+        {
+          "date": "2025-02-23",
+          "ins": 54,
+          "del": 61,
+          "c": 5
+        },
+        {
+          "date": "2025-02-24",
+          "ins": 1772,
+          "del": 1018,
+          "c": 22
+        },
+        {
+          "date": "2025-02-25",
+          "ins": 119,
+          "del": 34,
+          "c": 8
+        },
+        {
+          "date": "2025-02-26",
+          "ins": 122,
+          "del": 196,
+          "c": 6
+        },
+        {
+          "date": "2025-02-27",
+          "ins": 380,
+          "del": 753,
+          "c": 18
+        },
+        {
+          "date": "2025-02-28",
+          "ins": 6,
+          "del": 3,
+          "c": 1
+        },
+        {
+          "date": "2025-03-01",
+          "ins": 365,
+          "del": 174,
+          "c": 3
+        },
+        {
+          "date": "2025-03-03",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-03-05",
+          "ins": 5475,
+          "del": 178,
+          "c": 12
+        },
+        {
+          "date": "2025-03-06",
+          "ins": 10829,
+          "del": 416,
+          "c": 19
+        },
+        {
+          "date": "2025-03-07",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-03-08",
+          "ins": 387,
+          "del": 235,
+          "c": 5
+        },
+        {
+          "date": "2025-03-10",
+          "ins": 256,
+          "del": 63,
+          "c": 7
+        },
+        {
+          "date": "2025-03-12",
+          "ins": 202,
+          "del": 109,
+          "c": 7
+        },
+        {
+          "date": "2025-03-13",
+          "ins": 3,
+          "del": 1,
+          "c": 3
+        },
+        {
+          "date": "2025-03-14",
+          "ins": 52,
+          "del": 3,
+          "c": 3
+        },
+        {
+          "date": "2025-03-15",
+          "ins": 431,
+          "del": 106,
+          "c": 7
+        },
+        {
+          "date": "2025-03-16",
+          "ins": 5273,
+          "del": 18,
+          "c": 8
+        },
+        {
+          "date": "2025-03-17",
+          "ins": 5273,
+          "del": 1158,
+          "c": 5
+        },
+        {
+          "date": "2025-03-18",
+          "ins": 550,
+          "del": 45,
+          "c": 2
+        },
+        {
+          "date": "2025-03-19",
+          "ins": 2808,
+          "del": 935,
+          "c": 9
+        },
+        {
+          "date": "2025-03-20",
+          "ins": 1326,
+          "del": 161,
+          "c": 4
+        },
+        {
+          "date": "2025-03-21",
+          "ins": 1105,
+          "del": 334,
+          "c": 7
+        },
+        {
+          "date": "2025-03-22",
+          "ins": 1607,
+          "del": 473,
+          "c": 6
+        },
+        {
+          "date": "2025-03-23",
+          "ins": 122,
+          "del": 81,
+          "c": 3
+        },
+        {
+          "date": "2025-03-25",
+          "ins": 1726,
+          "del": 1470,
+          "c": 9
+        },
+        {
+          "date": "2025-03-26",
+          "ins": 746,
+          "del": 423,
+          "c": 12
+        },
+        {
+          "date": "2025-03-27",
+          "ins": 5955,
+          "del": 561,
+          "c": 12
+        },
+        {
+          "date": "2025-03-29",
+          "ins": 5467,
+          "del": 32,
+          "c": 10
+        },
+        {
+          "date": "2025-03-30",
+          "ins": 19,
+          "del": 1,
+          "c": 4
+        },
+        {
+          "date": "2025-03-31",
+          "ins": 1125,
+          "del": 3872,
+          "c": 6
+        },
+        {
+          "date": "2025-04-01",
+          "ins": 532,
+          "del": 167,
+          "c": 2
+        },
+        {
+          "date": "2025-04-02",
+          "ins": 1275,
+          "del": 1020,
+          "c": 10
+        },
+        {
+          "date": "2025-04-03",
+          "ins": 1777,
+          "del": 1234,
+          "c": 7
+        },
+        {
+          "date": "2025-04-04",
+          "ins": 337,
+          "del": 97,
+          "c": 2
+        },
+        {
+          "date": "2025-04-09",
+          "ins": 90,
+          "del": 76,
+          "c": 1
+        },
+        {
+          "date": "2025-04-10",
+          "ins": 1626,
+          "del": 144,
+          "c": 7
+        },
+        {
+          "date": "2025-04-11",
+          "ins": 282,
+          "del": 245,
+          "c": 4
+        },
+        {
+          "date": "2025-04-12",
+          "ins": 123,
+          "del": 96,
+          "c": 7
+        },
+        {
+          "date": "2025-04-14",
+          "ins": 240,
+          "del": 82,
+          "c": 1
+        },
+        {
+          "date": "2025-04-15",
+          "ins": 3636,
+          "del": 126,
+          "c": 4
+        },
+        {
+          "date": "2025-04-16",
+          "ins": 6420,
+          "del": 1047,
+          "c": 5
+        },
+        {
+          "date": "2025-04-17",
+          "ins": 1594,
+          "del": 6880,
+          "c": 12
+        },
+        {
+          "date": "2025-04-18",
+          "ins": 1581,
+          "del": 545,
+          "c": 22
+        },
+        {
+          "date": "2025-04-19",
+          "ins": 7,
+          "del": 4,
+          "c": 2
+        },
+        {
+          "date": "2025-04-20",
+          "ins": 105,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-04-21",
+          "ins": 7510,
+          "del": 3405,
+          "c": 3
+        },
+        {
+          "date": "2025-04-22",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-04-23",
+          "ins": 1119,
+          "del": 309,
+          "c": 1
+        },
+        {
+          "date": "2025-04-24",
+          "ins": 14447,
+          "del": 326,
+          "c": 6
+        },
+        {
+          "date": "2025-04-25",
+          "ins": 1955,
+          "del": 1406,
+          "c": 1
+        },
+        {
+          "date": "2025-04-26",
+          "ins": 7801,
+          "del": 750,
+          "c": 4
+        },
+        {
+          "date": "2025-04-28",
+          "ins": 2264,
+          "del": 84,
+          "c": 4
+        },
+        {
+          "date": "2025-04-29",
+          "ins": 3026,
+          "del": 46,
+          "c": 3
+        },
+        {
+          "date": "2025-04-30",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-05-01",
+          "ins": 223,
+          "del": 148,
+          "c": 3
+        },
+        {
+          "date": "2025-05-02",
+          "ins": 342,
+          "del": 600,
+          "c": 3
+        },
+        {
+          "date": "2025-05-03",
+          "ins": 1875,
+          "del": 556,
+          "c": 2
+        },
+        {
+          "date": "2025-05-04",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-05-06",
+          "ins": 2621,
+          "del": 1463,
+          "c": 9
+        },
+        {
+          "date": "2025-05-07",
+          "ins": 5813,
+          "del": 10979,
+          "c": 7
+        },
+        {
+          "date": "2025-05-08",
+          "ins": 245,
+          "del": 158,
+          "c": 4
+        },
+        {
+          "date": "2025-05-09",
+          "ins": 780,
+          "del": 26,
+          "c": 7
+        },
+        {
+          "date": "2025-05-11",
+          "ins": 770,
+          "del": 443,
+          "c": 4
+        },
+        {
+          "date": "2025-05-12",
+          "ins": 559,
+          "del": 24,
+          "c": 6
+        },
+        {
+          "date": "2025-05-13",
+          "ins": 492,
+          "del": 66,
+          "c": 2
+        },
+        {
+          "date": "2025-05-14",
+          "ins": 139,
+          "del": 17,
+          "c": 9
+        },
+        {
+          "date": "2025-05-15",
+          "ins": 24,
+          "del": 11,
+          "c": 2
+        },
+        {
+          "date": "2025-05-16",
+          "ins": 7293,
+          "del": 78,
+          "c": 12
+        },
+        {
+          "date": "2025-05-17",
+          "ins": 28,
+          "del": 4,
+          "c": 4
+        },
+        {
+          "date": "2025-05-18",
+          "ins": 97,
+          "del": 14,
+          "c": 1
+        },
+        {
+          "date": "2025-05-19",
+          "ins": 97,
+          "del": 3,
+          "c": 2
+        },
+        {
+          "date": "2025-05-20",
+          "ins": 116,
+          "del": 77,
+          "c": 3
+        },
+        {
+          "date": "2025-05-21",
+          "ins": 5,
+          "del": 29,
+          "c": 8
+        },
+        {
+          "date": "2025-05-22",
+          "ins": 10,
+          "del": 2,
+          "c": 3
+        },
+        {
+          "date": "2025-05-23",
+          "ins": 808,
+          "del": 94,
+          "c": 7
+        },
+        {
+          "date": "2025-05-24",
+          "ins": 39,
+          "del": 8,
+          "c": 4
+        },
+        {
+          "date": "2025-05-25",
+          "ins": 79,
+          "del": 12,
+          "c": 5
+        },
+        {
+          "date": "2025-05-26",
+          "ins": 6,
+          "del": 10,
+          "c": 4
+        },
+        {
+          "date": "2025-05-28",
+          "ins": 11,
+          "del": 12,
+          "c": 7
+        },
+        {
+          "date": "2025-05-29",
+          "ins": 365,
+          "del": 50,
+          "c": 4
+        },
+        {
+          "date": "2025-05-31",
+          "ins": 2122,
+          "del": 324,
+          "c": 10
+        },
+        {
+          "date": "2025-06-01",
+          "ins": 3,
+          "del": 8,
+          "c": 3
+        },
+        {
+          "date": "2025-06-02",
+          "ins": 71,
+          "del": 16,
+          "c": 4
+        },
+        {
+          "date": "2025-06-03",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-06-04",
+          "ins": 362,
+          "del": 197,
+          "c": 3
+        },
+        {
+          "date": "2025-06-05",
+          "ins": 289,
+          "del": 150,
+          "c": 2
+        },
+        {
+          "date": "2025-06-06",
+          "ins": 20,
+          "del": 8,
+          "c": 3
+        },
+        {
+          "date": "2025-06-09",
+          "ins": 3256,
+          "del": 2466,
+          "c": 9
+        },
+        {
+          "date": "2025-06-10",
+          "ins": 2061,
+          "del": 1266,
+          "c": 13
+        },
+        {
+          "date": "2025-06-13",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-06-14",
+          "ins": 45,
+          "del": 54,
+          "c": 2
+        },
+        {
+          "date": "2025-06-15",
+          "ins": 17,
+          "del": 49,
+          "c": 1
+        },
+        {
+          "date": "2025-06-17",
+          "ins": 429,
+          "del": 25,
+          "c": 1
+        },
+        {
+          "date": "2025-06-18",
+          "ins": 1030,
+          "del": 92,
+          "c": 6
+        },
+        {
+          "date": "2025-06-19",
+          "ins": 420,
+          "del": 133,
+          "c": 7
+        },
+        {
+          "date": "2025-06-20",
+          "ins": 164,
+          "del": 32,
+          "c": 3
+        },
+        {
+          "date": "2025-06-21",
+          "ins": 386,
+          "del": 44,
+          "c": 4
+        },
+        {
+          "date": "2025-06-23",
+          "ins": 49,
+          "del": 44,
+          "c": 1
+        },
+        {
+          "date": "2025-06-24",
+          "ins": 277,
+          "del": 64,
+          "c": 4
+        },
+        {
+          "date": "2025-06-26",
+          "ins": 16427,
+          "del": 196,
+          "c": 16
+        },
+        {
+          "date": "2025-06-27",
+          "ins": 164,
+          "del": 120,
+          "c": 2
+        },
+        {
+          "date": "2025-07-01",
+          "ins": 197,
+          "del": 164,
+          "c": 2
+        },
+        {
+          "date": "2025-07-02",
+          "ins": 479,
+          "del": 63,
+          "c": 3
+        },
+        {
+          "date": "2025-07-03",
+          "ins": 901,
+          "del": 203,
+          "c": 6
+        },
+        {
+          "date": "2025-07-04",
+          "ins": 400,
+          "del": 497,
+          "c": 2
+        },
+        {
+          "date": "2025-07-05",
+          "ins": 10,
+          "del": 3,
+          "c": 1
+        },
+        {
+          "date": "2025-07-06",
+          "ins": 7330,
+          "del": 9,
+          "c": 1
+        },
+        {
+          "date": "2025-07-07",
+          "ins": 439,
+          "del": 0,
+          "c": 2
+        },
+        {
+          "date": "2025-07-08",
+          "ins": 7759,
+          "del": 7,
+          "c": 3
+        },
+        {
+          "date": "2025-07-10",
+          "ins": 2695,
+          "del": 321,
+          "c": 1
+        },
+        {
+          "date": "2025-07-11",
+          "ins": 428,
+          "del": 19,
+          "c": 5
+        },
+        {
+          "date": "2025-07-12",
+          "ins": 7978,
+          "del": 7352,
+          "c": 3
+        },
+        {
+          "date": "2025-07-13",
+          "ins": 626,
+          "del": 125,
+          "c": 3
+        },
+        {
+          "date": "2025-07-14",
+          "ins": 10507,
+          "del": 2965,
+          "c": 7
+        },
+        {
+          "date": "2025-07-15",
+          "ins": 781,
+          "del": 837,
+          "c": 5
+        },
+        {
+          "date": "2025-07-16",
+          "ins": 344,
+          "del": 218,
+          "c": 8
+        },
+        {
+          "date": "2025-07-17",
+          "ins": 736,
+          "del": 156,
+          "c": 5
+        },
+        {
+          "date": "2025-07-18",
+          "ins": 9,
+          "del": 16,
+          "c": 3
+        },
+        {
+          "date": "2025-07-19",
+          "ins": 2421,
+          "del": 6,
+          "c": 2
+        },
+        {
+          "date": "2025-07-21",
+          "ins": 1492,
+          "del": 485,
+          "c": 9
+        },
+        {
+          "date": "2025-07-22",
+          "ins": 430,
+          "del": 357,
+          "c": 5
+        },
+        {
+          "date": "2025-07-23",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-07-25",
+          "ins": 50,
+          "del": 47,
+          "c": 2
+        },
+        {
+          "date": "2025-07-26",
+          "ins": 639,
+          "del": 91,
+          "c": 8
+        },
+        {
+          "date": "2025-07-27",
+          "ins": 8238,
+          "del": 2,
+          "c": 3
+        },
+        {
+          "date": "2025-07-28",
+          "ins": 18436,
+          "del": 401,
+          "c": 8
+        },
+        {
+          "date": "2025-07-29",
+          "ins": 22075,
+          "del": 2210,
+          "c": 19
+        },
+        {
+          "date": "2025-07-30",
+          "ins": 474,
+          "del": 92,
+          "c": 4
+        },
+        {
+          "date": "2025-07-31",
+          "ins": 340,
+          "del": 12,
+          "c": 4
+        },
+        {
+          "date": "2025-08-01",
+          "ins": 1613,
+          "del": 248,
+          "c": 10
+        },
+        {
+          "date": "2025-08-03",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-08-04",
+          "ins": 1127,
+          "del": 1235,
+          "c": 8
+        },
+        {
+          "date": "2025-08-05",
+          "ins": 12725,
+          "del": 2192,
+          "c": 26
+        },
+        {
+          "date": "2025-08-06",
+          "ins": 1189,
+          "del": 306,
+          "c": 11
+        },
+        {
+          "date": "2025-08-07",
+          "ins": 2424,
+          "del": 1406,
+          "c": 15
+        },
+        {
+          "date": "2025-08-08",
+          "ins": 593,
+          "del": 344,
+          "c": 13
+        },
+        {
+          "date": "2025-08-09",
+          "ins": 9949,
+          "del": 101,
+          "c": 8
+        },
+        {
+          "date": "2025-08-10",
+          "ins": 1100,
+          "del": 101,
+          "c": 8
+        },
+        {
+          "date": "2025-08-11",
+          "ins": 836,
+          "del": 307,
+          "c": 1
+        },
+        {
+          "date": "2025-08-12",
+          "ins": 11973,
+          "del": 1626,
+          "c": 8
+        },
+        {
+          "date": "2025-08-13",
+          "ins": 1,
+          "del": 1,
+          "c": 1
+        },
+        {
+          "date": "2025-08-14",
+          "ins": 1691,
+          "del": 1373,
+          "c": 6
+        },
+        {
+          "date": "2025-08-15",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-08-16",
+          "ins": 4356,
+          "del": 130,
+          "c": 13
+        },
+        {
+          "date": "2025-08-17",
+          "ins": 6,
+          "del": 2,
+          "c": 2
+        },
+        {
+          "date": "2025-08-18",
+          "ins": 55,
+          "del": 50,
+          "c": 2
+        },
+        {
+          "date": "2025-08-19",
+          "ins": 10285,
+          "del": 35,
+          "c": 10
+        },
+        {
+          "date": "2025-08-20",
+          "ins": 485,
+          "del": 8,
+          "c": 2
+        },
+        {
+          "date": "2025-08-21",
+          "ins": 160,
+          "del": 91,
+          "c": 2
+        },
+        {
+          "date": "2025-08-22",
+          "ins": 759,
+          "del": 936,
+          "c": 8
+        },
+        {
+          "date": "2025-08-23",
+          "ins": 605,
+          "del": 1074,
+          "c": 7
+        },
+        {
+          "date": "2025-08-24",
+          "ins": 1744,
+          "del": 866,
+          "c": 14
+        },
+        {
+          "date": "2025-08-25",
+          "ins": 51,
+          "del": 260,
+          "c": 7
+        },
+        {
+          "date": "2025-08-26",
+          "ins": 1231,
+          "del": 686,
+          "c": 8
+        },
+        {
+          "date": "2025-08-27",
+          "ins": 100,
+          "del": 208,
+          "c": 3
+        },
+        {
+          "date": "2025-08-28",
+          "ins": 1688,
+          "del": 1120,
+          "c": 12
+        },
+        {
+          "date": "2025-08-29",
+          "ins": 546,
+          "del": 257,
+          "c": 16
+        },
+        {
+          "date": "2025-08-30",
+          "ins": 1087,
+          "del": 1120,
+          "c": 24
+        },
+        {
+          "date": "2025-08-31",
+          "ins": 5,
+          "del": 5,
+          "c": 7
+        },
+        {
+          "date": "2025-09-01",
+          "ins": 221,
+          "del": 51,
+          "c": 5
+        },
+        {
+          "date": "2025-09-03",
+          "ins": 769,
+          "del": 571,
+          "c": 2
+        },
+        {
+          "date": "2025-09-04",
+          "ins": 88,
+          "del": 146,
+          "c": 1
+        },
+        {
+          "date": "2025-09-05",
+          "ins": 127,
+          "del": 29,
+          "c": 1
+        },
+        {
+          "date": "2025-09-06",
+          "ins": 3535,
+          "del": 802,
+          "c": 5
+        },
+        {
+          "date": "2025-09-07",
+          "ins": 2135,
+          "del": 2137,
+          "c": 6
+        },
+        {
+          "date": "2025-09-08",
+          "ins": 2,
+          "del": 3,
+          "c": 1
+        },
+        {
+          "date": "2025-09-09",
+          "ins": 11783,
+          "del": 192,
+          "c": 19
+        },
+        {
+          "date": "2025-09-10",
+          "ins": 794,
+          "del": 593,
+          "c": 4
+        },
+        {
+          "date": "2025-09-11",
+          "ins": 554,
+          "del": 407,
+          "c": 8
+        },
+        {
+          "date": "2025-09-12",
+          "ins": 2,
+          "del": 2,
+          "c": 1
+        },
+        {
+          "date": "2025-09-13",
+          "ins": 3846,
+          "del": 1193,
+          "c": 8
+        },
+        {
+          "date": "2025-09-14",
+          "ins": 13782,
+          "del": 74,
+          "c": 7
+        },
+        {
+          "date": "2025-09-15",
+          "ins": 11593,
+          "del": 10449,
+          "c": 8
+        },
+        {
+          "date": "2025-09-16",
+          "ins": 7917,
+          "del": 2050,
+          "c": 45
+        },
+        {
+          "date": "2025-09-18",
+          "ins": 11568,
+          "del": 10459,
+          "c": 18
+        },
+        {
+          "date": "2025-09-20",
+          "ins": 13671,
+          "del": 1509,
+          "c": 24
+        },
+        {
+          "date": "2025-09-21",
+          "ins": 1375,
+          "del": 1853,
+          "c": 12
+        },
+        {
+          "date": "2025-09-22",
+          "ins": 7153,
+          "del": 876,
+          "c": 24
+        },
+        {
+          "date": "2025-09-23",
+          "ins": 5035,
+          "del": 4531,
+          "c": 8
+        },
+        {
+          "date": "2025-09-24",
+          "ins": 1098,
+          "del": 1353,
+          "c": 7
+        },
+        {
+          "date": "2025-09-25",
+          "ins": 4218,
+          "del": 975,
+          "c": 26
+        },
+        {
+          "date": "2025-09-26",
+          "ins": 2311,
+          "del": 404,
+          "c": 5
+        },
+        {
+          "date": "2025-09-28",
+          "ins": 3819,
+          "del": 2306,
+          "c": 11
+        },
+        {
+          "date": "2025-09-29",
+          "ins": 12814,
+          "del": 1089,
+          "c": 27
+        },
+        {
+          "date": "2025-09-30",
+          "ins": 633,
+          "del": 546,
+          "c": 9
+        },
+        {
+          "date": "2025-10-01",
+          "ins": 21214,
+          "del": 349,
+          "c": 25
+        },
+        {
+          "date": "2025-10-02",
+          "ins": 1264,
+          "del": 252,
+          "c": 8
+        },
+        {
+          "date": "2025-10-04",
+          "ins": 1543,
+          "del": 220,
+          "c": 9
+        },
+        {
+          "date": "2025-10-05",
+          "ins": 11485,
+          "del": 797,
+          "c": 12
+        },
+        {
+          "date": "2025-10-06",
+          "ins": 3252,
+          "del": 904,
+          "c": 35
+        },
+        {
+          "date": "2025-10-07",
+          "ins": 729,
+          "del": 153,
+          "c": 19
+        },
+        {
+          "date": "2025-10-08",
+          "ins": 428,
+          "del": 243,
+          "c": 10
+        },
+        {
+          "date": "2025-10-09",
+          "ins": 11501,
+          "del": 433,
+          "c": 22
+        },
+        {
+          "date": "2025-10-10",
+          "ins": 436,
+          "del": 75,
+          "c": 7
+        },
+        {
+          "date": "2025-10-11",
+          "ins": 390,
+          "del": 103,
+          "c": 14
+        },
+        {
+          "date": "2025-10-12",
+          "ins": 971,
+          "del": 644,
+          "c": 10
+        },
+        {
+          "date": "2025-10-14",
+          "ins": 2635,
+          "del": 413,
+          "c": 20
+        },
+        {
+          "date": "2025-10-15",
+          "ins": 1584,
+          "del": 578,
+          "c": 10
+        },
+        {
+          "date": "2025-10-16",
+          "ins": 20797,
+          "del": 5350,
+          "c": 18
+        },
+        {
+          "date": "2025-10-17",
+          "ins": 347,
+          "del": 33,
+          "c": 5
+        },
+        {
+          "date": "2025-10-18",
+          "ins": 75,
+          "del": 33,
+          "c": 8
+        },
+        {
+          "date": "2025-10-19",
+          "ins": 6,
+          "del": 1,
+          "c": 2
+        },
+        {
+          "date": "2025-10-20",
+          "ins": 47,
+          "del": 17,
+          "c": 1
+        },
+        {
+          "date": "2025-10-21",
+          "ins": 211,
+          "del": 159,
+          "c": 11
+        },
+        {
+          "date": "2025-10-22",
+          "ins": 3043,
+          "del": 812,
+          "c": 9
+        },
+        {
+          "date": "2025-10-23",
+          "ins": 551,
+          "del": 55,
+          "c": 4
+        },
+        {
+          "date": "2025-10-24",
+          "ins": 1116,
+          "del": 203,
+          "c": 12
+        },
+        {
+          "date": "2025-10-25",
+          "ins": 237,
+          "del": 1,
+          "c": 3
+        },
+        {
+          "date": "2025-10-26",
+          "ins": 109,
+          "del": 6,
+          "c": 2
+        },
+        {
+          "date": "2025-10-28",
+          "ins": 4339,
+          "del": 571,
+          "c": 7
+        },
+        {
+          "date": "2025-10-29",
+          "ins": 14529,
+          "del": 3166,
+          "c": 7
+        },
+        {
+          "date": "2025-10-30",
+          "ins": 751,
+          "del": 19,
+          "c": 6
+        },
+        {
+          "date": "2025-10-31",
+          "ins": 282,
+          "del": 207,
+          "c": 5
+        },
+        {
+          "date": "2025-11-03",
+          "ins": 1,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-11-04",
+          "ins": 3211,
+          "del": 144,
+          "c": 11
+        },
+        {
+          "date": "2025-11-05",
+          "ins": 816,
+          "del": 1465,
+          "c": 9
+        },
+        {
+          "date": "2025-11-06",
+          "ins": 12652,
+          "del": 678,
+          "c": 13
+        },
+        {
+          "date": "2025-11-07",
+          "ins": 436,
+          "del": 210,
+          "c": 11
+        },
+        {
+          "date": "2025-11-08",
+          "ins": 2942,
+          "del": 490,
+          "c": 19
+        },
+        {
+          "date": "2025-11-09",
+          "ins": 27,
+          "del": 31,
+          "c": 11
+        },
+        {
+          "date": "2025-11-10",
+          "ins": 361,
+          "del": 78,
+          "c": 6
+        },
+        {
+          "date": "2025-11-11",
+          "ins": 566,
+          "del": 98,
+          "c": 10
+        },
+        {
+          "date": "2025-11-12",
+          "ins": 485,
+          "del": 35,
+          "c": 6
+        },
+        {
+          "date": "2025-11-14",
+          "ins": 1272,
+          "del": 64,
+          "c": 9
+        },
+        {
+          "date": "2025-11-15",
+          "ins": 102,
+          "del": 62,
+          "c": 5
+        },
+        {
+          "date": "2025-11-16",
+          "ins": 11,
+          "del": 2,
+          "c": 3
+        },
+        {
+          "date": "2025-11-17",
+          "ins": 1464,
+          "del": 88,
+          "c": 4
+        },
+        {
+          "date": "2025-11-18",
+          "ins": 295,
+          "del": 32,
+          "c": 7
+        },
+        {
+          "date": "2025-11-19",
+          "ins": 895,
+          "del": 42,
+          "c": 17
+        },
+        {
+          "date": "2025-11-26",
+          "ins": 93,
+          "del": 19,
+          "c": 6
+        },
+        {
+          "date": "2025-11-27",
+          "ins": 55,
+          "del": 76,
+          "c": 3
+        },
+        {
+          "date": "2025-11-28",
+          "ins": 14,
+          "del": 2,
+          "c": 2
+        },
+        {
+          "date": "2025-11-29",
+          "ins": 2,
+          "del": 1,
+          "c": 1
+        },
+        {
+          "date": "2025-12-01",
+          "ins": 55,
+          "del": 2,
+          "c": 2
+        },
+        {
+          "date": "2025-12-03",
+          "ins": 831,
+          "del": 9,
+          "c": 5
+        },
+        {
+          "date": "2025-12-04",
+          "ins": 1289,
+          "del": 379,
+          "c": 7
+        },
+        {
+          "date": "2025-12-05",
+          "ins": 321,
+          "del": 515,
+          "c": 5
+        },
+        {
+          "date": "2025-12-06",
+          "ins": 21,
+          "del": 7,
+          "c": 2
+        },
+        {
+          "date": "2025-12-08",
+          "ins": 101,
+          "del": 42,
+          "c": 4
+        },
+        {
+          "date": "2025-12-09",
+          "ins": 2,
+          "del": 2,
+          "c": 1
+        },
+        {
+          "date": "2025-12-10",
+          "ins": 4319,
+          "del": 22,
+          "c": 13
+        },
+        {
+          "date": "2025-12-11",
+          "ins": 514,
+          "del": 146,
+          "c": 8
+        },
+        {
+          "date": "2025-12-12",
+          "ins": 778,
+          "del": 199,
+          "c": 6
+        },
+        {
+          "date": "2025-12-14",
+          "ins": 170,
+          "del": 35,
+          "c": 2
+        },
+        {
+          "date": "2025-12-15",
+          "ins": 1272,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2025-12-17",
+          "ins": 354,
+          "del": 118,
+          "c": 6
+        },
+        {
+          "date": "2025-12-18",
+          "ins": 655,
+          "del": 243,
+          "c": 12
+        },
+        {
+          "date": "2025-12-19",
+          "ins": 1263,
+          "del": 30,
+          "c": 17
+        },
+        {
+          "date": "2025-12-21",
+          "ins": 1308,
+          "del": 6,
+          "c": 6
+        },
+        {
+          "date": "2025-12-22",
+          "ins": 396,
+          "del": 226,
+          "c": 7
+        },
+        {
+          "date": "2025-12-23",
+          "ins": 11276,
+          "del": 6,
+          "c": 10
+        },
+        {
+          "date": "2025-12-29",
+          "ins": 402,
+          "del": 69,
+          "c": 3
+        },
+        {
+          "date": "2025-12-30",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2026-01-02",
+          "ins": 847,
+          "del": 702,
+          "c": 8
+        },
+        {
+          "date": "2026-01-03",
+          "ins": 1553,
+          "del": 71,
+          "c": 4
+        },
+        {
+          "date": "2026-01-05",
+          "ins": 500,
+          "del": 214,
+          "c": 8
+        },
+        {
+          "date": "2026-01-06",
+          "ins": 4,
+          "del": 4,
+          "c": 2
+        },
+        {
+          "date": "2026-01-08",
+          "ins": 844,
+          "del": 61,
+          "c": 5
+        },
+        {
+          "date": "2026-01-09",
+          "ins": 228,
+          "del": 91,
+          "c": 8
+        },
+        {
+          "date": "2026-01-10",
+          "ins": 1279,
+          "del": 495,
+          "c": 15
+        },
+        {
+          "date": "2026-01-11",
+          "ins": 591,
+          "del": 299,
+          "c": 6
+        },
+        {
+          "date": "2026-01-12",
+          "ins": 26,
+          "del": 9,
+          "c": 1
+        },
+        {
+          "date": "2026-01-13",
+          "ins": 323,
+          "del": 315,
+          "c": 12
+        },
+        {
+          "date": "2026-01-14",
+          "ins": 1727,
+          "del": 91,
+          "c": 6
+        },
+        {
+          "date": "2026-01-15",
+          "ins": 134,
+          "del": 58,
+          "c": 6
+        },
+        {
+          "date": "2026-01-16",
+          "ins": 579,
+          "del": 196,
+          "c": 7
+        },
+        {
+          "date": "2026-01-18",
+          "ins": 828,
+          "del": 284,
+          "c": 10
+        },
+        {
+          "date": "2026-01-19",
+          "ins": 916,
+          "del": 928,
+          "c": 4
+        },
+        {
+          "date": "2026-01-20",
+          "ins": 744,
+          "del": 179,
+          "c": 5
+        },
+        {
+          "date": "2026-01-22",
+          "ins": 111,
+          "del": 12,
+          "c": 6
+        },
+        {
+          "date": "2026-01-23",
+          "ins": 904,
+          "del": 386,
+          "c": 8
+        },
+        {
+          "date": "2026-01-24",
+          "ins": 11447,
+          "del": 55,
+          "c": 8
+        },
+        {
+          "date": "2026-01-25",
+          "ins": 79,
+          "del": 8,
+          "c": 1
+        },
+        {
+          "date": "2026-01-26",
+          "ins": 662,
+          "del": 302,
+          "c": 12
+        },
+        {
+          "date": "2026-01-27",
+          "ins": 6,
+          "del": 6,
+          "c": 2
+        },
+        {
+          "date": "2026-01-28",
+          "ins": 2074,
+          "del": 977,
+          "c": 8
+        },
+        {
+          "date": "2026-01-29",
+          "ins": 915,
+          "del": 5,
+          "c": 2
+        },
+        {
+          "date": "2026-01-30",
+          "ins": 1262,
+          "del": 139,
+          "c": 7
+        },
+        {
+          "date": "2026-01-31",
+          "ins": 297,
+          "del": 130,
+          "c": 9
+        },
+        {
+          "date": "2026-02-01",
+          "ins": 6,
+          "del": 50,
+          "c": 2
+        },
+        {
+          "date": "2026-02-02",
+          "ins": 3179,
+          "del": 1332,
+          "c": 24
+        },
+        {
+          "date": "2026-02-03",
+          "ins": 1924,
+          "del": 652,
+          "c": 8
+        },
+        {
+          "date": "2026-02-04",
+          "ins": 1378,
+          "del": 308,
+          "c": 1
+        },
+        {
+          "date": "2026-02-05",
+          "ins": 1373,
+          "del": 858,
+          "c": 4
+        },
+        {
+          "date": "2026-02-06",
+          "ins": 19,
+          "del": 2,
+          "c": 4
+        },
+        {
+          "date": "2026-02-07",
+          "ins": 325,
+          "del": 18,
+          "c": 3
+        },
+        {
+          "date": "2026-02-08",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2026-02-09",
+          "ins": 1721,
+          "del": 5965,
+          "c": 6
+        },
+        {
+          "date": "2026-02-10",
+          "ins": 1702,
+          "del": 1487,
+          "c": 10
+        },
+        {
+          "date": "2026-02-11",
+          "ins": 627,
+          "del": 144,
+          "c": 7
+        },
+        {
+          "date": "2026-02-12",
+          "ins": 1413,
+          "del": 1048,
+          "c": 6
+        },
+        {
+          "date": "2026-02-13",
+          "ins": 513,
+          "del": 21,
+          "c": 8
+        },
+        {
+          "date": "2026-02-15",
+          "ins": 5,
+          "del": 3,
+          "c": 2
+        },
+        {
+          "date": "2026-02-16",
+          "ins": 46,
+          "del": 48,
+          "c": 3
+        },
+        {
+          "date": "2026-02-17",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2026-02-18",
+          "ins": 61,
+          "del": 45,
+          "c": 5
+        },
+        {
+          "date": "2026-02-19",
+          "ins": 259,
+          "del": 177,
+          "c": 7
+        },
+        {
+          "date": "2026-02-21",
+          "ins": 2193,
+          "del": 871,
+          "c": 8
+        },
+        {
+          "date": "2026-02-23",
+          "ins": 3765,
+          "del": 0,
+          "c": 2
+        },
+        {
+          "date": "2026-02-24",
+          "ins": 1371,
+          "del": 245,
+          "c": 11
+        },
+        {
+          "date": "2026-02-25",
+          "ins": 14409,
+          "del": 463,
+          "c": 19
+        },
+        {
+          "date": "2026-02-26",
+          "ins": 198,
+          "del": 123,
+          "c": 9
+        },
+        {
+          "date": "2026-02-27",
+          "ins": 985,
+          "del": 288,
+          "c": 11
+        },
+        {
+          "date": "2026-02-28",
+          "ins": 12091,
+          "del": 311,
+          "c": 8
+        },
+        {
+          "date": "2026-03-01",
+          "ins": 641,
+          "del": 36,
+          "c": 6
+        },
+        {
+          "date": "2026-03-02",
+          "ins": 2,
+          "del": 2,
+          "c": 2
+        },
+        {
+          "date": "2026-03-04",
+          "ins": 73,
+          "del": 53,
+          "c": 3
+        },
+        {
+          "date": "2026-03-05",
+          "ins": 13302,
+          "del": 503,
+          "c": 14
+        },
+        {
+          "date": "2026-03-06",
+          "ins": 2,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2026-03-07",
+          "ins": 1,
+          "del": 0,
+          "c": 2
+        },
+        {
+          "date": "2026-03-09",
+          "ins": 0,
+          "del": 0,
+          "c": 1
+        },
+        {
+          "date": "2026-03-10",
+          "ins": 974,
+          "del": 67,
+          "c": 5
+        },
+        {
+          "date": "2026-03-11",
+          "ins": 244,
+          "del": 56606,
+          "c": 4
+        },
+        {
+          "date": "2026-03-12",
+          "ins": 745,
+          "del": 2066,
+          "c": 3
+        },
+        {
+          "date": "2026-03-13",
+          "ins": 578,
+          "del": 6,
+          "c": 5
+        },
+        {
+          "date": "2026-03-14",
+          "ins": 823,
+          "del": 2,
+          "c": 1
+        },
+        {
+          "date": "2026-03-17",
+          "ins": 23687,
+          "del": 11728,
+          "c": 7
+        },
+        {
+          "date": "2026-03-18",
+          "ins": 704,
+          "del": 376,
+          "c": 11
+        },
+        {
+          "date": "2026-03-19",
+          "ins": 84,
+          "del": 54,
+          "c": 4
+        },
+        {
+          "date": "2026-03-20",
+          "ins": 49,
+          "del": 34,
+          "c": 3
+        },
+        {
+          "date": "2026-03-21",
+          "ins": 31,
+          "del": 13,
+          "c": 2
+        },
+        {
+          "date": "2026-03-22",
+          "ins": 1012,
+          "del": 46,
+          "c": 5
+        },
+        {
+          "date": "2026-03-23",
+          "ins": 463,
+          "del": 187,
+          "c": 6
+        },
+        {
+          "date": "2026-03-24",
+          "ins": 26,
+          "del": 0,
+          "c": 4
+        },
+        {
+          "date": "2026-03-26",
+          "ins": 16495,
+          "del": 426,
+          "c": 4
+        },
+        {
+          "date": "2026-03-27",
+          "ins": 539,
+          "del": 205,
+          "c": 9
+        },
+        {
+          "date": "2026-03-28",
+          "ins": 78,
+          "del": 68,
+          "c": 3
+        },
+        {
+          "date": "2026-03-29",
+          "ins": 1077,
+          "del": 379,
+          "c": 7
+        },
+        {
+          "date": "2026-03-30",
+          "ins": 315,
+          "del": 171,
+          "c": 8
+        },
+        {
+          "date": "2026-03-31",
+          "ins": 483,
+          "del": 159,
+          "c": 8
+        },
+        {
+          "date": "2026-04-01",
+          "ins": 1712,
+          "del": 1308,
+          "c": 6
+        },
+        {
+          "date": "2026-04-02",
+          "ins": 625,
+          "del": 1,
+          "c": 2
+        },
+        {
+          "date": "2026-04-05",
+          "ins": 1547,
+          "del": 388,
+          "c": 8
+        },
+        {
+          "date": "2026-04-10",
+          "ins": 1908,
+          "del": 201,
+          "c": 8
+        },
+        {
+          "date": "2026-04-11",
+          "ins": 2155,
+          "del": 1184,
+          "c": 5
+        },
+        {
+          "date": "2026-04-12",
+          "ins": 197,
+          "del": 40,
+          "c": 2
+        },
+        {
+          "date": "2026-04-13",
+          "ins": 13570,
+          "del": 1341,
+          "c": 7
+        },
+        {
+          "date": "2026-04-16",
+          "ins": 683,
+          "del": 229,
+          "c": 2
+        },
+        {
+          "date": "2026-04-17",
+          "ins": 2606,
+          "del": 564,
+          "c": 6
+        }
+      ]
+    }
+  },
+  "critic": {
+    "forwardable": true,
+    "overall_score": 74,
+    "top_strengths": [
+      "Flightcast #1 committer (2,688/9,971, 83% more than #2, 20+ months continuous) is verifiable, specific, and impossible to self-report into existence.",
+      "AppFlowy Rust ramp: 104 days from zero to merged plugin crate in a 69.8k-star repo after 8 rounds of real maintainer review — externally validated language acquisition.",
+      "Full-stack integration ownership documented at commit level: each integration shows DB migration → state machine → queue worker → tRPC → React UI, all sole-authored.",
+      "SIH 2022 win is multi-source corroborated: independent web sources + teammate LinkedIn post + specific venue. Holds up to basic due diligence.",
+      "Testing-gap disclosure paired with AppFlowy PR #3009 (100%-coverage tests on demand) is structurally honest — demonstrates capability without hiding the routine gap."
+    ],
+    "top_gaps": [
+      "No live product metrics for Flightcast — no podcaster count, MAU, or MRR. The #1 committer signal floats unanchored without knowing if this serves 50 or 50,000 users.",
+      "'Founding engineer' scope undefined: no signal on hire sequence, equity, whether he has hired anyone, or IC vs. organizational leverage on the 27-person team.",
+      "ETHForAll win lacks confirmed external artifact (no Devfolio results URL). A founder will ask; it should be resolved or hedged before a meeting.",
+      "No evidence of ADRs, design docs, or technical leadership. Zero-review PRs show high-velocity solo shipping but not whether he can scope and delegate.",
+      "No signal on ROX WORKS LLC traction or stage. Whether Flightcast is pre-revenue or scaling materially changes how to read 20 months of output."
+    ],
+    "flagged_claim_ids": [
+      "commanddash-changes-requested",
+      "ethforall-2023-win",
+      "shipped-aimuse",
+      "kpi-hackathon-wins",
+      "google-startup-bootcamp",
+      "shipped-pikc",
+      "shipped-memcast",
+      "temporal-friday-afternoon-window"
+    ]
+  },
+  "meta": {
+    "session_id": "test-1776514662321-6q0hoG",
+    "session_url": "https://openrouter.ai/sessions/test-1776514662321-6q0hoG",
+    "total_claims": 36,
+    "total_artifacts": 3489,
+    "llm_calls": 15,
+    "web_calls": 33,
+    "github_search_calls": 4,
+    "estimated_cost_usd": 0,
+    "elapsed_ms": 2025152,
+    "errors": 0,
+    "stability": {
+      "hook_similarity": 0.47,
+      "verdict": "mixed",
+      "note": "hook prompt produced related but noticeably different hooks — review writer rules"
+    },
+    "hiring_review": {
+      "verdict": "BLOCK",
+      "overall_score": 54,
+      "would_forward": false,
+      "why": "A senior engineer would catch the 2,504-vs-2,688 arithmetic impossibility within minutes and lose trust in the entire profile's data integrity — exactly the wrong reaction when the underlying engineering story is genuinely strong. The 24-pattern dump would exhaust the reader before the best signals land.",
+      "block_triggers": [
+        "INTERNAL CONTRADICTION: near-zero-test-commits and disclosure claim '2,504 catalogued commits' spanning all repos including flightcast-core — but flightcast-core alone holds 2,688 of Yatendra's commits. 2,504 < 2,688 is impossible. The '4 test commits' finding is unverifiable until the corpus scope is corrected."
+      ],
+      "top_fixes": [
+        {
+          "axis": "numeric_integrity",
+          "claim_id": "near-zero-test-commits / disclosure-testing-gap",
+          "fix": "'2,504 catalogued commits spanning personal AI apps + flightcast-core' is impossible — flightcast-core alone has 2,688 of Yatendra's commits. Fix: (a) run test-commit detection against the correct full ~3,535-commit corpus and update the count, OR (b) scope the claim to personal/pre-Flightcast repos only and label it explicitly. Do NOT just change the number — recheck whether the '4 test commits' finding survives the corrected scope. This is the only BLOCK trigger and directly poisons the disclosure beat."
+        },
+        {
+          "axis": "pattern_selection",
+          "claim_id": "pattern-section-24-items",
+          "fix": "Reduce 24 pattern beats to 5. Final set: (1) self-rewrites-favor-deletion; (2) hotfeat-invented-label; (3) temporal-catalyst-sprint; (4) temporal-memcast-relay; (5) flightcast-deploy-autonomy. Demote employer-flightcast, rank-commits, architecture-scale, all competitive-win beats to correct beat types. Merge appflowy-rust-plugin + appflowy-ramp-speed into one pattern (use ramp-speed framing); demote appflowy-rust-review to evidence citation. Remove near-zero-test-commits from pattern section — it belongs in disclosure only."
+        },
+        {
+          "axis": "pattern_selection",
+          "claim_id": "hotfeat-invented-label / hotfix-scope-range",
+          "fix": "hotfeat-invented-label and hotfix-scope-range make the same argument twice: the hotfix: prefix encodes deploy urgency, not patch size. Merge into one pattern. Lead with the invented-label angle (coined a portmanteau — that is distinctive), then quantify the scope range as a sub-beat (+2 type coercion to +1,147-line refactor, all labeled hotfix). One pattern carries more signal than two overlapping ones."
+        }
+      ]
+    }
+  }
+}

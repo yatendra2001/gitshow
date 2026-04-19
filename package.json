@@ -9,6 +9,10 @@
   ],
   "scripts": {
     "profile": "bun --filter @gitshow/worker profile",
-    "typecheck": "bun --filter '*' typecheck"
+    "typecheck": "bun --filter '*' typecheck",
+    "dev:web": "bun --filter @gitshow/web dev",
+    "build:web": "bun --filter @gitshow/web build",
+    "deploy:web": "bun --filter @gitshow/web deploy",
+    "deploy:realtime": "bun --filter @gitshow/realtime deploy"
   }
 }
