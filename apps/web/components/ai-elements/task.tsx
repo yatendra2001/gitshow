@@ -1,13 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { ChevronRight, Check, Circle, AlertTriangle, X } from "lucide-react";
+import { ChevronDown, Circle, Check, AlertTriangle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * Task — one pipeline phase or sub-worker in the progress pane.
- * Collapsible; status dot reflects state. One Task per phase with
- * nested TaskItems for worker updates, reasoning blocks, etc.
+ * Task — upgrade of the earlier Task primitive to match the AI Elements
+ * reference pattern. A Task is a collapsible header with an indented
+ * child list; each child can be a plain line, a file chip row, or a
+ * nested Task.
+ *
+ * Pattern mirrors ChatGPT/Cursor/Claude's search-task UIs: one clean
+ * header per activity, a left-hinge border for nesting, status dot on
+ * the left, chevron on the right.
  */
 
 export type TaskStatus = "pending" | "running" | "done" | "warn" | "failed";
@@ -35,7 +40,7 @@ export function Task({
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-card",
+        "gs-enter rounded-xl border border-border bg-card/70 backdrop-blur-sm",
         status === "running" && "ring-1 ring-blue-500/30",
         className,
       )}
@@ -44,80 +49,176 @@ export function Task({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-3 px-3 py-2.5 text-left"
+        className="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left transition-colors hover:bg-accent/40"
       >
         <StatusDot status={status} />
-        <div className="flex-1 overflow-hidden">
-          <div className="text-sm font-semibold text-foreground">{title}</div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-foreground/95">
+            {title}
+          </div>
           {subtitle && (
-            <div className="mt-0.5 font-mono text-[10px] text-muted-foreground">
+            <div className="mt-0.5 truncate text-[11.5px] text-muted-foreground">
               {subtitle}
             </div>
           )}
         </div>
         {rightSlot}
-        <ChevronRight
+        <ChevronDown
           className={cn(
-            "size-4 shrink-0 text-muted-foreground transition-transform",
-            open && "rotate-90",
+            "size-4 shrink-0 text-muted-foreground transition-transform duration-200",
+            open ? "rotate-0" : "-rotate-90",
           )}
         />
       </button>
-      {open && children && (
-        <div className="border-t border-border px-3 py-2">{children}</div>
-      )}
+
+      <div
+        className={cn(
+          "grid overflow-hidden transition-[grid-template-rows] duration-300 ease-out",
+          open ? "grid-rows-[1fr]" : "grid-rows-[0fr]",
+        )}
+      >
+        <div className="min-h-0">
+          {children && (
+            <div className="relative border-t border-border/60 px-3.5 py-2.5">
+              {/* Tree hinge */}
+              <span
+                aria-hidden
+                className="absolute bottom-2 left-[18px] top-2 w-px bg-border"
+              />
+              <div className="space-y-1 pl-5">{children}</div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
 
-function StatusDot({ status }: { status: TaskStatus }) {
-  switch (status) {
-    case "pending":
-      return <Circle className="size-4 text-muted-foreground/50" />;
-    case "running":
-      return (
-        <div className="relative size-4">
-          <Circle className="absolute inset-0 size-4 text-blue-500/30" />
-          <div className="absolute inset-[2px] size-3 animate-pulse rounded-full bg-blue-500" />
-        </div>
-      );
-    case "done":
-      return (
-        <div className="flex size-4 items-center justify-center rounded-full bg-emerald-500 text-white">
-          <Check className="size-2.5" strokeWidth={3} />
-        </div>
-      );
-    case "warn":
-      return <AlertTriangle className="size-4 text-amber-500" />;
-    case "failed":
-      return (
-        <div className="flex size-4 items-center justify-center rounded-full bg-red-500 text-white">
-          <X className="size-2.5" strokeWidth={3} />
-        </div>
-      );
-  }
-}
-
+/**
+ * TaskItem — one line inside a Task. Plain text, optional small status
+ * glyph, optional trailing slot for chips/counts.
+ */
 export function TaskItem({
+  status,
   className,
   children,
-  status,
+  trailing,
   ...props
-}: React.HTMLAttributes<HTMLDivElement> & { status?: TaskStatus }) {
+}: React.HTMLAttributes<HTMLDivElement> & {
+  status?: TaskStatus;
+  trailing?: React.ReactNode;
+}) {
   return (
     <div
       className={cn(
-        "flex items-start gap-2 py-1 font-mono text-[11px] leading-relaxed",
+        "gs-fade flex items-start gap-2 py-0.5 text-[13px] leading-relaxed text-muted-foreground",
         className,
       )}
       {...props}
     >
       {status && (
-        <div className="mt-0.5">
-          <StatusDot status={status} />
-        </div>
+        <span className="mt-[3px] shrink-0">
+          <StatusDot status={status} size="xs" />
+        </span>
       )}
-      <div className="flex-1 text-muted-foreground">{children}</div>
+      <span className="flex-1">{children}</span>
+      {trailing}
     </div>
+  );
+}
+
+/**
+ * TaskFileChip — the small framework-icon-on-dark pill seen in the
+ * reference, e.g. "page.tsx" with a React logo chip.
+ */
+export function TaskFileChip({
+  icon,
+  children,
+  className,
+}: {
+  icon?: React.ReactNode;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <span
+      className={cn(
+        "ml-1 inline-flex items-center gap-1 rounded-md border border-border bg-background/50 px-1.5 py-0.5",
+        "font-mono text-[11px] text-foreground/85",
+        className,
+      )}
+    >
+      {icon && (
+        <span className="flex size-3 items-center justify-center">{icon}</span>
+      )}
+      {children}
+    </span>
+  );
+}
+
+function StatusDot({
+  status,
+  size = "sm",
+}: {
+  status: TaskStatus;
+  size?: "xs" | "sm";
+}) {
+  const d = size === "xs" ? 10 : 14;
+  if (status === "running") {
+    return (
+      <span
+        className="relative flex items-center justify-center"
+        style={{ width: d, height: d }}
+      >
+        <span
+          className="absolute inline-flex animate-ping rounded-full bg-blue-500 opacity-70"
+          style={{ width: d - 4, height: d - 4 }}
+        />
+        <span
+          className="relative inline-flex rounded-full bg-blue-500"
+          style={{ width: d - 4, height: d - 4 }}
+        />
+      </span>
+    );
+  }
+  if (status === "done") {
+    return (
+      <span
+        className="flex items-center justify-center rounded-full bg-emerald-500/90 text-white"
+        style={{ width: d, height: d }}
+      >
+        <Check
+          style={{ width: d * 0.55, height: d * 0.55 }}
+          strokeWidth={3.5}
+        />
+      </span>
+    );
+  }
+  if (status === "warn") {
+    return (
+      <AlertTriangle
+        className="text-amber-400"
+        style={{ width: d, height: d }}
+      />
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span
+        className="flex items-center justify-center rounded-full bg-red-500/90 text-white"
+        style={{ width: d, height: d }}
+      >
+        <X
+          style={{ width: d * 0.55, height: d * 0.55 }}
+          strokeWidth={3.5}
+        />
+      </span>
+    );
+  }
+  return (
+    <Circle
+      className="text-muted-foreground/40"
+      style={{ width: d, height: d }}
+    />
   );
 }
