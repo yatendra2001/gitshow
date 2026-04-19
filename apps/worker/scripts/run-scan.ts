@@ -34,7 +34,14 @@ import {
   type PipelineEvent,
   type PersistedEventKind,
 } from "@gitshow/shared/events";
+import {
+  ResendSender,
+  renderScanComplete,
+  renderScanFailed,
+} from "@gitshow/shared/notifications/email";
 import { logger, requireEnv } from "../src/util.js";
+
+const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? "https://gitshow.io";
 import type { ScanSession, ScanSocials } from "../src/schemas.js";
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -73,6 +80,7 @@ async function main() {
   const r2 = R2Client.fromEnv();
   const d1 = D1Client.fromEnv();
   const doClient = DOPublishClient.fromEnv({ logger });
+  const email = ResendSender.fromEnv({ logger });
   const scanLog = logger.child({ scan_id: scanId, handle });
 
   scanLog.info({ model, fly_machine_id: flyMachineId }, "boot");
@@ -208,12 +216,14 @@ async function main() {
       hiring_score: cardMeta.hiringScore,
     });
 
-    // Notify the user — in-app inbox row + (future: email + desktop push).
-    // 40-50 min scans mean the user is almost never on the tab when this
-    // fires; the notification is how they discover their profile is ready.
+    // Notify the user — in-app inbox row + email (Web Push lands in a
+    // follow-up). 40-50 min scans mean the user is almost never on the
+    // tab when this fires; the notification is how they discover their
+    // profile is ready.
     try {
       const userId = await d1.getUserIdForScan(scanId);
       if (userId) {
+        const profileUrl = `${PUBLIC_APP_URL}/${encodeURIComponent(handle)}`;
         await d1.createNotification({
           id: `ntf_${randomUUID()}`,
           user_id: userId,
@@ -221,8 +231,29 @@ async function main() {
           scan_id: scanId,
           title: `Your gitshow profile is ready`,
           body: `@${handle} — we found ${profile.claims.length} claims`,
-          action_url: `/app`,
+          action_url: profileUrl,
         });
+
+        if (email) {
+          const contact = await d1.getUserContactById(userId);
+          if (contact?.email) {
+            const tpl = renderScanComplete({
+              handle,
+              claimCount: profile.claims.length,
+              profileUrl,
+            });
+            void email.send({
+              to: contact.email,
+              subject: tpl.subject,
+              html: tpl.html,
+              text: tpl.text,
+              tags: [
+                { name: "kind", value: "scan-complete" },
+                { name: "scan_id", value: scanId },
+              ],
+            });
+          }
+        }
       }
     } catch (err) {
       scanLog.warn({ err }, "notification.create.failed");
@@ -281,8 +312,29 @@ async function main() {
           scan_id: scanId,
           title: `Your gitshow scan hit a snag`,
           body: msg.slice(0, 160),
-          action_url: `/app`,
+          action_url: `${PUBLIC_APP_URL}/app`,
         });
+
+        if (email) {
+          const contact = await d1.getUserContactById(userId);
+          if (contact?.email) {
+            const tpl = renderScanFailed({
+              handle,
+              reason: msg.slice(0, 300),
+              dashboardUrl: `${PUBLIC_APP_URL}/app`,
+            });
+            void email.send({
+              to: contact.email,
+              subject: tpl.subject,
+              html: tpl.html,
+              text: tpl.text,
+              tags: [
+                { name: "kind", value: "scan-failed" },
+                { name: "scan_id", value: scanId },
+              ],
+            });
+          }
+        }
       }
     } catch (notifyErr) {
       scanLog.warn({ err: notifyErr }, "notification.create.failed");

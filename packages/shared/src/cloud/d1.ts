@@ -348,6 +348,20 @@ export class D1Client {
     return rows[0]?.user_id ?? null;
   }
 
+  async getUserContactById(
+    userId: string,
+  ): Promise<{ email: string | null; name: string | null } | null> {
+    const resp = await this.query(
+      `SELECT email, name FROM users WHERE id = ? LIMIT 1`,
+      [userId],
+    );
+    const rows = (resp.result?.[0]?.results ?? []) as Array<{
+      email: string | null;
+      name: string | null;
+    }>;
+    return rows[0] ?? null;
+  }
+
   // ─── Worker control polling ──────────────────────────────────────
   //
   // The browser never polls (see apps/web/lib/use-scan-stream.ts), but
