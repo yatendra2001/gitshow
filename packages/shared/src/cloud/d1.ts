@@ -226,29 +226,21 @@ export class D1Client {
   async insertEvent(
     scanId: string,
     ev: {
-      kind:
-        | "stage-start"
-        | "stage-end"
-        | "stage-warn"
-        | "worker-update"
-        | "error"
-        | "reasoning"
-        | "test-result"
-        | "eval-axes"
-        | "usage"
-        | "plan";
+      kind: import("../events.js").PersistedEventKind;
       stage?: string | null;
       worker?: string | null;
       status?: string | null;
       duration_ms?: number | null;
       message?: string | null;
       data_json?: unknown | null;
+      parent_id?: string | null;
+      message_id?: string | null;
     },
   ): Promise<void> {
     await this.query(
       `INSERT INTO scan_events
-         (scan_id, kind, stage, worker, status, duration_ms, message, data_json, at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (scan_id, kind, stage, worker, status, duration_ms, message, data_json, parent_id, message_id, at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         scanId,
         ev.kind,
@@ -258,6 +250,8 @@ export class D1Client {
         ev.duration_ms ?? null,
         ev.message ?? null,
         ev.data_json == null ? null : JSON.stringify(ev.data_json),
+        ev.parent_id ?? null,
+        ev.message_id ?? null,
         Date.now(),
       ],
     );
@@ -304,6 +298,139 @@ export class D1Client {
         claim.status ?? "ai_draft",
         now,
         now,
+      ],
+    );
+  }
+
+  // ─── Notifications (worker-initiated) ─────────────────────────────
+  //
+  // The worker creates notifications directly to avoid an HTTP
+  // round-trip back through the web app. In-app delivery is instant
+  // (user's next inbox fetch sees it); email + push are handled by
+  // follow-up code that reads the row and dispatches.
+
+  async createNotification(params: {
+    id: string;
+    user_id: string;
+    kind: string;
+    scan_id?: string | null;
+    title: string;
+    body?: string | null;
+    action_url?: string | null;
+    payload?: unknown;
+  }): Promise<void> {
+    await this.query(
+      `INSERT INTO notifications
+         (id, user_id, kind, scan_id, title, body, action_url, payload_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        params.id,
+        params.user_id,
+        params.kind,
+        params.scan_id ?? null,
+        params.title,
+        params.body ?? null,
+        params.action_url ?? null,
+        params.payload === undefined || params.payload === null
+          ? null
+          : JSON.stringify(params.payload),
+        Date.now(),
+      ],
+    );
+  }
+
+  async getUserIdForScan(scanId: string): Promise<string | null> {
+    const resp = await this.query(
+      `SELECT user_id FROM scans WHERE id = ? LIMIT 1`,
+      [scanId],
+    );
+    const rows = (resp.result?.[0]?.results ?? []) as Array<{ user_id: string }>;
+    return rows[0]?.user_id ?? null;
+  }
+
+  async getUserContactById(
+    userId: string,
+  ): Promise<{ email: string | null; name: string | null } | null> {
+    const resp = await this.query(
+      `SELECT email, name FROM users WHERE id = ? LIMIT 1`,
+      [userId],
+    );
+    const rows = (resp.result?.[0]?.results ?? []) as Array<{
+      email: string | null;
+      name: string | null;
+    }>;
+    return rows[0] ?? null;
+  }
+
+  // ─── Worker control polling ──────────────────────────────────────
+  //
+  // The browser never polls (see apps/web/lib/use-scan-stream.ts), but
+  // server-to-server control + answer polling is cheap and keeps the
+  // orchestration simple. Workers call these every ~2s.
+
+  async getPendingControls(
+    scanId: string,
+  ): Promise<Array<{ id: number; action: string; target_stage: string | null }>> {
+    const resp = await this.query(
+      `SELECT id, action, target_stage FROM scan_controls
+         WHERE scan_id = ? AND acked_at IS NULL
+         ORDER BY id ASC`,
+      [scanId],
+    );
+    return (resp.result?.[0]?.results ?? []) as Array<{
+      id: number;
+      action: string;
+      target_stage: string | null;
+    }>;
+  }
+
+  async ackControl(controlId: number): Promise<void> {
+    await this.query(
+      `UPDATE scan_controls SET acked_at = ? WHERE id = ?`,
+      [Date.now(), controlId],
+    );
+  }
+
+  async getPendingAnswerForQuestion(
+    questionId: string,
+  ): Promise<{ answer: string | null; source: string } | null> {
+    const resp = await this.query(
+      `SELECT answer, source FROM agent_answers WHERE question_id = ? LIMIT 1`,
+      [questionId],
+    );
+    const rows = (resp.result?.[0]?.results ?? []) as Array<{
+      answer: string | null;
+      source: string;
+    }>;
+    return rows[0] ?? null;
+  }
+
+  async createAgentQuestion(params: {
+    id: string;
+    scan_id: string;
+    message_id?: string | null;
+    stage: string;
+    question: string;
+    options?: Array<{ value: string; label: string }>;
+    default_answer?: string | null;
+    timeout_ms: number;
+  }): Promise<void> {
+    const now = Date.now();
+    await this.query(
+      `INSERT INTO agent_questions
+         (id, scan_id, message_id, stage, question, options_json, default_answer, timeout_ms, asked_at, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        params.id,
+        params.scan_id,
+        params.message_id ?? null,
+        params.stage,
+        params.question,
+        params.options ? JSON.stringify(params.options) : null,
+        params.default_answer ?? null,
+        params.timeout_ms,
+        now,
+        now + params.timeout_ms,
       ],
     );
   }

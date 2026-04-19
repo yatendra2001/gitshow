@@ -1,40 +1,60 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ScanEventEnvelope } from "@gitshow/shared/events";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type {
+  ClientSubscribeFrame,
+  ClientPongFrame,
+  ScanEventEnvelope,
+  ServerFrame,
+  ServerDoneFrame,
+} from "@gitshow/shared/events";
 
 /**
- * useScanStream — hybrid realtime + backfill subscriber.
+ * useScanStream — pure WebSocket scan subscriber.
  *
- * - On mount: GET /api/scan/<id>/events?since=0 to backfill history.
- * - Opens WS to /api/ws/scan/<id> for live events. The DO's hello frame
- *   replays up to 200 recent events (should overlap the D1 backfill;
- *   we dedupe by envelope id).
- * - Falls back to 2s polling when the WS can't open / stays closed
- *   (mobile Safari, office proxies, etc.).
- * - Returns: events (dedup'd + ordered), claims (by beat), terminalLines
- *   (kind=stream only), status, and a disconnected flag.
+ * Lifecycle:
+ *   1. On mount: one-shot GET /api/scan/<id>/events?since=0 to fill
+ *      anything older than the DO ring buffer.
+ *   2. Open WS to /api/ws/scan/<id>. Server sends a `hello` with the
+ *      current ring. We ingest the backlog and record `seq`.
+ *   3. Server pings every 20s; we reply with pong. If we miss a ping
+ *      for > 45s, treat as dead and reconnect.
+ *   4. On close/error, reconnect with exponential backoff (1s → 30s).
+ *      On reconnect, send `subscribe { since: lastSeq }` so the DO
+ *      replays only what we missed.
+ *   5. If the DO replies with `gap { oldest_seq }`, do a one-shot
+ *      GET /api/scan/<id>/events?since=<lastSeq>&until=<oldest_seq-1>
+ *      to plug the hole, then resume live.
+ *   6. On `done` frame, close cleanly and stop reconnecting.
  *
- * Events are tuned for smooth rendering — we keep the full envelope
- * list in state but consumers commonly project to (a) the latest
- * per-phase stage-start/end, (b) the reasoning stream, (c) the raw
- * terminal tail. Helpers below do those projections cheaply.
+ * There is NO periodic polling. The only HTTP fetches are:
+ *   - the initial backfill on mount
+ *   - gap-plug fetches on reconnect (rare)
  */
 
 interface UseScanStreamOptions {
   scanId: string;
-  /** When true, skip both fetch + WS (used by /s/demo). */
+  /** When true, skip all network activity. */
   disabled?: boolean;
 }
+
+export type StreamConnection = "live" | "reconnecting" | "lost" | "idle";
 
 interface UseScanStreamResult {
   envelopes: ScanEventEnvelope[];
   terminalLines: string[];
   lastEventId: number;
-  isConnected: boolean;
-  /** Current connection mode for debugging. */
-  mode: "ws" | "polling" | "idle";
+  connection: StreamConnection;
+  /** True once the scan has reached a terminal state (done frame). */
+  isDone: boolean;
+  doneStatus?: ServerDoneFrame["status"];
 }
+
+const MAX_TERMINAL_LINES = 2000;
+const PING_TIMEOUT_MS = 45_000;
+const RECONNECT_MIN_MS = 1_000;
+const RECONNECT_MAX_MS = 30_000;
+const LOST_CONNECTION_MS = 30_000;
 
 export function useScanStream({
   scanId,
@@ -42,30 +62,36 @@ export function useScanStream({
 }: UseScanStreamOptions): UseScanStreamResult {
   const [envelopes, setEnvelopes] = useState<ScanEventEnvelope[]>([]);
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
-  const [isConnected, setIsConnected] = useState(false);
-  const [mode, setMode] = useState<"ws" | "polling" | "idle">("idle");
-  const seenIds = useRef<Set<number>>(new Set());
-  const lastEventIdRef = useRef(0);
-  const wsRef = useRef<WebSocket | null>(null);
-  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const closedRef = useRef(false);
+  const [connection, setConnection] = useState<StreamConnection>("idle");
+  const [isDone, setIsDone] = useState(false);
+  const [doneStatus, setDoneStatus] = useState<ServerDoneFrame["status"] | undefined>();
 
+  const seenIds = useRef<Set<number>>(new Set());
+  const lastSeqRef = useRef(0);
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pingWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lostTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const closedRef = useRef(false);
+  const gapPluggingRef = useRef(false);
+
+  // ── Ingestion ─────────────────────────────────────────────────────
   const ingestEnvelope = useCallback((env: ScanEventEnvelope) => {
     if (env.event.kind === "stream") {
       setTerminalLines((prev) => {
         const next = [...prev, (env.event as { text: string }).text];
-        // Cap the terminal tail at ~2000 lines.
-        return next.length > 2000 ? next.slice(-2000) : next;
+        return next.length > MAX_TERMINAL_LINES
+          ? next.slice(-MAX_TERMINAL_LINES)
+          : next;
       });
       return;
     }
     if (seenIds.current.has(env.id)) return;
     seenIds.current.add(env.id);
-    if (env.id > lastEventIdRef.current) lastEventIdRef.current = env.id;
+    if (env.id > lastSeqRef.current) lastSeqRef.current = env.id;
     setEnvelopes((prev) => {
       const next = [...prev, env];
-      // Sort by id so out-of-order arrivals between WS + polling don't
-      // scramble the UI.
       next.sort((a, b) => a.id - b.id);
       return next;
     });
@@ -76,106 +102,241 @@ export function useScanStream({
     [ingestEnvelope],
   );
 
-  // ── Polling fallback ──────────────────────────────────────────────
-  const pollOnce = useCallback(async () => {
-    try {
-      const resp = await fetch(
-        `/api/scan/${encodeURIComponent(scanId)}/events?since=${lastEventIdRef.current}`,
-        { cache: "no-store" },
-      );
-      if (!resp.ok) return;
-      const data = (await resp.json()) as {
-        events: ScanEventEnvelope[];
-        terminal: boolean;
-      };
-      ingestMany(data.events ?? []);
-      return data.terminal;
-    } catch {
-      return false;
-    }
-  }, [scanId, ingestMany]);
+  // ── HTTP one-shot backfill (initial + gap plug) ───────────────────
+  const fetchBackfill = useCallback(
+    async (since: number, until?: number): Promise<boolean> => {
+      try {
+        const qs = new URLSearchParams({ since: String(since) });
+        if (until !== undefined) qs.set("until", String(until));
+        const resp = await fetch(
+          `/api/scan/${encodeURIComponent(scanId)}/events?${qs.toString()}`,
+          { cache: "no-store" },
+        );
+        if (!resp.ok) return false;
+        const data = (await resp.json()) as {
+          events: ScanEventEnvelope[];
+          terminal: boolean;
+        };
+        ingestMany(data.events ?? []);
+        return data.terminal;
+      } catch {
+        return false;
+      }
+    },
+    [scanId, ingestMany],
+  );
 
-  // ── WebSocket connect ─────────────────────────────────────────────
+  // ── Keepalive watchdog ────────────────────────────────────────────
+  const armPingWatchdog = useCallback(() => {
+    if (pingWatchdogRef.current) clearTimeout(pingWatchdogRef.current);
+    pingWatchdogRef.current = setTimeout(() => {
+      // No ping for too long — force reconnect.
+      try {
+        wsRef.current?.close();
+      } catch {
+        /* ignore */
+      }
+    }, PING_TIMEOUT_MS);
+  }, []);
+
+  const armLostTimer = useCallback(() => {
+    if (lostTimerRef.current) clearTimeout(lostTimerRef.current);
+    lostTimerRef.current = setTimeout(() => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        setConnection("lost");
+      }
+    }, LOST_CONNECTION_MS);
+  }, []);
+
+  const clearLostTimer = useCallback(() => {
+    if (lostTimerRef.current) {
+      clearTimeout(lostTimerRef.current);
+      lostTimerRef.current = null;
+    }
+  }, []);
+
+  // ── WebSocket connect + frame router ──────────────────────────────
   const openWebSocket = useCallback(() => {
-    if (closedRef.current) return;
+    if (closedRef.current || isDone) return;
+    let ws: WebSocket;
     try {
       const proto = window.location.protocol === "https:" ? "wss" : "ws";
       const url = `${proto}://${window.location.host}/api/ws/scan/${encodeURIComponent(scanId)}`;
-      const ws = new WebSocket(url);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        setMode("ws");
-        setIsConnected(true);
-      };
-      ws.onmessage = (evt) => {
-        try {
-          const data = JSON.parse(evt.data);
-          if (data?.kind === "hello" && Array.isArray(data.backlog)) {
-            ingestMany(data.backlog as ScanEventEnvelope[]);
-          } else if (data?.id !== undefined && data?.event) {
-            ingestEnvelope(data as ScanEventEnvelope);
-          }
-        } catch {
-          /* ignore malformed frame */
-        }
-      };
-      ws.onclose = () => {
-        setIsConnected(false);
-        wsRef.current = null;
-        if (!closedRef.current) {
-          setMode("polling");
-          // Reconnect after a short delay; polling keeps data flowing
-          // in the meantime.
-          setTimeout(openWebSocket, 3000);
-        }
-      };
-      ws.onerror = () => {
-        setMode("polling");
-      };
+      ws = new WebSocket(url);
     } catch {
-      setMode("polling");
+      scheduleReconnect();
+      return;
     }
-  }, [scanId, ingestEnvelope, ingestMany]);
+    wsRef.current = ws;
 
+    ws.onopen = () => {
+      reconnectAttemptsRef.current = 0;
+      setConnection("live");
+      clearLostTimer();
+      armPingWatchdog();
+
+      // Ask the DO to resume from our last known seq. On the first
+      // connection this is 0, which means "send the whole ring."
+      // After a reconnect it's the highest id we've already seen.
+      const sub: ClientSubscribeFrame = {
+        kind: "subscribe",
+        since: lastSeqRef.current,
+      };
+      try {
+        ws.send(JSON.stringify(sub));
+      } catch {
+        /* socket already closed */
+      }
+    };
+
+    ws.onmessage = async (evt) => {
+      let frame: ServerFrame;
+      try {
+        frame = JSON.parse(evt.data) as ServerFrame;
+      } catch {
+        return;
+      }
+
+      // Envelope (scan event)
+      if ("id" in frame && "event" in frame) {
+        ingestEnvelope(frame as ScanEventEnvelope);
+        return;
+      }
+
+      switch ((frame as { kind?: string }).kind) {
+        case "hello": {
+          const hello = frame as Extract<ServerFrame, { kind: "hello" }>;
+          if (Array.isArray(hello.backlog)) {
+            ingestMany(hello.backlog);
+          }
+          armPingWatchdog();
+          break;
+        }
+        case "ping": {
+          const pong: ClientPongFrame = {
+            kind: "pong",
+            ts: (frame as { ts: number }).ts,
+          };
+          try {
+            ws.send(JSON.stringify(pong));
+          } catch {
+            /* ignore */
+          }
+          armPingWatchdog();
+          break;
+        }
+        case "gap": {
+          if (gapPluggingRef.current) break;
+          gapPluggingRef.current = true;
+          const { oldest_seq } = frame as Extract<ServerFrame, { kind: "gap" }>;
+          try {
+            await fetchBackfill(lastSeqRef.current, oldest_seq - 1);
+          } finally {
+            gapPluggingRef.current = false;
+          }
+          break;
+        }
+        case "done": {
+          const done = frame as ServerDoneFrame;
+          setIsDone(true);
+          setDoneStatus(done.status);
+          closedRef.current = true;
+          try {
+            ws.close(1000, "done");
+          } catch {
+            /* ignore */
+          }
+          break;
+        }
+      }
+    };
+
+    ws.onclose = () => {
+      wsRef.current = null;
+      if (pingWatchdogRef.current) {
+        clearTimeout(pingWatchdogRef.current);
+        pingWatchdogRef.current = null;
+      }
+      if (closedRef.current || isDone) {
+        setConnection("idle");
+        return;
+      }
+      setConnection("reconnecting");
+      armLostTimer();
+      scheduleReconnect();
+    };
+
+    ws.onerror = () => {
+      // `onerror` fires immediately before `onclose` in most browsers;
+      // we handle reconnect in onclose. No-op here.
+    };
+  }, [
+    scanId,
+    ingestEnvelope,
+    ingestMany,
+    fetchBackfill,
+    armPingWatchdog,
+    armLostTimer,
+    clearLostTimer,
+    isDone,
+  ]);
+
+  // ── Reconnect scheduling ──────────────────────────────────────────
+  const scheduleReconnect = useCallback(() => {
+    if (closedRef.current || isDone) return;
+    if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+    const attempt = reconnectAttemptsRef.current;
+    const delay = Math.min(
+      RECONNECT_MAX_MS,
+      RECONNECT_MIN_MS * Math.pow(2, attempt),
+    );
+    reconnectAttemptsRef.current = attempt + 1;
+    reconnectTimerRef.current = setTimeout(openWebSocket, delay);
+  }, [openWebSocket, isDone]);
+
+  // ── Lifecycle ─────────────────────────────────────────────────────
   useEffect(() => {
     if (disabled) return;
     closedRef.current = false;
+    setConnection("idle");
 
-    // 1. Initial backfill from D1.
-    void pollOnce().then((terminal) => {
-      if (terminal) return; // scan already done, no WS needed
-      // 2. Open WS for live updates.
+    // 1. Initial backfill — catches everything that happened before we
+    //    got here. The WS's `hello` will probably duplicate some, but
+    //    we dedupe by envelope id.
+    void fetchBackfill(0).then((terminal) => {
+      if (terminal) {
+        // Scan already reached a terminal state; skip WS entirely.
+        setIsDone(true);
+        return;
+      }
       openWebSocket();
     });
 
-    // 3. Polling loop runs alongside as a safety net. 2s while the WS
-    // is connected is cheap + keeps us moving if the DO drops a publish.
-    const poll = async () => {
-      const terminal = await pollOnce();
-      if (terminal || closedRef.current) return;
-      pollTimerRef.current = setTimeout(poll, 2000);
-    };
-    pollTimerRef.current = setTimeout(poll, 2000);
-
     return () => {
       closedRef.current = true;
-      wsRef.current?.close();
+      if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      if (pingWatchdogRef.current) clearTimeout(pingWatchdogRef.current);
+      if (lostTimerRef.current) clearTimeout(lostTimerRef.current);
+      try {
+        wsRef.current?.close();
+      } catch {
+        /* ignore */
+      }
       wsRef.current = null;
-      if (pollTimerRef.current) clearTimeout(pollTimerRef.current);
     };
-  }, [disabled, openWebSocket, pollOnce]);
+  }, [disabled, fetchBackfill, openWebSocket]);
 
   return {
     envelopes,
     terminalLines,
-    lastEventId: lastEventIdRef.current,
-    isConnected,
-    mode,
+    lastEventId: lastSeqRef.current,
+    connection,
+    isDone,
+    doneStatus,
   };
 }
 
-// ─── Projections ───────────────────────────────────────────────────
+// ─── Projections (kept as-is, UI consumers unchanged) ──────────────
 
 export interface PhaseState {
   phase: string;
@@ -192,7 +353,7 @@ export interface PhaseState {
 
 /**
  * Project a flat event stream into per-phase state for the Task list.
- * Handles out-of-order arrivals (WS + polling) safely.
+ * Handles out-of-order arrivals safely.
  */
 export function projectPhases(
   envelopes: ScanEventEnvelope[],
@@ -207,14 +368,24 @@ export function projectPhases(
     if (e.kind === "stage-start" && e.stage) {
       const row =
         byName.get(e.stage) ??
-        ({ phase: e.stage, status: "pending", workers: [], warnings: [] } as PhaseState);
+        ({
+          phase: e.stage,
+          status: "pending",
+          workers: [],
+          warnings: [],
+        } as PhaseState);
       row.status = "running";
       row.detail = e.detail ?? row.detail;
       byName.set(e.stage, row);
     } else if (e.kind === "stage-end" && e.stage) {
       const row =
         byName.get(e.stage) ??
-        ({ phase: e.stage, status: "pending", workers: [], warnings: [] } as PhaseState);
+        ({
+          phase: e.stage,
+          status: "pending",
+          workers: [],
+          warnings: [],
+        } as PhaseState);
       row.status = "done";
       row.duration_ms = e.duration_ms ?? row.duration_ms;
       row.detail = e.detail ?? row.detail;
@@ -226,7 +397,6 @@ export function projectPhases(
         if (row.status === "running") row.status = "warn";
       }
     } else if (e.kind === "worker-update" && e.worker) {
-      // Attribute worker updates to the current running phase.
       const running = Array.from(byName.values()).find(
         (r) => r.status === "running" || r.status === "warn",
       );
@@ -262,4 +432,3 @@ export function currentPhase(phases: PhaseState[]): PhaseState | null {
   const done = phases.filter((p) => p.status === "done");
   return done[done.length - 1] ?? null;
 }
-

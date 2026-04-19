@@ -26,6 +26,9 @@ export async function GET(
   const url = new URL(req.url);
   const since = Number(url.searchParams.get("since") ?? 0);
   const limit = Math.min(500, Number(url.searchParams.get("limit") ?? 200));
+  const untilParam = url.searchParams.get("until");
+  const until =
+    untilParam !== null && untilParam !== "" ? Number(untilParam) : undefined;
 
   const { env } = await getCloudflareContext({ async: true });
   const scan = await getScanByIdForUser(env.DB, id, session.user.id);
@@ -33,7 +36,7 @@ export async function GET(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  const rows = await listEventsSince(env.DB, id, since, limit);
+  const rows = await listEventsSince(env.DB, id, since, limit, until);
   const events: ScanEventEnvelope[] = rows.map((r) => ({
     id: r.id,
     scan_id: r.scan_id,

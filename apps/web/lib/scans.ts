@@ -40,6 +40,8 @@ export interface ScanEventRow {
   duration_ms: number | null;
   message: string | null;
   data_json: string | null;
+  parent_id: string | null;
+  message_id: string | null;
   at: number;
 }
 
@@ -85,16 +87,22 @@ export async function listEventsSince(
   scanId: string,
   sinceId: number,
   limit = 200,
+  untilId?: number,
 ): Promise<ScanEventRow[]> {
-  const resp = await db
-    .prepare(
-      `SELECT * FROM scan_events
+  const query = untilId !== undefined
+    ? `SELECT * FROM scan_events
+         WHERE scan_id = ? AND id > ? AND id <= ?
+         ORDER BY id ASC
+         LIMIT ?`
+    : `SELECT * FROM scan_events
          WHERE scan_id = ? AND id > ?
          ORDER BY id ASC
-         LIMIT ?`,
-    )
-    .bind(scanId, sinceId, limit)
-    .all<ScanEventRow>();
+         LIMIT ?`;
+  const binds: (string | number)[] =
+    untilId !== undefined
+      ? [scanId, sinceId, untilId, limit]
+      : [scanId, sinceId, limit];
+  const resp = await db.prepare(query).bind(...binds).all<ScanEventRow>();
   return resp.results ?? [];
 }
 

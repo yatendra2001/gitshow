@@ -21,15 +21,27 @@
 import "dotenv/config";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
-import { runPipeline, type PipelineEvent } from "../src/pipeline.js";
+import { runPipeline } from "../src/pipeline.js";
 import { ScanCheckpoint } from "../src/checkpoint.js";
 import { sanitizeHandle } from "../src/session.js";
 import { R2Client } from "../src/cloud/r2.js";
 import { D1Client } from "../src/cloud/d1.js";
 import { DOPublishClient } from "@gitshow/shared/cloud/do-client";
-import type { PipelineEvent as StructuredEvent } from "@gitshow/shared/events";
+import {
+  isPersistedEvent,
+  type PipelineEvent,
+  type PersistedEventKind,
+} from "@gitshow/shared/events";
+import {
+  ResendSender,
+  renderScanComplete,
+  renderScanFailed,
+} from "@gitshow/shared/notifications/email";
 import { logger, requireEnv } from "../src/util.js";
+
+const PUBLIC_APP_URL = process.env.PUBLIC_APP_URL ?? "https://gitshow.io";
 import type { ScanSession, ScanSocials } from "../src/schemas.js";
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
@@ -68,6 +80,7 @@ async function main() {
   const r2 = R2Client.fromEnv();
   const d1 = D1Client.fromEnv();
   const doClient = DOPublishClient.fromEnv({ logger });
+  const email = ResendSender.fromEnv({ logger });
   const scanLog = logger.child({ scan_id: scanId, handle });
 
   scanLog.info({ model, fly_machine_id: flyMachineId }, "boot");
@@ -122,50 +135,50 @@ async function main() {
         return;
       }
 
-      // Build the structured event that both sinks see. We map the
-      // pipeline's legacy event shape (durationMs, detail) into the
-      // unified @gitshow/shared/events shape.
-      const structured = toStructured(ev);
+      if (!isPersistedEvent(ev)) return;
 
+      // Denormalized flat columns for quick queries; the full event is
+      // always stashed in data_json so the browser can reconstruct the
+      // exact shape without a schema library.
       const eventInsert = d1.insertEvent(scanId, {
-        kind: structured.kind,
-        stage: "stage" in structured ? (structured.stage ?? null) : null,
-        worker: "worker" in structured ? (structured.worker ?? null) : null,
-        status: "status" in structured ? (structured.status ?? null) : null,
+        kind: ev.kind as PersistedEventKind,
+        stage: "stage" in ev ? ((ev.stage as string | undefined) ?? null) : null,
+        worker:
+          "worker" in ev ? ((ev.worker as string | undefined) ?? null) : null,
+        status:
+          "status" in ev ? ((ev.status as string | undefined) ?? null) : null,
         duration_ms:
-          "duration_ms" in structured ? (structured.duration_ms ?? null) : null,
+          "duration_ms" in ev
+            ? ((ev.duration_ms as number | undefined) ?? null)
+            : null,
         message:
-          structured.kind === "stage-warn" || structured.kind === "error"
-            ? structured.message
-            : "detail" in structured && structured.detail
-              ? structured.detail
+          ev.kind === "stage-warn" || ev.kind === "error"
+            ? ev.message
+            : "detail" in ev && ev.detail
+              ? ev.detail
               : null,
-        // Structured kinds carry their full payload in data_json for the
-        // browser to decode without rebuilding the schema. Stage
-        // boundaries stay flat.
-        data_json:
-          structured.kind === "reasoning" ||
-          structured.kind === "test-result" ||
-          structured.kind === "eval-axes" ||
-          structured.kind === "usage" ||
-          structured.kind === "plan"
-            ? structured
+        data_json: ev,
+        parent_id:
+          "parent_id" in ev ? ((ev.parent_id as string | undefined) ?? null) : null,
+        message_id:
+          "message_id" in ev
+            ? ((ev.message_id as string | undefined) ?? null)
             : null,
       });
 
       const statusUpdate =
-        structured.kind === "stage-start"
-          ? d1.updateScanStatus(scanId, { current_phase: structured.stage })
-          : structured.kind === "stage-end"
+        ev.kind === "stage-start"
+          ? d1.updateScanStatus(scanId, { current_phase: ev.stage })
+          : ev.kind === "stage-end"
             ? d1.updateScanStatus(scanId, {
-                last_completed_phase: structured.stage,
+                last_completed_phase: ev.stage,
               })
             : Promise.resolve();
 
       // DO publish runs in parallel with the D1 write and is purely
       // fire-and-forget — a failed publish must never hurt the pipeline.
       if (doClient) {
-        void doClient.publish(scanId, structured);
+        void doClient.publish(scanId, ev);
       }
 
       void Promise.all([eventInsert, statusUpdate]).catch((err) => {
@@ -203,6 +216,69 @@ async function main() {
       hiring_score: cardMeta.hiringScore,
     });
 
+    // Notify the user — in-app inbox row + email (Web Push lands in a
+    // follow-up). 40-50 min scans mean the user is almost never on the
+    // tab when this fires; the notification is how they discover their
+    // profile is ready.
+    try {
+      const userId = await d1.getUserIdForScan(scanId);
+      if (userId) {
+        const profileUrl = `${PUBLIC_APP_URL}/${encodeURIComponent(handle)}`;
+        await d1.createNotification({
+          id: `ntf_${randomUUID()}`,
+          user_id: userId,
+          kind: "scan-complete",
+          scan_id: scanId,
+          title: `Your gitshow profile is ready`,
+          body: `@${handle} — we found ${profile.claims.length} claims`,
+          action_url: profileUrl,
+        });
+
+        if (email) {
+          const contact = await d1.getUserContactById(userId);
+          if (contact?.email) {
+            const tpl = renderScanComplete({
+              handle,
+              claimCount: profile.claims.length,
+              profileUrl,
+            });
+            void email.send({
+              to: contact.email,
+              subject: tpl.subject,
+              html: tpl.html,
+              text: tpl.text,
+              tags: [
+                { name: "kind", value: "scan-complete" },
+                { name: "scan_id", value: scanId },
+              ],
+            });
+          }
+        }
+      }
+    } catch (err) {
+      scanLog.warn({ err }, "notification.create.failed");
+    }
+
+    // Tell the DO the scan has finished so connected browsers can close
+    // the WebSocket cleanly rather than waiting for a keepalive timeout.
+    if (doClient) {
+      try {
+        await fetch(
+          `${process.env.REALTIME_ENDPOINT!.replace(/\/+$/, "")}/scans/${encodeURIComponent(scanId)}/done`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Gitshow-Pipeline-Secret": process.env.PIPELINE_SHARED_SECRET!,
+            },
+            body: JSON.stringify({ status: "succeeded" }),
+          },
+        );
+      } catch (err) {
+        scanLog.warn({ err }, "done.publish.failed");
+      }
+    }
+
     clearInterval(heartbeat);
     scanLog.info(
       {
@@ -226,44 +302,44 @@ async function main() {
     } catch (dbErr) {
       scanLog.error({ err: dbErr }, "failed to mark scan as failed");
     }
-    process.exit(1);
-  }
-}
+    try {
+      const userId = await d1.getUserIdForScan(scanId);
+      if (userId) {
+        await d1.createNotification({
+          id: `ntf_${randomUUID()}`,
+          user_id: userId,
+          kind: "scan-failed",
+          scan_id: scanId,
+          title: `Your gitshow scan hit a snag`,
+          body: msg.slice(0, 160),
+          action_url: `${PUBLIC_APP_URL}/app`,
+        });
 
-/**
- * Bridge the pipeline's in-process event type to the shared
- * PipelineEvent type that ScanLiveDO + the web app consume. The
- * pipeline uses `durationMs` (camelCase, legacy); shared uses
- * `duration_ms`. Also inserts defaults for optional fields so
- * downstream code doesn't have to null-check.
- */
-function toStructured(ev: PipelineEvent): StructuredEvent {
-  switch (ev.kind) {
-    case "stage-start":
-      return { kind: "stage-start", stage: ev.stage, detail: ev.detail };
-    case "stage-end":
-      return {
-        kind: "stage-end",
-        stage: ev.stage,
-        duration_ms: ev.durationMs,
-        detail: ev.detail,
-      };
-    case "stage-warn":
-      return {
-        kind: "stage-warn",
-        stage: ev.stage,
-        message: ev.message,
-      };
-    case "worker-update":
-      return {
-        kind: "worker-update",
-        worker: ev.worker,
-        status: ev.status,
-        detail: ev.detail,
-      };
-    case "stream":
-      // Shouldn't reach here — stream is handled directly in onEvent.
-      return { kind: "stream", text: ev.text };
+        if (email) {
+          const contact = await d1.getUserContactById(userId);
+          if (contact?.email) {
+            const tpl = renderScanFailed({
+              handle,
+              reason: msg.slice(0, 300),
+              dashboardUrl: `${PUBLIC_APP_URL}/app`,
+            });
+            void email.send({
+              to: contact.email,
+              subject: tpl.subject,
+              html: tpl.html,
+              text: tpl.text,
+              tags: [
+                { name: "kind", value: "scan-failed" },
+                { name: "scan_id", value: scanId },
+              ],
+            });
+          }
+        }
+      }
+    } catch (notifyErr) {
+      scanLog.warn({ err: notifyErr }, "notification.create.failed");
+    }
+    process.exit(1);
   }
 }
 
