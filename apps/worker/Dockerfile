@@ -17,20 +17,23 @@ RUN apt-get update \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
-# Install layer — copy ONLY package.json files first so the install layer
-# stays cached when source changes. The worker has a workspace dep on
-# `@gitshow/shared` so we need that package's manifest present too.
+# Install layer — copy every workspace's package.json so bun.lock's
+# workspace declarations match what's on disk. Skipping any of them
+# (e.g. apps/web, apps/realtime) makes `--frozen-lockfile` fail with
+# "lockfile had changes" because the workspace shape disagrees with
+# the lockfile, even though no actual versions changed.
 COPY package.json bun.lock ./
 COPY apps/worker/package.json ./apps/worker/package.json
+COPY apps/web/package.json ./apps/web/package.json
+COPY apps/realtime/package.json ./apps/realtime/package.json
 COPY packages/shared/package.json ./packages/shared/package.json
 
 # `--production` skips devDependencies; `--frozen-lockfile` aborts if the
-# lockfile would mutate — both are intentional for reproducible builds.
+# lockfile would mutate. Intentional for reproducible builds.
 RUN bun install --frozen-lockfile --production
 
-# Now bring in source for both the worker and the shared package. Order
-# matters: shared first so worker compilation can resolve its imports
-# without a second install pass.
+# Now bring in source for both the worker and the shared package. Other
+# workspaces stay as install-only stubs to keep this image lean.
 COPY packages/shared ./packages/shared
 COPY apps/worker ./apps/worker
 
