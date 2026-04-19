@@ -32,13 +32,8 @@ export default async function ScanPage({
   );
 }
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ scanId: string }>;
-}) {
-  const { scanId } = await params;
+export async function generateMetadata() {
   return {
-    title: `Scan ${scanId.slice(0, 12)} · gitshow`,
+    title: "Your profile · gitshow",
   };
 }
