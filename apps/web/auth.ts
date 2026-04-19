@@ -9,12 +9,14 @@ import authConfig from "./auth.config";
  * isn't available at module load time during SSG — it needs the per-request
  * async context that OpenNext establishes in its worker.
  *
- * Session strategy: database. KV-backed would be faster but we already own
- * D1, one less moving part.
+ * Session strategy: database — sessions live in D1's `sessions` table via
+ * @auth/d1-adapter. Keep the schema matching its expectations exactly
+ * (migration 0003 rebuilt accounts + sessions; any future change there
+ * should be another migration).
  *
- * Verbose logging is ON so we can trace what the adapter does during
- * OAuth callback. Silent swallowed errors are how we got here — don't
- * remove the loggers without a concrete reason.
+ * Adapter wrapper logs method enter/exit so auth bugs are visible in
+ * `wrangler tail`, but redacts OAuth tokens + any other secret-looking
+ * fields so we never leak bearer tokens into Cloudflare observability.
  */
 export const { handlers, auth, signIn, signOut } = NextAuth(async () => {
   const { env } = await getCloudflareContext({ async: true });
@@ -22,7 +24,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth(async () => {
 
   return {
     ...authConfig,
-    adapter: wrapAdapterWithLogging(baseAdapter as unknown as Record<string, unknown>) as typeof baseAdapter,
+    adapter: wrapAdapterWithLogging(
+      baseAdapter as unknown as Record<string, unknown>,
+    ) as typeof baseAdapter,
     session: { strategy: "database" },
     secret: env.AUTH_SECRET,
     providers: [
@@ -37,42 +41,47 @@ export const { handlers, auth, signIn, signOut } = NextAuth(async () => {
       }),
     ],
     trustHost: true,
-    debug: true,
+    // NextAuth's own `debug` writes full payloads including tokens.
+    // Keep off unless actively debugging — events below cover what we
+    // usually care about (without the secrets).
+    debug: false,
     logger: {
       error(err: unknown) {
-        console.error("[auth.logger.error]", err);
+        console.error("[auth.error]", err);
       },
       warn(code: string) {
-        console.warn("[auth.logger.warn]", code);
+        console.warn("[auth.warn]", code);
       },
-      debug(code: string, meta: unknown) {
-        console.log("[auth.logger.debug]", code, meta);
-      },
+      // no-op debug; the adapter wrapper provides the useful calls.
+      debug() {},
     },
     events: {
-      signIn(message) {
-        console.log("[auth.event.signIn]", JSON.stringify(message));
+      createUser({ user }) {
+        console.log("[auth.createUser]", { id: user.id, email: user.email });
       },
-      createUser(message) {
-        console.log("[auth.event.createUser]", JSON.stringify(message));
+      linkAccount({ user, account }) {
+        console.log("[auth.linkAccount]", {
+          userId: user.id,
+          provider: account.provider,
+          providerAccountId: account.providerAccountId,
+        });
       },
-      linkAccount(message) {
-        console.log("[auth.event.linkAccount]", JSON.stringify(message));
-      },
-      session(message) {
-        console.log("[auth.event.session]", JSON.stringify(message));
+      signIn({ user, isNewUser }) {
+        console.log("[auth.signIn]", { id: user.id, isNewUser });
       },
     },
   };
 });
 
 /**
- * Wraps every adapter method so thrown errors AND successful calls are
- * visible in `wrangler tail`. The base @auth/d1-adapter catches + silently
- * logs via console.error in some paths — which Cloudflare Workers chops
- * before it reaches our tail — so we log aggressively on entry + exit.
+ * Proxy every adapter method with enter/ok/threw logging. Sensitive
+ * fields are redacted before JSON serialization — the adapter's
+ * linkAccount input carries `access_token` + `id_token` + `refresh_token`
+ * which we must NEVER write to logs.
  */
-function wrapAdapterWithLogging<T extends Record<string, unknown>>(adapter: T): T {
+function wrapAdapterWithLogging<T extends Record<string, unknown>>(
+  adapter: T,
+): T {
   if (!adapter) return adapter;
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(adapter)) {
@@ -91,7 +100,10 @@ function wrapAdapterWithLogging<T extends Record<string, unknown>>(adapter: T): 
         console.error(tag, "THREW", {
           message: err instanceof Error ? err.message : String(err),
           stack: err instanceof Error ? err.stack : undefined,
-          cause: err instanceof Error ? (err as { cause?: unknown }).cause : undefined,
+          cause:
+            err instanceof Error
+              ? (err as { cause?: unknown }).cause
+              : undefined,
         });
         throw err;
       }
@@ -100,14 +112,38 @@ function wrapAdapterWithLogging<T extends Record<string, unknown>>(adapter: T): 
   return out as T;
 }
 
+/** Fields that must never leave the worker in plaintext. */
+const REDACT_KEYS = new Set([
+  "access_token",
+  "refresh_token",
+  "id_token",
+  "oauth_token",
+  "oauth_token_secret",
+  "session_state",
+  "code_verifier",
+  "AUTH_SECRET",
+  "AUTH_GITHUB_SECRET",
+  "CF_API_TOKEN",
+  "FLY_API_TOKEN",
+  "OPENROUTER_API_KEY",
+  "GH_TOKEN",
+  "R2_SECRET_ACCESS_KEY",
+  "PIPELINE_SHARED_SECRET",
+]);
+
 function safeJson(v: unknown): string {
   try {
     return JSON.stringify(
       v,
-      (_k, val) =>
-        typeof val === "string" && val.length > 200
-          ? val.slice(0, 200) + "…"
-          : val,
+      (key, val) => {
+        if (REDACT_KEYS.has(key) && typeof val === "string" && val.length > 0) {
+          return `<redacted:${val.length}>`;
+        }
+        if (typeof val === "string" && val.length > 200) {
+          return val.slice(0, 200) + "…";
+        }
+        return val;
+      },
     ).slice(0, 800);
   } catch {
     return "<unserializable>";
