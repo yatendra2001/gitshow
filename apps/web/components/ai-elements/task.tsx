@@ -94,68 +94,6 @@ export function Task({
   );
 }
 
-/**
- * TaskItem — one line inside a Task. Plain text, optional small status
- * glyph, optional trailing slot for chips/counts.
- */
-export function TaskItem({
-  status,
-  className,
-  children,
-  trailing,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement> & {
-  status?: TaskStatus;
-  trailing?: React.ReactNode;
-}) {
-  return (
-    <div
-      className={cn(
-        "gs-fade flex items-start gap-2 py-0.5 text-[13px] leading-relaxed text-muted-foreground",
-        className,
-      )}
-      {...props}
-    >
-      {status && (
-        <span className="mt-[3px] shrink-0">
-          <StatusDot status={status} size="xs" />
-        </span>
-      )}
-      <span className="flex-1">{children}</span>
-      {trailing}
-    </div>
-  );
-}
-
-/**
- * TaskFileChip — the small framework-icon-on-dark pill seen in the
- * reference, e.g. "page.tsx" with a React logo chip.
- */
-export function TaskFileChip({
-  icon,
-  children,
-  className,
-}: {
-  icon?: React.ReactNode;
-  children: React.ReactNode;
-  className?: string;
-}) {
-  return (
-    <span
-      className={cn(
-        "ml-1 inline-flex items-center gap-1 rounded-md border border-border bg-background/50 px-1.5 py-0.5",
-        "font-mono text-[11px] text-foreground/85",
-        className,
-      )}
-    >
-      {icon && (
-        <span className="flex size-3 items-center justify-center">{icon}</span>
-      )}
-      {children}
-    </span>
-  );
-}
-
 function StatusDot({
   status,
   size = "sm",
