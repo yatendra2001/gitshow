@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { toast } from "sonner";
 import type { ProfileCard } from "@gitshow/shared/schemas";
 import type { ScanRow } from "@/lib/scans";
 import {
@@ -116,10 +117,31 @@ export function ChatPane({
     text: string;
     mention: MentionedClaim | null;
   }) => {
-    if (!canRevise) return;
-    if (!text || !mention) return;
+    if (!canRevise) {
+      toast.info(
+        scan.status === "running" || scan.status === "queued"
+          ? "Hold on — your profile is still being written."
+          : "Tweaking opens up once your profile is ready.",
+      );
+      return;
+    }
+    if (!text) return;
+    if (!mention) {
+      // Silent drops were the top user complaint. Surface a visible nudge
+      // that tells them EXACTLY what to do, and do not clear their text.
+      toast.warning("Pick a part first", {
+        description:
+          "Type @ in the box to tag the hero, a pattern, your numbers, the disclosure, or a shipped project.",
+      });
+      return;
+    }
     const claimId = resolveClaimId(mention, currentCard);
-    if (!claimId) return;
+    if (!claimId) {
+      toast.error(
+        "Couldn't find that part of your profile. Try picking it again.",
+      );
+      return;
+    }
     try {
       await onSendRevise({ claimId, guidance: text });
       setValue("");

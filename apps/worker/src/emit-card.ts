@@ -170,20 +170,63 @@ function deriveCharts(
   profile: Profile,
   timeline: TimelineChartEntry[] | undefined,
 ): Charts {
-  // Primary team repo = the inventory artifact with looks_like_team_repo
-  // AND the highest user_commits.
+  // Primary repo selection needs to reflect "where the user actually
+  // works" today — not just "highest absolute user_commits on a
+  // looks_like_team_repo". Old hackathon wins like Tevo-SIH-2022-Winner
+  // were getting picked because their user_commits was inflated
+  // relative to the short window; current employers like flightcast-core
+  // lost even though they'd been active for 20+ months.
+  //
+  // New score per repo:
+  //   rawScore = user_commits
+  //   * recencyMultiplier (1.0 if last commit ≤60d, tapering to 0.2 by 2y)
+  //   * windowMultiplier  (1.5 if active for ≥6mo, 1.0 otherwise)
+  //   * teamBonus         (1.3 if looks_like_team_repo, else 1.0)
+  //
+  // Fallback: if nothing passes a minimal threshold, pick the inventory
+  // repo with the most recent last-commit regardless of other signals.
   const inventoryArtifacts = Object.values(profile.artifacts).filter((a) => {
     const m = a.metadata as Record<string, unknown>;
     return m.is_inventory === true;
   });
-  const teamRepos = inventoryArtifacts
-    .filter((a) => (a.metadata as Record<string, unknown>).looks_like_team_repo)
-    .sort((a, b) => {
-      const ua = Number((a.metadata as Record<string, unknown>).user_commits ?? 0);
-      const ub = Number((b.metadata as Record<string, unknown>).user_commits ?? 0);
-      return ub - ua;
-    });
-  const primary = teamRepos[0];
+
+  const now = Date.now();
+  const scored = inventoryArtifacts
+    .map((a) => {
+      const m = a.metadata as Record<string, unknown>;
+      const userCommits = Number(m.user_commits ?? 0);
+      if (userCommits === 0) return null;
+      const lastCommitAt = toTimestamp(m.last_commit_at ?? m.pushed_at);
+      const firstCommitAt = toTimestamp(m.first_commit_at ?? m.created_at);
+      const recencyDays =
+        lastCommitAt > 0 ? (now - lastCommitAt) / 86_400_000 : 9999;
+      const windowDays =
+        firstCommitAt > 0 && lastCommitAt > 0
+          ? (lastCommitAt - firstCommitAt) / 86_400_000
+          : 0;
+      // Recency taper: 1.0 at ≤60d old, 0.2 at ≥730d old, linear between.
+      const recency =
+        recencyDays <= 60
+          ? 1
+          : recencyDays >= 730
+            ? 0.2
+            : 1 - ((recencyDays - 60) / (730 - 60)) * 0.8;
+      const window = windowDays >= 180 ? 1.5 : 1;
+      const team = m.looks_like_team_repo ? 1.3 : 1;
+      const score = userCommits * recency * window * team;
+      return { artifact: a, m, score, lastCommitAt };
+    })
+    .filter((x): x is NonNullable<typeof x> => x !== null)
+    .sort((a, b) => b.score - a.score);
+
+  let primary = scored[0]?.artifact;
+  if (!primary && inventoryArtifacts.length > 0) {
+    primary = [...inventoryArtifacts].sort(
+      (a, b) =>
+        toTimestamp((b.metadata as Record<string, unknown>).last_commit_at) -
+        toTimestamp((a.metadata as Record<string, unknown>).last_commit_at),
+    )[0];
+  }
 
   let team: TeamHistogram | null = null;
   let daily: DailyActivity | null = null;
@@ -198,6 +241,15 @@ function deriveCharts(
     primary_repo_team: team,
     primary_repo_daily_activity: daily,
   };
+}
+
+function toTimestamp(v: unknown): number {
+  if (typeof v === "number") return v > 1e12 ? v : v * 1000;
+  if (typeof v === "string") {
+    const t = Date.parse(v);
+    return Number.isNaN(t) ? 0 : t;
+  }
+  return 0;
 }
 
 function buildTeamHistogram(
