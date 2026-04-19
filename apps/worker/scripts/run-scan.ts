@@ -21,6 +21,7 @@
 import "dotenv/config";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 import { runPipeline } from "../src/pipeline.js";
 import { ScanCheckpoint } from "../src/checkpoint.js";
@@ -207,6 +208,46 @@ async function main() {
       hiring_score: cardMeta.hiringScore,
     });
 
+    // Notify the user — in-app inbox row + (future: email + desktop push).
+    // 40-50 min scans mean the user is almost never on the tab when this
+    // fires; the notification is how they discover their profile is ready.
+    try {
+      const userId = await d1.getUserIdForScan(scanId);
+      if (userId) {
+        await d1.createNotification({
+          id: `ntf_${randomUUID()}`,
+          user_id: userId,
+          kind: "scan-complete",
+          scan_id: scanId,
+          title: `Your gitshow profile is ready`,
+          body: `@${handle} — we found ${profile.claims.length} claims`,
+          action_url: `/app`,
+        });
+      }
+    } catch (err) {
+      scanLog.warn({ err }, "notification.create.failed");
+    }
+
+    // Tell the DO the scan has finished so connected browsers can close
+    // the WebSocket cleanly rather than waiting for a keepalive timeout.
+    if (doClient) {
+      try {
+        await fetch(
+          `${process.env.REALTIME_ENDPOINT!.replace(/\/+$/, "")}/scans/${encodeURIComponent(scanId)}/done`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Gitshow-Pipeline-Secret": process.env.PIPELINE_SHARED_SECRET!,
+            },
+            body: JSON.stringify({ status: "succeeded" }),
+          },
+        );
+      } catch (err) {
+        scanLog.warn({ err }, "done.publish.failed");
+      }
+    }
+
     clearInterval(heartbeat);
     scanLog.info(
       {
@@ -229,6 +270,22 @@ async function main() {
       await d1.updateScanStatus(scanId, { status: "failed", error: msg.slice(0, 2000) });
     } catch (dbErr) {
       scanLog.error({ err: dbErr }, "failed to mark scan as failed");
+    }
+    try {
+      const userId = await d1.getUserIdForScan(scanId);
+      if (userId) {
+        await d1.createNotification({
+          id: `ntf_${randomUUID()}`,
+          user_id: userId,
+          kind: "scan-failed",
+          scan_id: scanId,
+          title: `Your gitshow scan hit a snag`,
+          body: msg.slice(0, 160),
+          action_url: `/app`,
+        });
+      }
+    } catch (notifyErr) {
+      scanLog.warn({ err: notifyErr }, "notification.create.failed");
     }
     process.exit(1);
   }
