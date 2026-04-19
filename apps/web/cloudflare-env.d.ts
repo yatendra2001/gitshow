@@ -40,8 +40,16 @@ declare global {
     R2_ACCESS_KEY_ID?: string;
     R2_SECRET_ACCESS_KEY?: string;
 
+    // Notification delivery (email + desktop push). Missing keys =
+    // silent no-op, never a crash.
+    RESEND_API_KEY?: string;
+    EMAIL_FROM?: string;
+    VAPID_PUBLIC_KEY?: string;
+    VAPID_PRIVATE_KEY?: string;
+
     // Vars from wrangler.jsonc:
     NEXT_PUBLIC_APP_URL?: string;
+    PUBLIC_APP_URL?: string;
     DEMO_HANDLE?: string;
   }
 }

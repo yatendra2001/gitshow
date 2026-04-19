@@ -216,6 +216,23 @@ async function main() {
       hiring_score: cardMeta.hiringScore,
     });
 
+    // Point gitshow.io/{handle} at this scan's freshly-emitted card.
+    // Best-effort — if the upsert fails, the card still exists in R2
+    // and the user can retry.
+    try {
+      const userId = await d1.getUserIdForScan(scanId);
+      if (userId) {
+        await d1.upsertUserProfile({
+          user_id: userId,
+          handle,
+          scan_id: scanId,
+          card_r2_key: `${scanId}/14-card.json`,
+        });
+      }
+    } catch (err) {
+      scanLog.warn({ err }, "user_profiles.upsert.failed");
+    }
+
     // Notify the user — in-app inbox row + email (Web Push lands in a
     // follow-up). 40-50 min scans mean the user is almost never on the
     // tab when this fires; the notification is how they discover their
