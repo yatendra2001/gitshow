@@ -80,20 +80,58 @@ async function main() {
   }, HEARTBEAT_INTERVAL_MS);
 
   const reviseStart = Date.now();
-  void d1
-    .insertEvent(scanId, {
-      kind: "stage-start",
-      stage: "revise-claim",
-      message: `claim=${claimId} beat=${claimRow.beat}`,
-    })
-    .catch(() => {});
-  if (doClient) {
-    void doClient.publish(scanId, {
-      kind: "stage-start",
-      stage: "revise-claim",
-      detail: `claim=${claimId} beat=${claimRow.beat}`,
-    });
-  }
+
+  /**
+   * Dual-sink event emitter scoped to this revise invocation. Every
+   * sub-step (angle → write → critique → save) fires a stage-start
+   * and stage-end through here so the web app's AgentProgress can
+   * show real motion while Fly runs the actual work. Without these
+   * the browser saw one stage-start, 2–6 minutes of silence, then a
+   * single stage-end — which read as "lag".
+   */
+  const emit = async (
+    kind: "stage-start" | "stage-end" | "stage-warn" | "error",
+    payload: {
+      stage?: string;
+      duration_ms?: number;
+      message?: string;
+      detail?: string;
+    },
+  ) => {
+    const ev: Record<string, unknown> = { kind };
+    if (payload.stage) ev.stage = payload.stage;
+    if (payload.duration_ms !== undefined) ev.duration_ms = payload.duration_ms;
+    if (payload.message) ev.message = payload.message;
+    if (payload.detail) ev.detail = payload.detail;
+    await d1
+      .insertEvent(scanId, ev as Parameters<typeof d1.insertEvent>[1])
+      .catch(() => {});
+    if (doClient) {
+      void doClient.publish(scanId, ev as Parameters<typeof doClient.publish>[1]);
+    }
+  };
+
+  /** Wrap an async step: emit start, run, emit end with duration. */
+  const step = async <T>(stage: string, fn: () => Promise<T>): Promise<T> => {
+    await emit("stage-start", { stage });
+    const t0 = Date.now();
+    try {
+      const r = await fn();
+      await emit("stage-end", { stage, duration_ms: Date.now() - t0 });
+      return r;
+    } catch (err) {
+      await emit("error", {
+        stage,
+        message: err instanceof Error ? err.message : String(err),
+      });
+      throw err;
+    }
+  };
+
+  await emit("stage-start", {
+    stage: "revise-claim",
+    detail: `claim=${claimId} beat=${claimRow.beat}`,
+  });
 
   try {
     const localDir = join(BASE_DIR, sanitizeHandle(scanRow.handle));
@@ -125,13 +163,39 @@ async function main() {
     let updated: Profile;
     switch (claimRow.beat) {
       case "hook":
-        updated = await regenerateHook({ session, usage, discover, workerOutputs, profile, guidance });
+        updated = await regenerateHook({
+          session,
+          usage,
+          discover,
+          workerOutputs,
+          profile,
+          guidance,
+          step,
+        });
         break;
       case "number":
-        updated = await regenerateNumbers({ session, usage, discover, workerOutputs, profile, guidance });
+        updated = await step("revise-numbers", () =>
+          regenerateNumbers({
+            session,
+            usage,
+            discover,
+            workerOutputs,
+            profile,
+            guidance,
+          }),
+        );
         break;
       case "disclosure":
-        updated = await regenerateDisclosure({ session, usage, discover, workerOutputs, profile, guidance });
+        updated = await step("revise-disclosure", () =>
+          regenerateDisclosure({
+            session,
+            usage,
+            discover,
+            workerOutputs,
+            profile,
+            guidance,
+          }),
+        );
         break;
       default:
         throw new Error(
@@ -142,24 +206,17 @@ async function main() {
 
     updated = applyGuardrails(updated).profile;
 
-    await r2.uploadStageFile(scanId, "13-profile.json", updated);
-    await replaceBeatClaims(d1, scanId, claimRow.beat, updated.claims);
+    await step("revise-save", async () => {
+      await r2.uploadStageFile(scanId, "13-profile.json", updated);
+      await replaceBeatClaims(d1, scanId, claimRow.beat, updated.claims);
+    });
 
     const elapsedMs = Date.now() - reviseStart;
-    await d1.insertEvent(scanId, {
-      kind: "stage-end",
+    await emit("stage-end", {
       stage: "revise-claim",
       duration_ms: elapsedMs,
-      message: `claim=${claimId} beat=${claimRow.beat} llm_calls=${usage.llmCalls}`,
+      detail: `claim=${claimId} beat=${claimRow.beat} llm_calls=${usage.llmCalls}`,
     });
-    if (doClient) {
-      void doClient.publish(scanId, {
-        kind: "stage-end",
-        stage: "revise-claim",
-        duration_ms: elapsedMs,
-        detail: `claim=${claimId} beat=${claimRow.beat} llm_calls=${usage.llmCalls}`,
-      });
-    }
 
     clearInterval(heartbeat);
     reviseLog.info(
@@ -206,35 +263,49 @@ interface ReviseInput {
   workerOutputs: WorkerOutput[];
   profile: Profile;
   guidance: string;
+  /**
+   * Optional per-sub-step emitter. When supplied, the hook regenerator
+   * wraps its angle-selector / writer / critic calls in stage-start /
+   * stage-end events so the UI can show real live motion instead of
+   * a single opaque "revise-claim" boundary.
+   */
+  step?: <T>(stage: string, fn: () => Promise<T>) => Promise<T>;
 }
 
 async function regenerateHook(input: ReviseInput): Promise<Profile> {
   const { session, usage, discover, workerOutputs, profile, guidance } = input;
+  const step = input.step ?? (async (_s, fn) => fn());
 
-  const newAngle = await runAngleSelector({
-    session,
-    usage,
-    discover,
-    workerOutputs,
-    reviseInstruction: guidance,
-  });
+  const newAngle = await step("revise-angle", () =>
+    runAngleSelector({
+      session,
+      usage,
+      discover,
+      workerOutputs,
+      reviseInstruction: guidance,
+    }),
+  );
 
-  const candidates = await runHookWriter({
-    session,
-    usage,
-    discover,
-    workerOutputs,
-    artifacts: profile.artifacts,
-    angle: newAngle,
-    reviseInstruction: guidance,
-  });
+  const candidates = await step("revise-write", () =>
+    runHookWriter({
+      session,
+      usage,
+      discover,
+      workerOutputs,
+      artifacts: profile.artifacts,
+      angle: newAngle,
+      reviseInstruction: guidance,
+    }),
+  );
 
-  const critique = await runHookCritic({
-    session,
-    usage,
-    candidates,
-    discover,
-  });
+  const critique = await step("revise-critique", () =>
+    runHookCritic({
+      session,
+      usage,
+      candidates,
+      discover,
+    }),
+  );
 
   const winner =
     critique.winner_index !== null

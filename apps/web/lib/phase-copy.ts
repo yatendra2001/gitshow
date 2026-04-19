@@ -105,6 +105,54 @@ export const PHASE_ORDER: readonly PipelinePhase[] = [
 ];
 
 /**
+ * Extra phase names the revise worker emits as stage-start / stage-end.
+ * These aren't in the PipelinePhase union (that type tracks the main
+ * pipeline), but PHASE_COPY is a plain Record so extending it with
+ * string keys is fine — the UI looks up copy by string either way.
+ */
+const REVISE_PHASE_COPY: Record<string, PhaseCopy> = {
+  "revise-claim": {
+    title: "Rewriting the piece you pinned",
+    activity: "Planning what to change…",
+    done: "Rewrite complete",
+  },
+  "revise-angle": {
+    title: "Picking a fresh angle",
+    activity: "Deciding which framing your feedback points at…",
+    done: "Picked the angle",
+  },
+  "revise-write": {
+    title: "Drafting candidates",
+    activity: "Writing five versions under the new angle…",
+    done: "Drafted the candidates",
+  },
+  "revise-critique": {
+    title: "Picking the strongest one",
+    activity: "Scoring every candidate on specific, verifiable, surprising, earned…",
+    done: "Picked the winner",
+  },
+  "revise-numbers": {
+    title: "Choosing new numbers",
+    activity: "Picking three KPIs that match your guidance…",
+    done: "Picked the numbers",
+  },
+  "revise-disclosure": {
+    title: "Rewriting the honest flaw",
+    activity: "Finding the trade-off worth naming — in your voice…",
+    done: "Wrote the flaw",
+  },
+  "revise-save": {
+    title: "Saving your changes",
+    activity: "Writing back to storage, refreshing the artifact…",
+    done: "Saved",
+  },
+};
+
+// Merge revise phases into the main lookup. Anything the UI looks up
+// via `PHASE_COPY[stage]` now resolves for both scan + revise stages.
+Object.assign(PHASE_COPY, REVISE_PHASE_COPY);
+
+/**
  * Humanize a sub-worker name when it appears inside the activity stream.
  * Keeps the chat pane approachable — "cross-repo" reads like bucket-case
  * detritus; "Looking across your repos for patterns" reads like a narrator.
