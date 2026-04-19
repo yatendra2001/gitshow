@@ -35,6 +35,12 @@ const BodySchema = z.object({
   scanId: z.string(),
   claimId: z.string().optional(),
   guidance: z.string().min(1).max(2000),
+  /**
+   * Optional R2 keys of images the user attached (via /api/revise/upload).
+   * The web layer stores them on the message row; the worker reads them
+   * when it boots so the revise agent can see the screenshots.
+   */
+  image_r2_keys: z.array(z.string()).max(5).optional(),
 });
 
 export async function POST(req: Request) {
@@ -50,7 +56,7 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
-  const { scanId, claimId, guidance } = parse.data;
+  const { scanId, claimId, guidance, image_r2_keys } = parse.data;
 
   const { env } = await getCloudflareContext({ async: true });
   const scan = await getScanByIdForUser(env.DB, scanId, session.user.id);
@@ -124,6 +130,37 @@ export async function POST(req: Request) {
       { status: 500 },
     );
   }
+
+  // Create a messages row that scopes all revise events (reasoning
+  // deltas, tool cards, sources, revise-applied) so the UI can render
+  // inline progress under the user's bubble. All dispatches from this
+  // request share the same message_id.
+  const messageId = `msg_${Math.random().toString(36).slice(2, 14)}`;
+  try {
+    await env.DB.prepare(
+      `INSERT INTO messages
+         (id, user_id, scan_id, kind, body, image_r2_keys, status, created_at, updated_at)
+       VALUES (?, ?, ?, 'revise', ?, ?, 'running', ?, ?)`,
+    )
+      .bind(
+        messageId,
+        session.user.id,
+        scanId,
+        guidance,
+        image_r2_keys && image_r2_keys.length > 0
+          ? JSON.stringify(image_r2_keys)
+          : null,
+        Date.now(),
+        Date.now(),
+      )
+      .run();
+  } catch (err) {
+    return NextResponse.json(
+      { error: "message_insert", detail: (err as Error).message },
+      { status: 500 },
+    );
+  }
+
   const ts = Math.floor(Date.now() / 1000);
   const results = await Promise.all(
     dispatches.map(async (d, i) => {
@@ -138,6 +175,8 @@ export async function POST(req: Request) {
             scanId,
             claimId: d.claimId,
             guidance: d.guidance,
+            messageId,
+            imageKeys: image_r2_keys,
           }),
         });
         return {
@@ -173,6 +212,7 @@ export async function POST(req: Request) {
   return NextResponse.json(
     {
       ok: true,
+      message_id: messageId,
       summary: describeDispatch(
         dispatches.filter((d) =>
           results.find((r) => r.ok && r.beat === d.beat),
@@ -186,12 +226,19 @@ export async function POST(req: Request) {
 
 function buildMachineEnv(
   env: CloudflareEnv,
-  s: { scanId: string; claimId: string; guidance: string },
+  s: {
+    scanId: string;
+    claimId: string;
+    guidance: string;
+    messageId: string;
+    imageKeys?: string[];
+  },
 ): Record<string, string> {
   const out: Record<string, string> = {
     SCAN_ID: s.scanId,
     CLAIM_ID: s.claimId,
     GUIDANCE: s.guidance,
+    MESSAGE_ID: s.messageId,
     GITSHOW_CLOUD_MODE: "1",
     CF_ACCOUNT_ID: required(env, "CF_ACCOUNT_ID"),
     CF_API_TOKEN: required(env, "CF_API_TOKEN"),
@@ -201,6 +248,9 @@ function buildMachineEnv(
     R2_SECRET_ACCESS_KEY: required(env, "R2_SECRET_ACCESS_KEY"),
     OPENROUTER_API_KEY: required(env, "OPENROUTER_API_KEY"),
   };
+  if (s.imageKeys && s.imageKeys.length > 0) {
+    out.IMAGE_R2_KEYS = JSON.stringify(s.imageKeys);
+  }
   if (env.REALTIME_ENDPOINT) out.REALTIME_ENDPOINT = env.REALTIME_ENDPOINT;
   if (env.PIPELINE_SHARED_SECRET)
     out.PIPELINE_SHARED_SECRET = env.PIPELINE_SHARED_SECRET;
