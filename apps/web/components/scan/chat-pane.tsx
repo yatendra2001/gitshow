@@ -55,7 +55,7 @@ export function ChatPane({
   partialCard: ProfileCard | null;
   messages: ChatMessage[];
   onSendRevise: (payload: {
-    claimId: string;
+    claimId?: string;
     guidance: string;
   }) => Promise<void>;
   revisePending: boolean;
@@ -126,24 +126,16 @@ export function ChatPane({
       return;
     }
     if (!text) return;
-    if (!mention) {
-      // Silent drops were the top user complaint. Surface a visible nudge
-      // that tells them EXACTLY what to do, and do not clear their text.
-      toast.warning("Pick a part first", {
-        description:
-          "Type @ in the box to tag the hero, a pattern, your numbers, the disclosure, or a shipped project.",
-      });
-      return;
-    }
-    const claimId = resolveClaimId(mention, currentCard);
-    if (!claimId) {
-      toast.error(
-        "Couldn't find that part of your profile. Try picking it again.",
-      );
-      return;
-    }
+
+    // Free-form is the default path now. When the user @mentioned a
+    // specific part, we pass claimId so the server skips classification.
+    // When they didn't, we send guidance-only and let the server route.
+    const claimId = mention ? resolveClaimId(mention, currentCard) : null;
     try {
-      await onSendRevise({ claimId, guidance: text });
+      await onSendRevise({
+        claimId: claimId ?? undefined,
+        guidance: text,
+      });
       setValue("");
       setMentionedClaim(null);
     } catch {
