@@ -28,6 +28,7 @@ import { nanoid } from "nanoid";
 
 import { R2Client } from "../src/cloud/r2.js";
 import { D1Client } from "../src/cloud/d1.js";
+import { DOPublishClient } from "@gitshow/shared/cloud/do-client";
 import { sanitizeHandle, SessionUsage } from "../src/session.js";
 import { applyGuardrails } from "../src/guardrails.js";
 import { runAngleSelector } from "../src/agents/hook/angle-selector.js";
@@ -63,6 +64,7 @@ async function main() {
 
   const r2 = R2Client.fromEnv();
   const d1 = D1Client.fromEnv();
+  const doClient = DOPublishClient.fromEnv({ logger });
   const reviseLog = logger.child({ scan_id: scanId, claim_id: claimId });
 
   reviseLog.info({ guidance_len: guidance.length }, "boot");
@@ -85,6 +87,13 @@ async function main() {
       message: `claim=${claimId} beat=${claimRow.beat}`,
     })
     .catch(() => {});
+  if (doClient) {
+    void doClient.publish(scanId, {
+      kind: "stage-start",
+      stage: "revise-claim",
+      detail: `claim=${claimId} beat=${claimRow.beat}`,
+    });
+  }
 
   try {
     const localDir = join(BASE_DIR, sanitizeHandle(scanRow.handle));
@@ -143,6 +152,14 @@ async function main() {
       duration_ms: elapsedMs,
       message: `claim=${claimId} beat=${claimRow.beat} llm_calls=${usage.llmCalls}`,
     });
+    if (doClient) {
+      void doClient.publish(scanId, {
+        kind: "stage-end",
+        stage: "revise-claim",
+        duration_ms: elapsedMs,
+        detail: `claim=${claimId} beat=${claimRow.beat} llm_calls=${usage.llmCalls}`,
+      });
+    }
 
     clearInterval(heartbeat);
     reviseLog.info(
@@ -167,6 +184,13 @@ async function main() {
         message: `claim=${claimId} err=${msg.slice(0, 400)}`,
       })
       .catch(() => {});
+    if (doClient) {
+      void doClient.publish(scanId, {
+        kind: "error",
+        stage: "revise-claim",
+        message: `claim=${claimId} err=${msg.slice(0, 400)}`,
+      });
+    }
     process.exit(1);
   }
 }

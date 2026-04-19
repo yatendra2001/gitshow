@@ -27,6 +27,8 @@ import { ScanCheckpoint } from "../src/checkpoint.js";
 import { sanitizeHandle } from "../src/session.js";
 import { R2Client } from "../src/cloud/r2.js";
 import { D1Client } from "../src/cloud/d1.js";
+import { DOPublishClient } from "@gitshow/shared/cloud/do-client";
+import type { PipelineEvent as StructuredEvent } from "@gitshow/shared/events";
 import { logger, requireEnv } from "../src/util.js";
 import type { ScanSession, ScanSocials } from "../src/schemas.js";
 
@@ -65,6 +67,7 @@ async function main() {
 
   const r2 = R2Client.fromEnv();
   const d1 = D1Client.fromEnv();
+  const doClient = DOPublishClient.fromEnv({ logger });
   const scanLog = logger.child({ scan_id: scanId, handle });
 
   scanLog.info({ model, fly_machine_id: flyMachineId }, "boot");
@@ -111,29 +114,59 @@ async function main() {
     const onEvent = (ev: PipelineEvent) => {
       if (ev.kind === "stream") {
         if (process.env.GITSHOW_DEBUG) process.stderr.write(ev.text);
+        // Stream lines go to DO only (realtime Terminal component) — too
+        // noisy for D1.
+        if (doClient) {
+          void doClient.publish(scanId, { kind: "stream", text: ev.text });
+        }
         return;
       }
 
+      // Build the structured event that both sinks see. We map the
+      // pipeline's legacy event shape (durationMs, detail) into the
+      // unified @gitshow/shared/events shape.
+      const structured = toStructured(ev);
+
       const eventInsert = d1.insertEvent(scanId, {
-        kind: ev.kind,
-        stage: "stage" in ev ? ev.stage : null,
-        worker: "worker" in ev ? ev.worker : null,
-        status: "status" in ev ? ev.status : null,
-        duration_ms: "durationMs" in ev ? ev.durationMs : null,
+        kind: structured.kind,
+        stage: "stage" in structured ? (structured.stage ?? null) : null,
+        worker: "worker" in structured ? (structured.worker ?? null) : null,
+        status: "status" in structured ? (structured.status ?? null) : null,
+        duration_ms:
+          "duration_ms" in structured ? (structured.duration_ms ?? null) : null,
         message:
-          ev.kind === "stage-warn"
-            ? ev.message
-            : "detail" in ev && ev.detail
-              ? ev.detail
+          structured.kind === "stage-warn" || structured.kind === "error"
+            ? structured.message
+            : "detail" in structured && structured.detail
+              ? structured.detail
               : null,
+        // Structured kinds carry their full payload in data_json for the
+        // browser to decode without rebuilding the schema. Stage
+        // boundaries stay flat.
+        data_json:
+          structured.kind === "reasoning" ||
+          structured.kind === "test-result" ||
+          structured.kind === "eval-axes" ||
+          structured.kind === "usage" ||
+          structured.kind === "plan"
+            ? structured
+            : null,
       });
 
       const statusUpdate =
-        ev.kind === "stage-start"
-          ? d1.updateScanStatus(scanId, { current_phase: ev.stage })
-          : ev.kind === "stage-end"
-            ? d1.updateScanStatus(scanId, { last_completed_phase: ev.stage })
+        structured.kind === "stage-start"
+          ? d1.updateScanStatus(scanId, { current_phase: structured.stage })
+          : structured.kind === "stage-end"
+            ? d1.updateScanStatus(scanId, {
+                last_completed_phase: structured.stage,
+              })
             : Promise.resolve();
+
+      // DO publish runs in parallel with the D1 write and is purely
+      // fire-and-forget — a failed publish must never hurt the pipeline.
+      if (doClient) {
+        void doClient.publish(scanId, structured);
+      }
 
       void Promise.all([eventInsert, statusUpdate]).catch((err) => {
         scanLog.error({ err, kind: ev.kind }, "event-log write failed");
@@ -194,6 +227,43 @@ async function main() {
       scanLog.error({ err: dbErr }, "failed to mark scan as failed");
     }
     process.exit(1);
+  }
+}
+
+/**
+ * Bridge the pipeline's in-process event type to the shared
+ * PipelineEvent type that ScanLiveDO + the web app consume. The
+ * pipeline uses `durationMs` (camelCase, legacy); shared uses
+ * `duration_ms`. Also inserts defaults for optional fields so
+ * downstream code doesn't have to null-check.
+ */
+function toStructured(ev: PipelineEvent): StructuredEvent {
+  switch (ev.kind) {
+    case "stage-start":
+      return { kind: "stage-start", stage: ev.stage, detail: ev.detail };
+    case "stage-end":
+      return {
+        kind: "stage-end",
+        stage: ev.stage,
+        duration_ms: ev.durationMs,
+        detail: ev.detail,
+      };
+    case "stage-warn":
+      return {
+        kind: "stage-warn",
+        stage: ev.stage,
+        message: ev.message,
+      };
+    case "worker-update":
+      return {
+        kind: "worker-update",
+        worker: ev.worker,
+        status: ev.status,
+        detail: ev.detail,
+      };
+    case "stream":
+      // Shouldn't reach here — stream is handled directly in onEvent.
+      return { kind: "stream", text: ev.text };
   }
 }
 

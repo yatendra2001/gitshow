@@ -1,0 +1,45 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "gitshow-web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-04-17",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "observability": { "enabled": true },
+  "placement": { "mode": "smart" },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "gitshow-db",
+      "database_id": "84978608-ec37-4b1c-b23c-00f906c2f51d"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BUCKET",
+      "bucket_name": "gitshow-scans"
+    }
+  ],
+  // NextAuth uses `session: { strategy: "database" }` against D1, so we
+  // don't need a KV namespace for sessions. If we later want KV-cached
+  // sessions for lower latency, add the binding here and switch the
+  // strategy in auth.ts.
+  // ScanLiveDO lives in a separate worker (gitshow-realtime, apps/realtime).
+  // Deploy that worker first, then this binding can lazily reference it.
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "SCAN_LIVE_DO",
+        "class_name": "ScanLiveDO",
+        "script_name": "gitshow-realtime"
+      }
+    ]
+  },
+  "vars": {
+    "NEXT_PUBLIC_APP_URL": "https://gitshow.io",
+    "DEMO_HANDLE": "yatendra2001"
+  }
+}

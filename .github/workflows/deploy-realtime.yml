@@ -1,0 +1,43 @@
+name: Deploy realtime
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/realtime/**"
+      - "packages/shared/**"
+      - "package.json"
+      - "bun.lock"
+      - ".github/workflows/deploy-realtime.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-realtime
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2"
+
+      - name: Install deps (frozen lockfile)
+        run: bun install --frozen-lockfile
+
+      - name: Typecheck realtime + shared
+        run: |
+          bun --filter @gitshow/shared typecheck
+          bun --filter @gitshow/realtime typecheck
+
+      - name: Deploy realtime worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CF_API_TOKEN }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          workingDirectory: apps/realtime
+          wranglerVersion: "4"
+          command: deploy --config wrangler.jsonc
