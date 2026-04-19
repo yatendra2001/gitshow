@@ -1,6 +1,5 @@
-import { signIn } from "@/auth";
 import Link from "next/link";
-import { Github, ArrowUpRight } from "lucide-react";
+import { SignInButton } from "./signin-button";
 
 export default function SignInPage() {
   return (
@@ -19,25 +18,11 @@ export default function SignInPage() {
       </h1>
       <p className="mb-8 text-sm leading-relaxed text-muted-foreground">
         We use your GitHub identity so you can read back private-repo
-        analyses if you grant that scope. We never store source code — just
-        commit metadata, PR descriptions, and review traces.
+        analyses if you grant that scope. We never store source code —
+        just commit metadata, PR descriptions, and review traces.
       </p>
 
-      <form
-        action={async () => {
-          "use server";
-          await signIn("github", { redirectTo: "/dashboard" });
-        }}
-      >
-        <button
-          type="submit"
-          className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition hover:opacity-90"
-        >
-          <Github className="size-4" />
-          Continue with GitHub
-          <ArrowUpRight className="size-4" />
-        </button>
-      </form>
+      <SignInButton />
 
       <div className="mt-8 text-xs text-muted-foreground">
         <Link
