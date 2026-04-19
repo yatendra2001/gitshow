@@ -131,7 +131,9 @@ export async function POST(req: Request) {
         const machine = await fly.spawnScanMachine({
           scanId,
           name: `revise-${scanId}-${d.beat}-${ts}-${i}`,
-          initCmd: ["bun", "apps/worker/scripts/revise-claim.ts"],
+          // WORKDIR inside the image is /app/apps/worker, so the script
+          // path is relative to that — NOT "apps/worker/scripts/…".
+          initCmd: ["bun", "scripts/revise-claim.ts"],
           env: buildMachineEnv(env, {
             scanId,
             claimId: d.claimId,
