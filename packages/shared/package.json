@@ -10,6 +10,7 @@
     ".": "./src/index.ts",
     "./schemas": "./src/schemas.ts",
     "./events": "./src/events.ts",
+    "./phase-copy": "./src/phase-copy.ts",
     "./eta": "./src/eta.ts",
     "./util": "./src/util.ts",
     "./cloud/d1": "./src/cloud/d1.ts",

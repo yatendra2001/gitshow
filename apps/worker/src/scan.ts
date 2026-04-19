@@ -137,7 +137,7 @@ async function main() {
       }
       case "stage-end": {
         if (currentSpinner) {
-          const sec = (ev.durationMs / 1000).toFixed(1);
+          const sec = (ev.duration_ms / 1000).toFixed(1);
           currentSpinner.succeed(
             `${chalk.cyan(ev.stage)} ${chalk.dim(`· ${sec}s${ev.detail ? ` · ${ev.detail}` : ""}`)}`,
           );

@@ -108,12 +108,14 @@ export type StageName =
   | "critic"
   | "bind";
 
-export type PipelineEvent =
-  | { kind: "stage-start"; stage: StageName; detail?: string }
-  | { kind: "stage-end"; stage: StageName; durationMs: number; detail?: string }
-  | { kind: "stage-warn"; stage: StageName; message: string }
-  | { kind: "worker-update"; worker: string; status: "running" | "done" | "failed"; detail?: string }
-  | { kind: "stream"; text: string };
+/**
+ * Pipeline events flow as the shared PipelineEvent union (see
+ * @gitshow/shared/events). The pipeline emits stage boundaries,
+ * worker updates, and stream lines; agents emit reasoning deltas,
+ * tool calls, sources, and KPI previews through the same channel.
+ */
+export type { PipelineEvent } from "@gitshow/shared/events";
+import type { PipelineEvent as SharedPipelineEvent } from "@gitshow/shared/events";
 
 export interface RunPipelineInput {
   session: ScanSession;
@@ -124,19 +126,33 @@ export interface RunPipelineInput {
    * Pass a number only when deliberately testing or short on disk.
    */
   maxDeepRepos?: number | null;
-  /** Event callback. */
-  onEvent?: (ev: PipelineEvent) => void;
+  /** Event callback. Receives the full shared PipelineEvent union. */
+  onEvent?: (ev: SharedPipelineEvent) => void;
   /**
    * Override the checkpoint (used by the cloud entrypoint to inject an
    * R2-mirroring checkpoint). Defaults to a plain local-disk checkpoint.
    */
   checkpoint?: ScanCheckpoint;
+  /** Scope every emitted event to a user-initiated turn. Default: none. */
+  messageId?: string;
 }
 
 export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
   const events = input.onEvent ?? (() => {});
   const stream = (text: string) => events({ kind: "stream", text });
+  const messageId = input.messageId;
   const concurrency = input.concurrency ?? 3;
+
+  // Convenience wrapper: add the scan's messageId to events that accept
+  // it. Agents that emit reasoning/tools carry it forward via their own
+  // emit passthrough.
+  const emitScoped = (ev: SharedPipelineEvent) => {
+    if (messageId && "message_id" in ev && !ev.message_id) {
+      events({ ...ev, message_id: messageId });
+    } else {
+      events(ev);
+    }
+  };
 
   const ckpt = input.checkpoint ?? new ScanCheckpoint(input.session);
   await ckpt.init();
@@ -149,19 +165,19 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
   const stageTimings: PipelineMeta["stage_timings"] = [];
 
   const withStage = async <T>(stage: StageName, fn: () => Promise<T>, detail?: string): Promise<T> => {
-    events({ kind: "stage-start", stage, detail });
+    emitScoped({ kind: "stage-start", stage, detail });
     const t0 = Date.now();
     const startedAt = new Date().toISOString();
     try {
       const result = await fn();
-      const durationMs = Date.now() - t0;
+      const duration_ms = Date.now() - t0;
       stageTimings.push({
         stage,
         started_at: startedAt,
         finished_at: new Date().toISOString(),
-        duration_ms: durationMs,
+        duration_ms,
       });
-      events({ kind: "stage-end", stage, durationMs, detail });
+      emitScoped({ kind: "stage-end", stage, duration_ms, detail });
       return result;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -281,6 +297,8 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
           artifacts,
           indexes: normalized.indexes,
           onProgress: stream,
+          emit: emitScoped,
+          messageId,
         });
         await ckpt.saveDiscover(d);
         return d;

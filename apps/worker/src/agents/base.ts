@@ -11,11 +11,34 @@
 import { OpenRouter, tool, stepCountIs } from "@openrouter/agent";
 import type { StreamableOutputItem } from "@openrouter/agent";
 import * as z from "zod/v4";
+import { randomUUID } from "node:crypto";
+import type { PipelineEvent } from "@gitshow/shared/events";
 import type { ScanSession } from "../schemas.js";
 import type { SessionUsage } from "../session.js";
 import { logger } from "../util.js";
 
 const agentLog = logger.child({ src: "agent" });
+
+/**
+ * Structured event emitter passed to agent runs. When provided, the
+ * agent base publishes reasoning-delta / reasoning-end / tool-start /
+ * tool-end events alongside the free-form onProgress text so the UI
+ * can render chain-of-thought, collapsible tool cards, and source
+ * chips in real time.
+ *
+ * Safe to omit: if absent, agents behave exactly as before.
+ */
+export type AgentEventEmit = (event: PipelineEvent) => void;
+
+/**
+ * Per-agent resolver for human-readable tool labels. Given the tool
+ * name and its parsed input, return a ux-copy-compliant display label
+ * ("Reading commits in caddy-plugin"). Fallback: "Running {tool_name}".
+ */
+export type ToolLabelResolver = (
+  toolName: string,
+  input: unknown,
+) => string | undefined;
 
 // ---------- types ----------
 
@@ -46,6 +69,17 @@ export interface AgentRunConfig {
   usage?: SessionUsage;
   /** Label for this agent run (e.g., "discover", "cross-repo-worker"). Used in logs. */
   label?: string;
+  /**
+   * Structured event emitter. If provided, the agent base publishes
+   * reasoning-delta / reasoning-end / tool-start / tool-end alongside
+   * onProgress. Caller wires this to the DO+D1 dual sink so browsers
+   * see a live chain-of-thought.
+   */
+  emit?: AgentEventEmit;
+  /** Human-readable label resolver for tool calls; see type for shape. */
+  toolLabels?: ToolLabelResolver;
+  /** Message/turn id that scopes every emitted event. */
+  messageId?: string;
 }
 
 interface AgentResult<T> {
@@ -148,6 +182,10 @@ export async function runAgentLoop(config: AgentRunConfig): Promise<{
   const getAssistantText = (): string =>
     [...messageBufferById.values()].join("\n\n").trim();
 
+  const emit = config.emit;
+  const resolveToolLabel = config.toolLabels;
+  const agentName = config.label ?? "agent";
+
   // Stream a single callModel result
   const streamResult = async (
     result: ReturnType<typeof client.callModel>,
@@ -161,6 +199,43 @@ export async function runAgentLoop(config: AgentRunConfig): Promise<{
     const loggedFunctionCallComplete = new Set<string>();
     const loggedToolOutputs = new Set<string>();
     let stepCounter = 0;
+
+    // Structured-event state. A single agent run produces one
+    // reasoning block (identified by reasoning_id); all tool calls and
+    // sources emitted during the run hang off it via parent_id.
+    const reasoningIdByItem = new Map<string, string>();
+    const reasoningStartAtByItem = new Map<string, number>();
+    const toolStartAtByCallId = new Map<string, number>();
+    const toolNameByCallId = new Map<string, string>();
+    // Track inputs so tool-end can reconstruct context if needed.
+    const toolInputByCallId = new Map<string, string>();
+
+    const safeEmit = (ev: PipelineEvent) => {
+      if (!emit) return;
+      try {
+        emit(ev);
+      } catch {
+        /* emitter must never break the agent loop */
+      }
+    };
+
+    const previewInput = (raw: unknown): string | undefined => {
+      try {
+        const s = typeof raw === "string" ? raw : JSON.stringify(raw);
+        return s.length > 200 ? s.slice(0, 200) + "…" : s;
+      } catch {
+        return undefined;
+      }
+    };
+
+    const previewOutput = (raw: unknown): string | undefined => {
+      try {
+        const s = typeof raw === "string" ? raw : JSON.stringify(raw);
+        return s.length > 500 ? s.slice(0, 500) + "…" : s;
+      } catch {
+        return undefined;
+      }
+    };
 
     // Classify and handle the @openrouter/agent "empty final response" bug:
     // the SDK throws when the assistant ends with just a tool call and no
@@ -204,19 +279,61 @@ export async function runAgentLoop(config: AgentRunConfig): Promise<{
           const prev = lastReasoningLen.get(itemId) ?? 0;
           if (fullText.length > prev) {
             if (prev === 0) log(`\n[thinking] `);
-            log(fullText.slice(prev));
+            const delta = fullText.slice(prev);
+            log(delta);
             lastReasoningLen.set(itemId, fullText.length);
+
+            // Emit structured reasoning-delta. Establish a reasoning_id
+            // the first time we see this item so tool calls can parent
+            // to it.
+            let rid = reasoningIdByItem.get(itemId);
+            if (!rid) {
+              rid = `rsn_${randomUUID()}`;
+              reasoningIdByItem.set(itemId, rid);
+              reasoningStartAtByItem.set(itemId, Date.now());
+            }
+            safeEmit({
+              kind: "reasoning-delta",
+              agent: agentName,
+              reasoning_id: rid,
+              text_delta: delta,
+              ...(config.messageId ? { message_id: config.messageId } : {}),
+            });
           }
           break;
         }
         case "function_call": {
           const callKey = item.callId || itemId;
+          const itemInput = (item as { arguments?: unknown; input?: unknown })
+            .arguments ?? (item as { input?: unknown }).input;
           if (!loggedFunctionCallStart.has(callKey)) {
             loggedFunctionCallStart.add(callKey);
             stepCounter++;
             totalIterations++;
             log(`\n--- step ${stepCounter} ---\n`);
             log(`> tool: ${item.name}`);
+
+            // Emit tool-start. Parent to the active reasoning block if
+            // there is one; otherwise it stands alone.
+            const activeReasoningId = [...reasoningIdByItem.values()].pop();
+            toolStartAtByCallId.set(callKey, Date.now());
+            toolNameByCallId.set(callKey, item.name);
+            if (itemInput !== undefined) {
+              toolInputByCallId.set(callKey, JSON.stringify(itemInput));
+            }
+            const label =
+              resolveToolLabel?.(item.name, itemInput) ??
+              `Running ${item.name}`;
+            safeEmit({
+              kind: "tool-start",
+              tool_id: callKey,
+              tool_name: item.name,
+              display_label: label,
+              input_preview: previewInput(itemInput),
+              agent: agentName,
+              ...(activeReasoningId ? { parent_id: activeReasoningId } : {}),
+              ...(config.messageId ? { message_id: config.messageId } : {}),
+            });
           }
           if (
             item.status === "completed" &&
@@ -232,6 +349,23 @@ export async function runAgentLoop(config: AgentRunConfig): Promise<{
           if (!loggedToolOutputs.has(outKey)) {
             loggedToolOutputs.add(outKey);
             log(` [done]`);
+
+            // Emit tool-end. Best-effort — if we never saw the matching
+            // tool-start (shouldn't happen), we still emit with a
+            // short-circuit label so the UI can show completion.
+            const startedAt = toolStartAtByCallId.get(outKey) ?? Date.now();
+            const output = (item as { output?: unknown }).output;
+            const isErr =
+              typeof output === "string" &&
+              /error|exception|failed|status:\s*[45]/i.test(output);
+            safeEmit({
+              kind: "tool-end",
+              tool_id: outKey,
+              status: isErr ? "err" : "ok",
+              output_preview: previewOutput(output),
+              duration_ms: Date.now() - startedAt,
+              ...(config.messageId ? { message_id: config.messageId } : {}),
+            });
           }
           break;
         }
@@ -255,6 +389,19 @@ export async function runAgentLoop(config: AgentRunConfig): Promise<{
       } else {
         throw err;
       }
+    }
+
+    // Close out every reasoning block that was opened this run. The
+    // UI collapses each into "Thought for Xs" when it sees this.
+    for (const [itemId, rid] of reasoningIdByItem.entries()) {
+      const startedAt = reasoningStartAtByItem.get(itemId) ?? Date.now();
+      safeEmit({
+        kind: "reasoning-end",
+        agent: agentName,
+        reasoning_id: rid,
+        duration_ms: Date.now() - startedAt,
+        ...(config.messageId ? { message_id: config.messageId } : {}),
+      });
     }
     } catch (err) {
       // Catches errors thrown from the for-await stream iteration itself
@@ -418,6 +565,12 @@ export async function runAgentWithSubmit<T>(config: {
   usage?: SessionUsage;
   /** Label for logs. */
   label?: string;
+  /** Structured event emitter (reasoning-delta / tool-start / tool-end). */
+  emit?: AgentEventEmit;
+  /** Human-readable tool label resolver. */
+  toolLabels?: ToolLabelResolver;
+  /** Message id scoping every emitted event. */
+  messageId?: string;
 }): Promise<AgentResult<T>> {
   const log = config.onProgress ?? (() => {});
 
@@ -448,6 +601,9 @@ export async function runAgentWithSubmit<T>(config: {
     onProgress: config.onProgress,
     session: config.session,
     usage: config.usage,
+    emit: config.emit,
+    toolLabels: config.toolLabels,
+    messageId: config.messageId,
     label: config.label,
   });
 
@@ -483,6 +639,9 @@ You did NOT call ${config.submitToolName}. Your analysis above is good, but the 
     onProgress: config.onProgress,
     session: config.session,
     usage: config.usage,
+    emit: config.emit,
+    toolLabels: config.toolLabels,
+    messageId: config.messageId,
     label: config.label ? `${config.label}:force` : "force-submit",
   });
 
@@ -517,6 +676,9 @@ CALL ${config.submitToolName} IMMEDIATELY.`;
     onProgress: config.onProgress,
     session: config.session,
     usage: config.usage,
+    emit: config.emit,
+    toolLabels: config.toolLabels,
+    messageId: config.messageId,
     label: config.label ? `${config.label}:force-final` : "force-submit-final",
   });
 

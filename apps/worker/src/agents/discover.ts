@@ -10,7 +10,8 @@
  * Workers downstream will be narrower.
  */
 
-import { runAgentWithSubmit } from "./base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "./base.js";
+import { toolLabel } from "@gitshow/shared/phase-copy";
 import {
   DiscoverOutputSchema,
   type DiscoverOutput,
@@ -28,7 +29,22 @@ export interface DiscoverInput {
   artifacts: Record<string, Artifact>;
   indexes: ArtifactIndexes;
   onProgress?: (text: string) => void;
+  /** Structured event emitter (reasoning-delta, tool-start/end, source-added). */
+  emit?: AgentEventEmit;
+  /** Scan's message_id. Attached to every emitted event. */
+  messageId?: string;
 }
+
+/**
+ * Discover has no tools today (one-shot reasoning call that submits a
+ * structured output). The submit tool gets a dedicated label; anything
+ * else falls back to the shared TOOL_COPY resolver so added tools
+ * show up with sane copy immediately.
+ */
+const DISCOVER_TOOL_LABELS = (name: string, input?: unknown): string => {
+  if (name === "submit_discover") return "Finalizing distinctive paragraph";
+  return toolLabel(name, input);
+};
 
 const DISCOVER_PROMPT = `You are a perceptive developer profiler. Your job is to notice what makes one engineer different from another.
 
@@ -77,6 +93,9 @@ export async function runDiscover(input: DiscoverInput): Promise<DiscoverOutput>
     usage: input.usage,
     label: "discover",
     onProgress: input.onProgress,
+    emit: input.emit,
+    toolLabels: DISCOVER_TOOL_LABELS,
+    messageId: input.messageId,
   });
 
   return result;

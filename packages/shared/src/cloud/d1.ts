@@ -226,29 +226,21 @@ export class D1Client {
   async insertEvent(
     scanId: string,
     ev: {
-      kind:
-        | "stage-start"
-        | "stage-end"
-        | "stage-warn"
-        | "worker-update"
-        | "error"
-        | "reasoning"
-        | "test-result"
-        | "eval-axes"
-        | "usage"
-        | "plan";
+      kind: import("../events.js").PersistedEventKind;
       stage?: string | null;
       worker?: string | null;
       status?: string | null;
       duration_ms?: number | null;
       message?: string | null;
       data_json?: unknown | null;
+      parent_id?: string | null;
+      message_id?: string | null;
     },
   ): Promise<void> {
     await this.query(
       `INSERT INTO scan_events
-         (scan_id, kind, stage, worker, status, duration_ms, message, data_json, at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (scan_id, kind, stage, worker, status, duration_ms, message, data_json, parent_id, message_id, at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         scanId,
         ev.kind,
@@ -258,6 +250,8 @@ export class D1Client {
         ev.duration_ms ?? null,
         ev.message ?? null,
         ev.data_json == null ? null : JSON.stringify(ev.data_json),
+        ev.parent_id ?? null,
+        ev.message_id ?? null,
         Date.now(),
       ],
     );

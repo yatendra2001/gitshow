@@ -1,27 +1,52 @@
 /**
  * gitshow-realtime — per-scan fan-out worker.
  *
- * ScanLiveDO is one Durable Object per scan_id. Two endpoints:
+ * ScanLiveDO is one Durable Object per scan_id. Endpoints:
  *
- *   1. POST /scans/:scan_id/events
- *      Called by the Fly worker after every structured pipeline event.
- *      Authenticated via `X-Gitshow-Pipeline-Secret`. Body = one
- *      PipelineEvent (see @gitshow/shared/events). The DO:
- *        - appends an envelope to a short ring buffer in storage
- *          (so reconnecting clients can catch up without hitting D1)
- *        - broadcasts the envelope to every connected WebSocket
+ *   POST /scans/:scan_id/events
+ *     Called by the Fly worker after every structured pipeline event.
+ *     Authenticated via `X-Gitshow-Pipeline-Secret`. Body = one
+ *     PipelineEvent (see @gitshow/shared/events). The DO:
+ *       - appends an envelope to a ring buffer in storage (so
+ *         reconnecting clients can catch up without hitting D1)
+ *       - broadcasts the envelope to every connected WebSocket
  *
- *   2. GET  /scans/:scan_id/ws   (WebSocket upgrade)
- *      The Next worker forwards upgrades here via `stub.fetch(req)`.
- *      We accept a hibernatable WebSocket + send a tiny hello packet
- *      with the current ring buffer tail so the client can resume.
+ *   POST /scans/:scan_id/done
+ *     Called by the Fly worker exactly once when the scan reaches a
+ *     terminal state. The DO broadcasts a `done` frame and lets
+ *     clients tear down cleanly.
  *
- * Ring buffer retention: last 200 events / 30 min, whichever is bigger.
- * Browsers that fall out of coverage for longer fall back to the D1
- * polling endpoint on the web worker.
+ *   GET  /scans/:scan_id/ws   (WebSocket upgrade)
+ *     The Next worker forwards upgrades here via `stub.fetch(req)`.
+ *     We accept a hibernatable WebSocket + send a `hello` packet
+ *     with the current ring buffer tail so the client can resume.
+ *
+ *     Client frames understood:
+ *       - subscribe { since: number }  — replay events with id > since.
+ *                                        Emits `gap` if since is older
+ *                                        than the ring buffer floor.
+ *       - pong      { ts: number }     — keepalive response.
+ *
+ *     Server frames emitted:
+ *       - hello    { seq, backlog }    — full ring on connect
+ *       - gap      { oldest_seq }      — asks client to one-shot D1
+ *       - ping     { ts }              — every 20s via DO alarm
+ *       - done     { final_seq, status } — scan finished
+ *       - …envelope for each event
+ *
+ * Ring buffer retention: last 200 events per scan. Browsers offline
+ * for longer fall back to a one-shot D1 fetch (not periodic polling).
  */
 
-import type { PipelineEvent, ScanEventEnvelope } from "@gitshow/shared/events";
+import type {
+  PipelineEvent,
+  ScanEventEnvelope,
+  ClientFrame,
+  ServerGapFrame,
+  ServerHelloFrame,
+  ServerPingFrame,
+  ServerDoneFrame,
+} from "@gitshow/shared/events";
 
 interface Env {
   PIPELINE_SHARED_SECRET: string;
@@ -30,6 +55,7 @@ interface Env {
 const RING_MAX_EVENTS = 200;
 const RING_KEY = "ring";
 const SEQ_KEY = "seq";
+const PING_INTERVAL_MS = 20_000;
 
 interface RingBuffer {
   events: ScanEventEnvelope[];
@@ -56,6 +82,10 @@ export class ScanLiveDO implements DurableObject {
       return this.handleEventPublish(req);
     }
 
+    if (req.method === "POST" && url.pathname.endsWith("/done")) {
+      return this.handleDonePublish(req);
+    }
+
     if (
       req.method === "GET" &&
       req.headers.get("Upgrade") === "websocket"
@@ -75,8 +105,18 @@ export class ScanLiveDO implements DurableObject {
     }
 
     let event: PipelineEvent;
+    let traceId: string | undefined;
     try {
-      event = (await req.json()) as PipelineEvent;
+      const body = (await req.json()) as
+        | PipelineEvent
+        | { event: PipelineEvent; trace_id?: string };
+      // Accept either bare event (legacy) or wrapped { event, trace_id }.
+      if (body && typeof body === "object" && "event" in body && body.event) {
+        event = body.event as PipelineEvent;
+        traceId = (body as { trace_id?: string }).trace_id;
+      } else {
+        event = body as PipelineEvent;
+      }
       if (!event || typeof event !== "object" || !("kind" in event)) {
         throw new Error("malformed event payload");
       }
@@ -94,6 +134,7 @@ export class ScanLiveDO implements DurableObject {
       scan_id: this.scanId ?? "unknown",
       at: Date.now(),
       event,
+      ...(traceId ? { trace_id: traceId } : {}),
     };
 
     // Append to ring buffer, trim to max.
@@ -106,13 +147,34 @@ export class ScanLiveDO implements DurableObject {
     }
     await this.ctx.storage.put(RING_KEY, ring);
 
-    // Broadcast to every live socket. Swallow per-socket failures so a
-    // dead client can't block a publish — WebSocket hibernation prunes
-    // them on the next wake.
-    const payload = JSON.stringify(envelope);
+    this.broadcast(JSON.stringify(envelope));
+
+    return new Response(null, { status: 204 });
+  }
+
+  private async handleDonePublish(req: Request): Promise<Response> {
+    const secret = req.headers.get("X-Gitshow-Pipeline-Secret");
+    if (!secret || secret !== this.env.PIPELINE_SHARED_SECRET) {
+      return new Response("forbidden", { status: 403 });
+    }
+
+    let payload: { status?: "succeeded" | "failed" | "cancelled" };
+    try {
+      payload = (await req.json()) as { status?: "succeeded" | "failed" | "cancelled" };
+    } catch {
+      payload = {};
+    }
+    const status = payload.status ?? "succeeded";
+    const seq = (await this.ctx.storage.get<number>(SEQ_KEY)) ?? 0;
+
+    const frame: ServerDoneFrame = { kind: "done", final_seq: seq, status };
+    this.broadcast(JSON.stringify(frame));
+
+    // Give clients a beat to process, then close sockets. A fresh scan
+    // reuses the same DO id; new connections will get a fresh hello.
     for (const ws of this.ctx.getWebSockets()) {
       try {
-        ws.send(payload);
+        ws.close(1000, "scan-done");
       } catch {
         /* ignore */
       }
@@ -139,29 +201,82 @@ export class ScanLiveDO implements DurableObject {
       events: [],
     };
     const seq = (await this.ctx.storage.get<number>(SEQ_KEY)) ?? 0;
+    const hello: ServerHelloFrame = {
+      kind: "hello",
+      scan_id: this.scanId,
+      seq,
+      backlog: ring.events,
+    };
     try {
-      server.send(
-        JSON.stringify({
-          kind: "hello",
-          scan_id: this.scanId,
-          seq,
-          backlog: ring.events,
-        }),
-      );
+      server.send(JSON.stringify(hello));
     } catch {
       /* socket already closed */
     }
 
+    // Ensure the keepalive alarm is scheduled.
+    await this.ensurePingAlarm();
+
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  // Hibernation callbacks. We don't accept client → server messages for
-  // now; the DO is publish-only. If a client sends anything, log + ignore.
-  async webSocketMessage(ws: WebSocket, _msg: string | ArrayBuffer) {
+  // ─── Client frame handling ──────────────────────────────────────
+
+  async webSocketMessage(ws: WebSocket, msg: string | ArrayBuffer) {
+    let frame: ClientFrame;
     try {
-      ws.send(JSON.stringify({ kind: "ack" }));
+      const text = typeof msg === "string" ? msg : new TextDecoder().decode(msg);
+      frame = JSON.parse(text) as ClientFrame;
     } catch {
-      /* ignore */
+      return; // ignore garbage
+    }
+
+    if (frame.kind === "pong") {
+      // Keepalive — presence is enough. Could record last-seen-at for
+      // dead client eviction later; not needed yet.
+      return;
+    }
+
+    if (frame.kind === "subscribe") {
+      await this.handleSubscribe(ws, frame.since);
+      return;
+    }
+  }
+
+  private async handleSubscribe(ws: WebSocket, since: number): Promise<void> {
+    const ring = (await this.ctx.storage.get<RingBuffer>(RING_KEY)) ?? {
+      events: [],
+    };
+    const events = ring.events;
+
+    // Nothing newer — done.
+    if (events.length === 0) return;
+
+    const oldestSeq = events[0].id;
+    const newestSeq = events[events.length - 1].id;
+
+    // Already current.
+    if (since >= newestSeq) return;
+
+    // Client is older than the ring — emit gap frame, let it one-shot
+    // D1 for the missing range.
+    if (since < oldestSeq - 1) {
+      const gap: ServerGapFrame = { kind: "gap", oldest_seq: oldestSeq };
+      try {
+        ws.send(JSON.stringify(gap));
+      } catch {
+        /* socket closed */
+      }
+      // After gap, replay what we DO have so the client is caught up
+      // once it's finished plugging the gap.
+    }
+
+    for (const env of events) {
+      if (env.id <= since) continue;
+      try {
+        ws.send(JSON.stringify(env));
+      } catch {
+        return; // socket closed mid-replay; bail
+      }
     }
   }
 
@@ -171,10 +286,60 @@ export class ScanLiveDO implements DurableObject {
     } catch {
       /* ignore */
     }
+    // If we're down to zero sockets, drop the ping alarm. A new
+    // connection will reinstate it.
+    if (this.ctx.getWebSockets().length === 0) {
+      try {
+        await this.ctx.storage.deleteAlarm();
+      } catch {
+        /* ignore */
+      }
+    }
   }
 
   async webSocketError(_ws: WebSocket, _err: unknown) {
     // Swallow — the DO keeps running, the socket is already gone.
+  }
+
+  // ─── Keepalive via DO alarm ─────────────────────────────────────
+
+  private async ensurePingAlarm(): Promise<void> {
+    const existing = await this.ctx.storage.getAlarm();
+    if (existing !== null && existing > Date.now()) return;
+    await this.ctx.storage.setAlarm(Date.now() + PING_INTERVAL_MS);
+  }
+
+  async alarm() {
+    const sockets = this.ctx.getWebSockets();
+    if (sockets.length === 0) return;
+
+    const ping: ServerPingFrame = { kind: "ping", ts: Date.now() };
+    const payload = JSON.stringify(ping);
+    for (const ws of sockets) {
+      try {
+        ws.send(payload);
+      } catch {
+        /* dead socket — hibernation will prune */
+      }
+    }
+
+    // Reschedule while we still have clients.
+    await this.ctx.storage.setAlarm(Date.now() + PING_INTERVAL_MS);
+  }
+
+  // ─── Internal ───────────────────────────────────────────────────
+
+  private broadcast(payload: string): void {
+    // Broadcast to every live socket. Swallow per-socket failures so a
+    // dead client can't block a publish — WebSocket hibernation prunes
+    // them on the next wake.
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.send(payload);
+      } catch {
+        /* ignore */
+      }
+    }
   }
 }
 
@@ -189,8 +354,12 @@ export default {
     const url = new URL(req.url);
     const parts = url.pathname.split("/").filter(Boolean);
 
-    // Shape: /scans/<scan_id>/events  or  /scans/<scan_id>/ws
-    if (parts[0] === "scans" && parts[1] && (parts[2] === "events" || parts[2] === "ws")) {
+    // Shape: /scans/<scan_id>/events | /scans/<scan_id>/done | /scans/<scan_id>/ws
+    if (
+      parts[0] === "scans" &&
+      parts[1] &&
+      (parts[2] === "events" || parts[2] === "done" || parts[2] === "ws")
+    ) {
       const scanId = parts[1];
       const id = env.SCAN_LIVE_DO.idFromName(scanId);
       const stub = env.SCAN_LIVE_DO.get(id);
