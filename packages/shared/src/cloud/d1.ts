@@ -405,6 +405,45 @@ export class D1Client {
     return rows[0] ?? null;
   }
 
+  /**
+   * Upsert the single-person user_profiles row for this user.
+   * Called by the worker at the end of a successful scan to point
+   * gitshow.io/{handle} at the freshly-emitted 14-card.json.
+   */
+  async upsertUserProfile(params: {
+    user_id: string;
+    handle: string;
+    scan_id: string;
+    card_r2_key: string;
+  }): Promise<void> {
+    const now = Date.now();
+    const slug = params.handle.toLowerCase();
+    await this.query(
+      `INSERT INTO user_profiles
+         (user_id, handle, public_slug, current_scan_id, current_profile_r2_key,
+          first_scan_at, last_scan_at, revision_count, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         handle = excluded.handle,
+         public_slug = excluded.public_slug,
+         current_scan_id = excluded.current_scan_id,
+         current_profile_r2_key = excluded.current_profile_r2_key,
+         last_scan_at = excluded.last_scan_at,
+         updated_at = excluded.updated_at`,
+      [
+        params.user_id,
+        params.handle,
+        slug,
+        params.scan_id,
+        params.card_r2_key,
+        now,
+        now,
+        now,
+        now,
+      ],
+    );
+  }
+
   async createAgentQuestion(params: {
     id: string;
     scan_id: string;
