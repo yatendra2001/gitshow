@@ -19,6 +19,7 @@ dist
 *.log
 .DS_Store
 apps/web
+!apps/web/package.json
 profiles
 scans
 sessions
