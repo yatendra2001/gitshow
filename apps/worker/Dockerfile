@@ -1,6 +1,6 @@
 # syntax = docker/dockerfile:1.7
 
-FROM oven/bun:1.2-debian AS runtime
+FROM oven/bun:1.2.2-debian AS runtime
 
 WORKDIR /app
 
