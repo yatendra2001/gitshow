@@ -24,6 +24,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { runPipeline } from "../src/pipeline.js";
+import { ControlPoller, ScanStoppedError } from "../src/control.js";
 import { ScanCheckpoint } from "../src/checkpoint.js";
 import { sanitizeHandle } from "../src/session.js";
 import { R2Client } from "../src/cloud/r2.js";
@@ -186,11 +187,25 @@ async function main() {
       });
     };
 
-    const profile = await runPipeline({
-      session,
-      checkpoint: ckpt,
-      onEvent,
+    const control = new ControlPoller({
+      d1,
+      scanId,
+      emit: onEvent,
+      log: scanLog,
     });
+    control.start();
+
+    let profile;
+    try {
+      profile = await runPipeline({
+        session,
+        checkpoint: ckpt,
+        onEvent,
+        shouldStop: () => control.stopRequested,
+      });
+    } finally {
+      control.dispose();
+    }
 
     let idx = 0;
     for (const claim of profile.claims) {
@@ -312,6 +327,18 @@ async function main() {
     process.exit(0);
   } catch (err) {
     clearInterval(heartbeat);
+    if (err instanceof ScanStoppedError) {
+      scanLog.info("pipeline stopped by user — marking cancelled");
+      try {
+        await d1.updateScanStatus(scanId, {
+          status: "cancelled",
+          error: null,
+        });
+      } catch (dbErr) {
+        scanLog.error({ err: dbErr }, "failed to mark scan as cancelled");
+      }
+      process.exit(0);
+    }
     const msg = err instanceof Error ? err.message : String(err);
     scanLog.error({ err }, "pipeline failed");
     try {
