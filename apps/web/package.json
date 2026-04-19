@@ -12,7 +12,9 @@
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint"
+    "lint": "next lint",
+    "d1:local:init": "for f in ../../migrations/*.sql; do echo \"== $f ==\"; wrangler d1 execute gitshow-db --local --file=\"$f\"; done",
+    "d1:local:query": "wrangler d1 execute gitshow-db --local --command"
   },
   "dependencies": {
     "@ai-sdk/react": "^2.0.0",

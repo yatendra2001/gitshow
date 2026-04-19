@@ -1,0 +1,39 @@
+# Cloudflare Worker dev secrets. `wrangler dev` and
+# `initOpenNextCloudflareForDev()` read this file automatically when
+# `next dev` / `opennextjs-cloudflare preview` runs locally.
+#
+# Copy to `.dev.vars` and fill in the real values. Never commit the
+# filled file — `.dev.vars` is gitignored.
+
+# ── NextAuth ────────────────────────────────────────────────────────
+AUTH_SECRET="generate-with: openssl rand -base64 32"
+AUTH_GITHUB_ID="your-github-oauth-client-id"
+AUTH_GITHUB_SECRET="your-github-oauth-client-secret"
+
+# Must include http://localhost:3000/api/auth/callback/github in the
+# GitHub OAuth app's "Authorization callback URL" list. Github lets
+# you add multiple via "Add callback URL" after creating the app.
+
+# ── Spawn-fly from /api/scan ────────────────────────────────────────
+FLY_API_TOKEN="fly token"
+FLY_APP_NAME="gitshow-worker"
+
+# ── R2 + D1 (for the web app's server-side access) ──────────────────
+# In local dev with miniflare, env.DB / env.BUCKET point at the local
+# sqlite / filesystem — these REST creds are only used by any lib path
+# that still goes through the shared Fly clients (can leave as your
+# prod values; nothing harmful about local pointing at prod R2/D1).
+CF_ACCOUNT_ID=""
+CF_API_TOKEN=""
+D1_DATABASE_ID="84978608-ec37-4b1c-b23c-00f906c2f51d"
+R2_BUCKET_NAME="gitshow-scans"
+R2_ACCESS_KEY_ID=""
+R2_SECRET_ACCESS_KEY=""
+
+# ── LLM + GitHub data ──────────────────────────────────────────────
+OPENROUTER_API_KEY=""
+GH_TOKEN=""
+
+# ── Realtime publish target (leave blank to skip DO publishing) ────
+REALTIME_ENDPOINT="https://gitshow-realtime.yatendra2001kumar.workers.dev"
+PIPELINE_SHARED_SECRET=""
