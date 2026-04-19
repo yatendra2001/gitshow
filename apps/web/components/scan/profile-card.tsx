@@ -30,6 +30,7 @@ import {
   YAxis,
   Tooltip as RTooltip,
 } from "recharts";
+import { InlineMarkdown, ClampedProse } from "@/lib/inline-md";
 import type {
   ProfileCard,
   CardClaim,
@@ -976,16 +977,16 @@ export function ProfileCardView({
                   {card.disclosure.label}
                 </h3>
               )}
-              <p
+              <div
                 style={{
                   margin: "0 0 10px",
                   fontSize: 13,
                   color: T.sec,
-                  lineHeight: 1.6,
+                  lineHeight: 1.55,
                 }}
               >
-                {card.disclosure.text}
-              </p>
+                <InlineMarkdown text={card.disclosure.text} />
+              </div>
               {card.disclosure.sublabel && (
                 <div
                   style={{
@@ -1145,7 +1146,7 @@ function HeroSection({
           borderRadius: highlight ? 4 : undefined,
         }}
       >
-        {hook?.text ?? "Hook is still generating…"}
+        {hook ? <InlineMarkdown text={hook.text} /> : "Hook is still generating…"}
       </h1>
       {sub && (
         <p
@@ -1243,7 +1244,7 @@ function NumbersSection({
                   fontFamily: mono,
                 }}
               >
-                {n.text}
+                <InlineMarkdown text={n.text} />
               </div>
             </div>
           );
@@ -1310,16 +1311,16 @@ function PatternCard({
           )}
         </div>
       )}
-      <p
+      <ClampedProse
+        text={claim.text}
+        lines={5}
         style={{
           margin: 0,
-          fontSize: 12,
+          fontSize: 12.5,
           color: T.sec,
-          lineHeight: 1.6,
+          lineHeight: 1.55,
         }}
-      >
-        {claim.text}
-      </p>
+      />
       {url && claim.evidence_preview[0] && (
         <Receipt
           label={claim.evidence_preview[0].title || "View evidence"}
@@ -1380,9 +1381,9 @@ function ShippedRow({
           )}
         </div>
         <div
-          style={{ fontSize: 11, color: T.sec, lineHeight: 1.5 }}
+          style={{ fontSize: 11.5, color: T.sec, lineHeight: 1.5 }}
         >
-          {claim.text}
+          <InlineMarkdown text={claim.text} />
         </div>
       </div>
       {claim.evidence_preview[0] && (
