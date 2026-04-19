@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ScanEventEnvelope, PipelineEvent } from "@gitshow/shared/events";
+import type { ScanEventEnvelope } from "@gitshow/shared/events";
 
 /**
  * useScanStream — hybrid realtime + backfill subscriber.
@@ -263,52 +263,3 @@ export function currentPhase(phases: PhaseState[]): PhaseState | null {
   return done[done.length - 1] ?? null;
 }
 
-/**
- * Pull the latest `usage` event for the cost HUD.
- */
-export function latestUsage(envelopes: ScanEventEnvelope[]): {
-  cost_cents: number;
-  llm_calls: number;
-  total_tokens: number;
-} | null {
-  for (let i = envelopes.length - 1; i >= 0; i--) {
-    const e = envelopes[i]!.event;
-    if (e.kind === "usage") {
-      return {
-        cost_cents: e.cost_cents,
-        llm_calls: e.llm_calls,
-        total_tokens: e.total_tokens,
-      };
-    }
-  }
-  return null;
-}
-
-/**
- * Most recent eval-axes verdict (for TestResults component).
- */
-export function latestEvalAxes(envelopes: ScanEventEnvelope[]) {
-  for (let i = envelopes.length - 1; i >= 0; i--) {
-    const e = envelopes[i]!.event;
-    if (e.kind === "eval-axes") return e;
-  }
-  return null;
-}
-
-/**
- * Recent reasoning lines for a given agent, newest first.
- */
-export function reasoningFor(
-  envelopes: ScanEventEnvelope[],
-  agent: string,
-  limit = 5,
-): string[] {
-  const out: string[] = [];
-  for (let i = envelopes.length - 1; i >= 0 && out.length < limit; i--) {
-    const e = envelopes[i]!.event;
-    if (e.kind === "reasoning" && e.agent === agent) {
-      out.push(e.text);
-    }
-  }
-  return out.reverse();
-}

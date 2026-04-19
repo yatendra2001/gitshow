@@ -2,15 +2,14 @@
 
 import * as React from "react";
 import { cn } from "@/lib/utils";
-import { Activity, Clock } from "lucide-react";
 
 /**
- * Context — the live cost / LLM-calls / ETA HUD pill. Drops into the
- * top of the progress pane. Not the full AI Elements Context (with
- * token ring + hover card) — a minimal readable version tuned for
- * our scan loop. We can upgrade later.
+ * HudPill — small labelled pill with an icon, used by the progress
+ * pane header ("NOW Reading your code", "reviewer PASS 88/100").
+ * Deliberately minimal. AI Elements has a full Context primitive with
+ * token rings + hover cards; we don't need that here — cost + ETA
+ * were removed from the HUD as user-facing noise.
  */
-
 export function HudPill({
   icon,
   label,
@@ -36,26 +35,4 @@ export function HudPill({
       <span className="font-semibold text-foreground">{value}</span>
     </div>
   );
-}
-
-export function CostPill({
-  costCents,
-  llmCalls,
-}: {
-  costCents: number;
-  llmCalls: number;
-}) {
-  return (
-    <HudPill
-      icon={<Activity />}
-      label="cost"
-      value={`$${(costCents / 100).toFixed(2)} · ${llmCalls} calls`}
-    />
-  );
-}
-
-export function EtaPill({ etaMs }: { etaMs: number }) {
-  const minutes = Math.max(0, Math.round(etaMs / 60000));
-  const text = minutes < 1 ? "<1m" : `${minutes}m`;
-  return <HudPill icon={<Clock />} label="eta" value={text} />;
 }

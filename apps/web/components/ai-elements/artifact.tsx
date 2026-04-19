@@ -61,18 +61,6 @@ export function ArtifactTitle({
   );
 }
 
-export function ArtifactActions({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) {
-  return (
-    <div
-      className={cn("flex items-center gap-1", className)}
-      {...props}
-    />
-  );
-}
-
 export function ArtifactContent({
   className,
   ...props
