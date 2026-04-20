@@ -270,12 +270,32 @@ body {
   animation: gs-shimmer 2000ms linear infinite;
 }
 
+/*
+ * Progress-bar shimmer — a white highlight band that sweeps across
+ * the filled portion of a progress bar. Sits on top of a solid
+ * accent-color base via absolute positioning; the parent provides
+ * the color + width.
+ */
+@keyframes gs-progress-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.gs-progress-shimmer {
+  background-image: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.55) 50%,
+    transparent 100%
+  );
+  animation: gs-progress-shimmer 1800ms linear infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .gs-enter, .gs-fade, .gs-stream {
     animation-duration: 1ms;
     animation-name: gs-fade-in;
   }
-  .gs-pulse, .gs-caret, .gs-shimmer { animation: none; }
+  .gs-pulse, .gs-caret, .gs-shimmer, .gs-progress-shimmer { animation: none; }
   .gs-shimmer {
     background: none;
     color: var(--muted-foreground);
