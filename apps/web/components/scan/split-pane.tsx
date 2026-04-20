@@ -1,59 +1,54 @@
 "use client";
 
 import * as React from "react";
-import { toast } from "sonner";
-import { nanoid } from "nanoid";
 import type { ScanRow } from "@/lib/scans";
 import type { ProfileCard, CardClaim } from "@gitshow/shared/schemas";
 import { useScanStream } from "@/lib/use-scan-stream";
-import { ChatPane, type ChatMessage } from "@/components/scan/chat-pane";
 import { ProgressPane } from "@/components/scan/progress-pane";
+import { ChatPane, type ChatMessage } from "@/components/scan/chat-pane";
 
 /**
- * The Claude-style builder. Left is chat (revise), right is progress +
- * live artifact. Driven by the hybrid realtime stream (WS + poll).
+ * Post-M6 layout:
  *
- * Client component because we subscribe to live events; the parent
- * server component provides the initial scan + card snapshot.
+ *  - `running` / `queued` — 25/75 split. Left is the narration pane so
+ *    the user has something to read while the pipeline works; right is
+ *    the live AgentProgress.
+ *  - `succeeded` — full-width, no chat. The profile IS the interface.
+ *    Every claim is click-to-edit (see `editable-text.tsx`). A Publish
+ *    button at top-right points `/{handle}` at this scan.
+ *  - `failed` / `cancelled` — single-panel error card.
+ *
+ * The revise-via-AI chat was removed on succeeded — direct edits beat
+ * AI rewrites for the kind of fact corrections users make ("my employer
+ * is X", "that number is wrong"). The running-state narration still
+ * uses the ChatPane shell since the AgentProgress lives on the right.
  */
 export function SplitPane({
   scan,
   initialCard,
+  initialIsPublished = false,
 }: {
   scan: ScanRow;
   initialCard: ProfileCard | null;
+  initialIsPublished?: boolean;
 }) {
   const { envelopes, terminalLines, connection, isDone } = useScanStream({
     scanId: scan.id,
   });
 
   const [card, setCard] = React.useState<ProfileCard | null>(initialCard);
-  // Effective scan status — starts from the server snapshot, flips to
-  // "succeeded" the moment the WS delivers a `done` frame so the UI
-  // swaps from RunningView → SucceededView without requiring a reload.
   const [effectiveStatus, setEffectiveStatus] = React.useState<
     ScanRow["status"]
   >(scan.status);
   React.useEffect(() => {
     setEffectiveStatus(scan.status);
   }, [scan.status]);
-  const [messages, setMessages] = React.useState<ChatMessage[]>([]);
-  const [revisePending, setRevisePending] = React.useState<{
-    title: string;
-  } | null>(null);
-  // Millis at which the current revise was dispatched. Lets the chat
-  // pane scope inline progress to the events that belong to that
-  // revise (rather than showing the entire scan history).
-  const [reviseStartedAt, setReviseStartedAt] = React.useState<number | null>(
-    null,
-  );
   const [highlightClaimId, setHighlightClaimId] = React.useState<string | null>(
     null,
   );
+  const [isPublished, setIsPublished] = React.useState(initialIsPublished);
 
-  // When the WS delivers a done frame mid-session, flip status + fetch
-  // the freshly-emitted card. Covers the case where the server prop
-  // said "running" but the scan finished after this page loaded.
+  // On `done`, flip status + fetch the freshly-emitted card.
   React.useEffect(() => {
     if (!isDone) return;
     setEffectiveStatus((s) =>
@@ -64,126 +59,67 @@ export function SplitPane({
     });
   }, [isDone, scan.id]);
 
-  // When a scan finishes or a revise completes, refetch the card from R2.
+  // When the initial SSR said "running" but the scan landed after, pull
+  // the fresh card so the succeeded view isn't empty.
   React.useEffect(() => {
     if (effectiveStatus !== "succeeded") return;
-    if (card && initialCard && card === initialCard) {
-      return;
-    }
+    if (card && initialCard && card === initialCard) return;
     void refreshCard(scan.id).then((next) => {
       if (next) setCard(next);
     });
   }, [scan.id, effectiveStatus, card, initialCard]);
 
-  // If a revise stage-end event arrives, refetch + show it.
-  React.useEffect(() => {
-    const latestReviseEnd = [...envelopes]
-      .reverse()
-      .find(
-        (e) =>
-          e.event.kind === "stage-end" &&
-          "stage" in e.event &&
-          e.event.stage === "revise-claim",
-      );
-    if (!latestReviseEnd) return;
-    setRevisePending(null);
-    setReviseStartedAt(null);
-    void refreshCard(scan.id).then((next) => {
-      if (next) {
-        setCard(next);
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: nanoid(8),
-            from: "assistant",
-            text: "Updated. The artifact on the right now reflects the change.",
-          },
-        ]);
-      }
-    });
-  }, [envelopes, scan.id]);
-
-  const onClaimClick = (claimId: string, beat: CardClaim["beat"]) => {
+  // Click-to-pin is only meaningful on running-state (for observation);
+  // succeeded-state uses direct inline edits.
+  const onClaimClick = (claimId: string, _beat: CardClaim["beat"]) => {
+    if (effectiveStatus === "succeeded") return;
     setHighlightClaimId(claimId);
-    toast(`Pinned @${beat}`, {
-      description: "Type your guidance below, then send to revise.",
-      duration: 3000,
-    });
   };
 
-  const onSendRevise = async ({
-    claimId,
-    guidance,
-  }: {
-    claimId?: string;
-    guidance: string;
-  }) => {
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: nanoid(8),
-        from: "user",
-        text: guidance,
-      },
-    ]);
+  // Local, optimistic update when a user inline-edits a claim. The
+  // EditableText already PATCHed /api/claims/:id and returned; here we
+  // just swap the text in local state so the UI reflects without a
+  // round-trip refresh.
+  const onClaimEdited = React.useCallback(
+    (claimId: string, nextText: string) => {
+      setCard((prev) => {
+        if (!prev) return prev;
+        const swap = <T extends CardClaim | null | undefined>(c: T): T =>
+          c && c.id === claimId ? ({ ...c, text: nextText } as T) : c;
+        return {
+          ...prev,
+          hook: swap(prev.hook),
+          numbers: prev.numbers.map((n) => swap(n)),
+          patterns: prev.patterns.map((p) => swap(p)),
+          shipped: prev.shipped.map((s) => swap(s)),
+          disclosure: swap(prev.disclosure),
+        };
+      });
+    },
+    [],
+  );
 
-    const resp = await fetch("/api/revise", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        scanId: scan.id,
-        ...(claimId ? { claimId } : {}),
-        guidance,
-      }),
-    });
-
-    if (!resp.ok) {
-      let bodyMsg = "";
-      try {
-        const data = (await resp.json()) as { detail?: string; error?: string };
-        bodyMsg = data.detail ?? data.error ?? "";
-      } catch {
-        bodyMsg = await resp.text();
-      }
-      const friendly = bodyMsg.slice(0, 220) || "Something went wrong.";
-      toast.error(friendly);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: nanoid(8),
-          from: "assistant",
-          text: friendly,
-        },
-      ]);
-      throw new Error(bodyMsg);
-    }
-
-    const data = (await resp.json().catch(() => ({}))) as {
-      summary?: string;
-      dispatched?: Array<{ ok: boolean; beat: string }>;
-    };
-    const beats = (data.dispatched ?? [])
-      .filter((d) => d.ok)
-      .map((d) => d.beat);
-    const title =
-      beats.length === 0
-        ? "Rewriting…"
-        : beats.length === 1
-          ? `Rewriting ${humanBeat(beats[0]!)}`
-          : `Rewriting ${beats.length} parts in parallel`;
-    setRevisePending({ title });
-    setReviseStartedAt(Date.now());
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: nanoid(8),
-        from: "assistant",
-        text:
-          data.summary ??
-          "Spawning the rewrite now. This usually takes 2–6 min.",
-      },
-    ]);
-  };
+  if (effectiveStatus === "succeeded") {
+    return (
+      <div className="h-screen w-full">
+        <ProgressPane
+          scan={{ ...scan, status: effectiveStatus }}
+          envelopes={envelopes}
+          terminalLines={terminalLines}
+          partialCard={null}
+          card={card}
+          highlightClaimId={highlightClaimId}
+          onClaimClick={onClaimClick}
+          connection={connection}
+          isDone={isDone}
+          editable
+          onClaimEdited={onClaimEdited}
+          isPublished={isPublished}
+          onPublishedChange={setIsPublished}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="grid h-screen w-full grid-cols-[minmax(280px,25%)_1fr]">
@@ -191,12 +127,14 @@ export function SplitPane({
         scan={scan}
         card={card}
         partialCard={null}
-        messages={messages}
-        onSendRevise={onSendRevise}
-        revisePending={!!revisePending}
+        messages={[] as ChatMessage[]}
+        onSendRevise={async () => {
+          /* chat-driven revise removed — see docstring */
+        }}
+        revisePending={false}
         envelopes={envelopes}
         terminalLines={terminalLines}
-        reviseStartedAt={reviseStartedAt}
+        reviseStartedAt={null}
       />
       <ProgressPane
         scan={{ ...scan, status: effectiveStatus }}
@@ -211,13 +149,6 @@ export function SplitPane({
       />
     </div>
   );
-}
-
-function humanBeat(beat: string): string {
-  if (beat === "hook") return "the hero hook";
-  if (beat === "number") return "your numbers";
-  if (beat === "disclosure") return "the disclosure";
-  return beat;
 }
 
 async function refreshCard(scanId: string): Promise<ProfileCard | null> {

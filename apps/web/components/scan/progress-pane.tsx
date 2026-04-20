@@ -3,30 +3,20 @@
 import * as React from "react";
 import type { ScanEventEnvelope } from "@gitshow/shared/events";
 import { HudPill } from "@/components/ai-elements/context";
-import {
-  Artifact,
-  ArtifactContent,
-  ArtifactHeader,
-  ArtifactTitle,
-} from "@/components/ai-elements/artifact";
 import { AgentProgress } from "@/components/scan/agent-progress";
 import { ProfileCardView } from "@/components/scan/profile-card";
 import type { ScanRow } from "@/lib/scans";
 import type { ProfileCard, CardClaim } from "@gitshow/shared/schemas";
-import { Activity as ActivityIcon, Sparkles, AlertCircle } from "lucide-react";
+import { Sparkles, AlertCircle } from "lucide-react";
 
 /**
  * Right pane. Three hard states, picked off scan.status:
  *
  *   running / queued → full agent-progress stack, no artifact yet
- *   succeeded        → artifact only (profile card). Revise progress
- *                      lives inline in the chat pane — it doesn't
- *                      belong on the right once the user is iterating.
+ *   succeeded        → profile card with inline-edit claims + Publish
+ *                      button (top-right). Scan history is hidden
+ *                      behind a collapsed "developer" toggle.
  *   failed           → a single error card, retry link to the dashboard
- *
- * This keeps each state's right-pane job obvious: the first build is a
- * spectacle, the finished profile is a document, the failure is a
- * cul-de-sac.
  */
 export function ProgressPane({
   scan,
@@ -38,6 +28,10 @@ export function ProgressPane({
   onClaimClick,
   connection = "idle",
   isDone = false,
+  editable = false,
+  onClaimEdited,
+  isPublished = false,
+  onPublishedChange,
 }: {
   scan: ScanRow;
   envelopes: ScanEventEnvelope[];
@@ -48,6 +42,10 @@ export function ProgressPane({
   onClaimClick?: (claimId: string, beat: CardClaim["beat"]) => void;
   connection?: import("@/lib/use-scan-stream").StreamConnection;
   isDone?: boolean;
+  editable?: boolean;
+  onClaimEdited?: (claimId: string, nextText: string) => void;
+  isPublished?: boolean;
+  onPublishedChange?: (next: boolean) => void;
 }) {
   const finalCard = card ?? partialCard;
 
@@ -68,11 +66,14 @@ export function ProgressPane({
       <SucceededView
         scan={scan}
         card={finalCard}
-        isLive={!!card}
         highlightClaimId={highlightClaimId}
         onClaimClick={onClaimClick}
         envelopes={envelopes}
         terminalLines={terminalLines}
+        editable={editable}
+        onClaimEdited={onClaimEdited}
+        isPublished={isPublished}
+        onPublishedChange={onPublishedChange}
       />
     );
   }
@@ -210,69 +211,83 @@ function LiveTicker({
 function SucceededView({
   scan,
   card,
-  isLive,
   highlightClaimId,
   onClaimClick,
   envelopes,
   terminalLines,
+  editable,
+  onClaimEdited,
+  isPublished,
+  onPublishedChange,
 }: {
   scan: ScanRow;
   card: ProfileCard;
-  isLive: boolean;
   highlightClaimId?: string | null;
   onClaimClick?: (claimId: string, beat: CardClaim["beat"]) => void;
   envelopes: ScanEventEnvelope[];
   terminalLines: string[];
+  editable?: boolean;
+  onClaimEdited?: (claimId: string, nextText: string) => void;
+  isPublished?: boolean;
+  onPublishedChange?: (next: boolean) => void;
 }) {
   const [showProgress, setShowProgress] = React.useState(false);
   const hasProgress = envelopes.length > 0;
 
   return (
-    <div className="relative flex h-full flex-col overflow-hidden">
-      <Artifact className="flex-1 rounded-none border-0">
-        <ArtifactHeader>
-          <ArtifactTitle>your profile · @{card.handle}</ArtifactTitle>
-          <div className="flex items-center gap-3">
-            {scan.hiring_verdict && (
-              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">
-                reviewer · {scan.hiring_verdict} {scan.hiring_score ?? "—"}/100
-              </span>
-            )}
-            {isLive && (
-              <a
-                href={`/${card.handle}`}
-                target="_blank"
-                rel="noreferrer"
-                className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground"
-              >
-                open public view ↗
-              </a>
-            )}
-          </div>
-        </ArtifactHeader>
-        <ArtifactContent className="bg-[#FAFAF7]">
-          <ProfileCardView
-            card={card}
-            chrome={false}
-            onClaimClick={onClaimClick}
-            highlightClaimId={highlightClaimId}
-          />
-          {hasProgress ? (
-            <div className="mt-10 border-t border-border/30 pt-6">
+    <div className="relative flex h-full flex-col overflow-hidden bg-[#FAFAF7]">
+      {/* Header bar — sticky, above the artifact */}
+      <div className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border/40 bg-[#FAFAF7]/90 px-5 py-3 backdrop-blur">
+        <div className="flex items-center gap-3">
+          <span className="font-sans text-[13px] font-semibold text-foreground">
+            your profile · @{card.handle}
+          </span>
+          {scan.hiring_verdict && (
+            <span className="font-mono text-[10px] uppercase tracking-wider text-slate-600">
+              reviewer · {scan.hiring_verdict} {scan.hiring_score ?? "—"}/100
+            </span>
+          )}
+          {editable && (
+            <span className="font-mono text-[10px] text-slate-500">
+              · click anything to edit
+            </span>
+          )}
+        </div>
+        <PublishControl
+          scanId={scan.id}
+          handle={card.handle}
+          isPublished={isPublished ?? false}
+          onPublishedChange={onPublishedChange}
+        />
+      </div>
+
+      {/* Card scroll container */}
+      <div className="flex-1 overflow-y-auto">
+        <ProfileCardView
+          card={card}
+          chrome={false}
+          onClaimClick={onClaimClick}
+          highlightClaimId={highlightClaimId}
+          editable={editable}
+          onClaimEdited={onClaimEdited}
+        />
+        {hasProgress ? (
+          <div className="mx-auto max-w-[880px] px-7 pb-24">
+            <div className="mt-4 rounded-xl border border-slate-200 bg-white/60 p-4">
               <button
                 type="button"
                 onClick={() => setShowProgress((v) => !v)}
                 className="group flex w-full items-center gap-2 text-left"
                 aria-expanded={showProgress}
               >
-                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/80 group-hover:text-foreground transition-colors">
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate-700 group-hover:text-slate-900">
                   {showProgress ? "Hide" : "Show"} scan history
                 </span>
-                <span className="text-[11px] text-muted-foreground/60">
+                <span className="font-mono text-[11px] text-slate-500">
                   · {envelopes.length} events
                 </span>
                 <span
-                  className={`ml-auto font-mono text-[11px] text-muted-foreground/60 transition-transform duration-200 ${
+                  className={`ml-auto font-mono text-[11px] text-slate-500 transition-transform duration-200 ${
                     showProgress ? "rotate-90" : ""
                   }`}
                 >
@@ -280,7 +295,7 @@ function SucceededView({
                 </span>
               </button>
               {showProgress ? (
-                <div className="mt-4">
+                <div className="mt-4 rounded-lg bg-[#0F172A] p-4 text-slate-100">
                   <AgentProgress
                     envelopes={envelopes}
                     terminalLines={terminalLines}
@@ -288,9 +303,104 @@ function SucceededView({
                 </div>
               ) : null}
             </div>
-          ) : null}
-        </ArtifactContent>
-      </Artifact>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Publish / Unpublish button in the top-right. Starts from the SSR
+ * snapshot of `isPublished`; toggles via POST/DELETE /api/profile/publish.
+ *
+ * States:
+ *   - draft    → primary "Publish" button
+ *   - published → "Published · gitshow.io/<handle> ↗" + tiny "Unpublish"
+ */
+function PublishControl({
+  scanId,
+  handle,
+  isPublished,
+  onPublishedChange,
+}: {
+  scanId: string;
+  handle: string;
+  isPublished: boolean;
+  onPublishedChange?: (next: boolean) => void;
+}) {
+  const [busy, setBusy] = React.useState(false);
+
+  const publish = async () => {
+    setBusy(true);
+    try {
+      const resp = await fetch("/api/profile/publish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanId }),
+      });
+      if (!resp.ok) {
+        const body = await resp.text();
+        throw new Error(body.slice(0, 200));
+      }
+      onPublishedChange?.(true);
+    } catch (err) {
+      alert(`Publish failed: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const unpublish = async () => {
+    if (!confirm("Unpublish? Your public page at gitshow.io/" + handle + " will 404.")) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const resp = await fetch("/api/profile/publish", { method: "DELETE" });
+      if (!resp.ok) {
+        const body = await resp.text();
+        throw new Error(body.slice(0, 200));
+      }
+      onPublishedChange?.(false);
+    } catch (err) {
+      alert(`Unpublish failed: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!isPublished) {
+    return (
+      <button
+        type="button"
+        onClick={publish}
+        disabled={busy}
+        className="inline-flex items-center gap-1.5 rounded-md bg-[#0F172A] px-3 py-1.5 font-mono text-[11px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+      >
+        {busy ? "Publishing…" : "Publish"}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <a
+        href={`/${handle}`}
+        target="_blank"
+        rel="noreferrer"
+        className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600/10 px-3 py-1.5 font-mono text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-600/15"
+      >
+        Published · gitshow.io/{handle} ↗
+      </a>
+      <button
+        type="button"
+        onClick={unpublish}
+        disabled={busy}
+        className="font-mono text-[10px] text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline disabled:opacity-60"
+      >
+        {busy ? "…" : "Unpublish"}
+      </button>
     </div>
   );
 }

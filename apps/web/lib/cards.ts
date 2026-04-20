@@ -39,6 +39,49 @@ export async function getScanCard(
 }
 
 /**
+ * Overlay user-edited claim text onto a card. The R2 `14-card.json`
+ * is frozen at scan completion; every post-scan edit lives in the D1
+ * `claims` table with status=user_edited. Merging at read time means
+ * we don't have to re-emit the R2 card on every edit — the card in
+ * R2 stays the snapshot, D1 is the current truth.
+ *
+ * Mutates nothing; returns a new card with the text swapped where an
+ * edit exists.
+ */
+export async function mergeUserEdits(
+  card: ProfileCard,
+  scanId: string,
+  db: D1Database,
+): Promise<ProfileCard> {
+  try {
+    const resp = await db
+      .prepare(
+        `SELECT id, text FROM claims
+           WHERE scan_id = ? AND status = 'user_edited'`,
+      )
+      .bind(scanId)
+      .all<{ id: string; text: string }>();
+    const edits = new Map<string, string>();
+    for (const row of resp.results ?? []) {
+      edits.set(row.id, row.text);
+    }
+    if (edits.size === 0) return card;
+    const swap = (c: ProfileCard["hook"]) =>
+      c && edits.has(c.id) ? { ...c, text: edits.get(c.id)! } : c;
+    return {
+      ...card,
+      hook: swap(card.hook),
+      numbers: card.numbers.map((n) => swap(n)!),
+      patterns: card.patterns.map((p) => swap(p)!),
+      shipped: card.shipped.map((s) => swap(s)!),
+      disclosure: swap(card.disclosure),
+    };
+  } catch {
+    return card;
+  }
+}
+
+/**
  * Read a card by public handle. Convention: the web app points the
  * `HANDLE → latest scan_id` lookup at D1 first, then reads R2 by scan id.
  * Until the lookup is wired up, `/p/[handle]` with handle === demo handle

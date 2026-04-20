@@ -7,6 +7,7 @@
  */
 
 import type { ProfileCard } from "@gitshow/shared/schemas";
+import { mergeUserEdits } from "./cards";
 
 export interface UserProfileRow {
   user_id: string;
@@ -39,7 +40,12 @@ export async function getProfileBySlug(
     const obj = await bucket.get(row.current_profile_r2_key);
     if (!obj) return null;
     const text = await obj.text();
-    const card = JSON.parse(text) as ProfileCard;
+    const raw = JSON.parse(text) as ProfileCard;
+    // Overlay any post-scan user edits from D1. The R2 card is the
+    // frozen snapshot; D1 is the live source of truth for claim text.
+    const card = row.current_scan_id
+      ? await mergeUserEdits(raw, row.current_scan_id, db)
+      : raw;
     return { row, card };
   } catch {
     return null;

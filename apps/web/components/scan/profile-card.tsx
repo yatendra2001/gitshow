@@ -31,6 +31,7 @@ import {
   Tooltip as RTooltip,
 } from "recharts";
 import { InlineMarkdown, ClampedProse } from "@/lib/inline-md";
+import { EditableText } from "@/components/scan/editable-text";
 import type {
   ProfileCard,
   CardClaim,
@@ -635,6 +636,13 @@ export interface ProfileCardViewProps {
   onClaimClick?: (claimId: string, beat: CardClaim["beat"]) => void;
   /** Highlight a claim as the active revise target. */
   highlightClaimId?: string | null;
+  /**
+   * When true, every visible claim text becomes click-to-edit. The
+   * caller passes an onClaimEdited callback so local state can be
+   * refreshed after a successful PATCH /api/claims/:id.
+   */
+  editable?: boolean;
+  onClaimEdited?: (claimId: string, nextText: string) => void;
 }
 
 export function ProfileCardView({
@@ -642,6 +650,8 @@ export function ProfileCardView({
   chrome = true,
   onClaimClick,
   highlightClaimId,
+  editable = false,
+  onClaimEdited,
 }: ProfileCardViewProps) {
   const av = useMemo(
     () => card.handle.slice(0, 2).toUpperCase(),
@@ -737,6 +747,8 @@ export function ProfileCardView({
           sub={sub}
           onClaimClick={onClaimClick}
           highlightClaimId={highlightClaimId}
+          editable={editable}
+          onClaimEdited={onClaimEdited}
         />
 
         {/* NUMBERS */}
@@ -744,6 +756,8 @@ export function ProfileCardView({
           card={card}
           onClaimClick={onClaimClick}
           highlightClaimId={highlightClaimId}
+          editable={editable}
+          onClaimEdited={onClaimEdited}
         />
 
         {/* CAREER ARC */}
@@ -917,6 +931,8 @@ export function ProfileCardView({
                   claim={p}
                   onClick={onClaimClick}
                   highlighted={p.id === highlightClaimId}
+                  editable={editable}
+                  onClaimEdited={onClaimEdited}
                 />
               ))}
             </div>
@@ -925,83 +941,24 @@ export function ProfileCardView({
 
         {/* SHIPPED */}
         {card.shipped.length > 0 && (
-          <section style={{ marginBottom: 40 }}>
-            <SectionLabel counter="05">shipped</SectionLabel>
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {card.shipped.map((s) => (
-                <ShippedRow
-                  key={s.id}
-                  claim={s}
-                  onClick={onClaimClick}
-                  highlighted={s.id === highlightClaimId}
-                />
-              ))}
-            </div>
-          </section>
+          <ShippedSection
+            shipped={card.shipped}
+            onClaimClick={onClaimClick}
+            highlightClaimId={highlightClaimId}
+            editable={editable}
+            onClaimEdited={onClaimEdited}
+          />
         )}
 
         {/* DISCLOSURE */}
         {card.disclosure && (
-          <section style={{ marginBottom: 36 }}>
-            <SectionLabel counter="06">next chapter</SectionLabel>
-            <div
-              onClick={() =>
-                onClaimClick?.(card.disclosure!.id, card.disclosure!.beat)
-              }
-              style={{
-                padding: "22px 26px",
-                borderRadius: 12,
-                background: "#FDFBF5",
-                border: `1px solid ${T.amb}33`,
-                borderLeft: `3px solid ${T.amb}`,
-                cursor: onClaimClick ? "pointer" : "default",
-                outline:
-                  highlightClaimId === card.disclosure.id
-                    ? `2px solid ${C[1]}`
-                    : "none",
-                outlineOffset: 2,
-              }}
-            >
-              {card.disclosure.label && (
-                <h3
-                  style={{
-                    margin: "0 0 8px",
-                    fontSize: 17,
-                    fontFamily: serif,
-                    fontWeight: 400,
-                    color: T.text,
-                    lineHeight: 1.3,
-                    letterSpacing: "-0.01em",
-                  }}
-                >
-                  {card.disclosure.label}
-                </h3>
-              )}
-              <div
-                style={{
-                  margin: "0 0 10px",
-                  fontSize: 13,
-                  color: T.sec,
-                  lineHeight: 1.55,
-                }}
-              >
-                <InlineMarkdown text={card.disclosure.text} />
-              </div>
-              {card.disclosure.sublabel && (
-                <div
-                  style={{
-                    fontSize: 10,
-                    color: T.amb,
-                    fontFamily: mono,
-                    fontWeight: 600,
-                    letterSpacing: "0.04em",
-                  }}
-                >
-                  {card.disclosure.sublabel}
-                </div>
-              )}
-            </div>
-          </section>
+          <DisclosureSection
+            disclosure={card.disclosure}
+            onClaimClick={onClaimClick}
+            highlightClaimId={highlightClaimId}
+            editable={editable}
+            onClaimEdited={onClaimEdited}
+          />
         )}
 
         <footer
@@ -1045,15 +1002,33 @@ function HeroSection({
   sub,
   onClaimClick,
   highlightClaimId,
+  editable,
+  onClaimEdited,
 }: {
   card: ProfileCard;
   av: string;
   sub: string | undefined;
   onClaimClick?: ProfileCardViewProps["onClaimClick"];
   highlightClaimId?: string | null;
+  editable?: boolean;
+  onClaimEdited?: (id: string, next: string) => void;
 }) {
   const hook = card.hook;
   const highlight = hook && hook.id === highlightClaimId;
+
+  const hookStyle: React.CSSProperties = {
+    margin: "0 0 12px",
+    fontFamily: serif,
+    fontSize: 28,
+    lineHeight: 1.3,
+    letterSpacing: "-0.015em",
+    fontWeight: 400,
+    color: T.text,
+    display: "block",
+    outline: highlight ? `2px solid ${C[1]}` : "none",
+    outlineOffset: 4,
+    borderRadius: highlight ? 4 : undefined,
+  };
 
   return (
     <section style={{ marginBottom: 40 }}>
@@ -1130,24 +1105,28 @@ function HeroSection({
           </div>
         </div>
       </div>
-      <h1
-        onClick={() => hook && onClaimClick?.(hook.id, hook.beat)}
-        style={{
-          margin: "0 0 12px",
-          fontFamily: serif,
-          fontSize: 28,
-          lineHeight: 1.3,
-          letterSpacing: "-0.015em",
-          fontWeight: 400,
-          color: T.text,
-          cursor: hook && onClaimClick ? "pointer" : "default",
-          outline: highlight ? `2px solid ${C[1]}` : "none",
-          outlineOffset: 4,
-          borderRadius: highlight ? 4 : undefined,
-        }}
-      >
-        {hook ? <InlineMarkdown text={hook.text} /> : "Hook is still generating…"}
-      </h1>
+      {editable && hook && onClaimEdited ? (
+        <h1 style={hookStyle}>
+          <EditableText
+            claimId={hook.id}
+            value={hook.text}
+            onSaved={(next) => onClaimEdited(hook.id, next)}
+            style={{ cursor: "text" }}
+          >
+            <InlineMarkdown text={hook.text} />
+          </EditableText>
+        </h1>
+      ) : (
+        <h1
+          onClick={() => hook && onClaimClick?.(hook.id, hook.beat)}
+          style={{
+            ...hookStyle,
+            cursor: hook && onClaimClick ? "pointer" : "default",
+          }}
+        >
+          {hook ? <InlineMarkdown text={hook.text} /> : "Hook is still generating…"}
+        </h1>
+      )}
       {sub && (
         <p
           style={{
@@ -1169,10 +1148,14 @@ function NumbersSection({
   card,
   onClaimClick,
   highlightClaimId,
+  editable,
+  onClaimEdited,
 }: {
   card: ProfileCard;
   onClaimClick?: ProfileCardViewProps["onClaimClick"];
   highlightClaimId?: string | null;
+  editable?: boolean;
+  onClaimEdited?: (id: string, next: string) => void;
 }) {
   if (card.numbers.length === 0) return null;
   return (
@@ -1244,7 +1227,17 @@ function NumbersSection({
                   fontFamily: mono,
                 }}
               >
-                <InlineMarkdown text={n.text} />
+                {editable && onClaimEdited ? (
+                  <EditableText
+                    claimId={n.id}
+                    value={n.text}
+                    onSaved={(next) => onClaimEdited(n.id, next)}
+                  >
+                    <InlineMarkdown text={n.text} />
+                  </EditableText>
+                ) : (
+                  <InlineMarkdown text={n.text} />
+                )}
               </div>
             </div>
           );
@@ -1258,21 +1251,30 @@ function PatternCard({
   claim,
   onClick,
   highlighted,
+  editable,
+  onClaimEdited,
 }: {
   claim: CardClaim;
   onClick?: ProfileCardViewProps["onClaimClick"];
   highlighted: boolean;
+  editable?: boolean;
+  onClaimEdited?: (id: string, next: string) => void;
 }) {
   const url = firstEvidenceUrl(claim);
+  const [expanded, setExpanded] = useState(false);
+  const CLAMP_LINES = 2;
+  // Rough char heuristic so we only show the "read more" affordance when
+  // the text actually overflows 2 lines. At ~50 chars/line at 12.5px
+  // this is a conservative threshold.
+  const isLong = claim.text.length > 140;
+
   return (
     <div
-      onClick={() => onClick?.(claim.id, claim.beat)}
       style={{
-        padding: "20px 22px",
+        padding: "18px 22px",
         borderRadius: 12,
         background: T.card,
         border: `1px solid ${T.border}`,
-        cursor: onClick ? "pointer" : "default",
         outline: highlighted ? `2px solid ${C[1]}` : "none",
         outlineOffset: 2,
       }}
@@ -1283,7 +1285,7 @@ function PatternCard({
             display: "flex",
             alignItems: "baseline",
             gap: 6,
-            marginBottom: 12,
+            marginBottom: 10,
           }}
         >
           <div
@@ -1311,16 +1313,72 @@ function PatternCard({
           )}
         </div>
       )}
-      <ClampedProse
-        text={claim.text}
-        lines={5}
-        style={{
-          margin: 0,
-          fontSize: 12.5,
-          color: T.sec,
-          lineHeight: 1.55,
-        }}
-      />
+      {editable && onClaimEdited ? (
+        <EditableText
+          claimId={claim.id}
+          value={claim.text}
+          onSaved={(next) => onClaimEdited(claim.id, next)}
+          style={{
+            display: "block",
+            margin: 0,
+            fontSize: 12.5,
+            color: T.sec,
+            lineHeight: 1.55,
+          }}
+        >
+          <ClampedProse
+            text={claim.text}
+            lines={expanded ? 999 : CLAMP_LINES}
+            style={{
+              margin: 0,
+              fontSize: 12.5,
+              color: T.sec,
+              lineHeight: 1.55,
+            }}
+          />
+        </EditableText>
+      ) : (
+        <div
+          onClick={(e) => {
+            if ((e.target as HTMLElement).closest("a,button")) return;
+            onClick?.(claim.id, claim.beat);
+          }}
+          style={{ cursor: onClick ? "pointer" : "default" }}
+        >
+          <ClampedProse
+            text={claim.text}
+            lines={expanded ? 999 : CLAMP_LINES}
+            style={{
+              margin: 0,
+              fontSize: 12.5,
+              color: T.sec,
+              lineHeight: 1.55,
+            }}
+          />
+        </div>
+      )}
+      {isLong && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded((v) => !v);
+          }}
+          style={{
+            marginTop: 6,
+            background: "transparent",
+            border: "none",
+            padding: 0,
+            fontSize: 10,
+            fontFamily: mono,
+            color: C[1],
+            cursor: "pointer",
+            letterSpacing: "0.04em",
+          }}
+        >
+          {expanded ? "Show less" : "Read more"}
+        </button>
+      )}
       {url && claim.evidence_preview[0] && (
         <Receipt
           label={claim.evidence_preview[0].title || "View evidence"}
@@ -1331,18 +1389,171 @@ function PatternCard({
   );
 }
 
+/**
+ * Shipped section — cap visible rows at 4 so the "Shipped" block reads
+ * at a glance. Rest hide behind a "Show all N projects" expander.
+ * Addresses the "it looks a mess" feedback: high-impact projects up
+ * top, everything else one click away.
+ */
+function ShippedSection({
+  shipped,
+  onClaimClick,
+  highlightClaimId,
+  editable,
+  onClaimEdited,
+}: {
+  shipped: CardClaim[];
+  onClaimClick?: ProfileCardViewProps["onClaimClick"];
+  highlightClaimId?: string | null;
+  editable?: boolean;
+  onClaimEdited?: (id: string, next: string) => void;
+}) {
+  const MAX_COMPACT = 4;
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? shipped : shipped.slice(0, MAX_COMPACT);
+  const hiddenCount = Math.max(0, shipped.length - MAX_COMPACT);
+
+  return (
+    <section style={{ marginBottom: 40 }}>
+      <SectionLabel counter="05">shipped</SectionLabel>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {visible.map((s) => (
+          <ShippedRow
+            key={s.id}
+            claim={s}
+            onClick={onClaimClick}
+            highlighted={s.id === highlightClaimId}
+            editable={editable}
+            onClaimEdited={onClaimEdited}
+          />
+        ))}
+      </div>
+      {hiddenCount > 0 && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          style={{
+            marginTop: 10,
+            background: "transparent",
+            border: "none",
+            padding: 0,
+            fontSize: 11,
+            fontFamily: mono,
+            color: C[1],
+            cursor: "pointer",
+            letterSpacing: "0.04em",
+          }}
+        >
+          {expanded
+            ? `Show fewer`
+            : `Show all ${shipped.length} projects (${hiddenCount} more)`}
+        </button>
+      )}
+    </section>
+  );
+}
+
+function DisclosureSection({
+  disclosure,
+  onClaimClick,
+  highlightClaimId,
+  editable,
+  onClaimEdited,
+}: {
+  disclosure: CardClaim;
+  onClaimClick?: ProfileCardViewProps["onClaimClick"];
+  highlightClaimId?: string | null;
+  editable?: boolean;
+  onClaimEdited?: (id: string, next: string) => void;
+}) {
+  return (
+    <section style={{ marginBottom: 36 }}>
+      <SectionLabel counter="06">next chapter</SectionLabel>
+      <div
+        onClick={() =>
+          !editable && onClaimClick?.(disclosure.id, disclosure.beat)
+        }
+        style={{
+          padding: "22px 26px",
+          borderRadius: 12,
+          background: "#FDFBF5",
+          border: `1px solid ${T.amb}33`,
+          borderLeft: `3px solid ${T.amb}`,
+          cursor: !editable && onClaimClick ? "pointer" : "default",
+          outline:
+            highlightClaimId === disclosure.id ? `2px solid ${C[1]}` : "none",
+          outlineOffset: 2,
+        }}
+      >
+        {disclosure.label && (
+          <h3
+            style={{
+              margin: "0 0 8px",
+              fontSize: 17,
+              fontFamily: serif,
+              fontWeight: 400,
+              color: T.text,
+              lineHeight: 1.3,
+              letterSpacing: "-0.01em",
+            }}
+          >
+            {disclosure.label}
+          </h3>
+        )}
+        <div
+          style={{
+            margin: "0 0 10px",
+            fontSize: 13,
+            color: T.sec,
+            lineHeight: 1.55,
+          }}
+        >
+          {editable && onClaimEdited ? (
+            <EditableText
+              claimId={disclosure.id}
+              value={disclosure.text}
+              onSaved={(next) => onClaimEdited(disclosure.id, next)}
+            >
+              <InlineMarkdown text={disclosure.text} />
+            </EditableText>
+          ) : (
+            <InlineMarkdown text={disclosure.text} />
+          )}
+        </div>
+        {disclosure.sublabel && (
+          <div
+            style={{
+              fontSize: 10,
+              color: T.amb,
+              fontFamily: mono,
+              fontWeight: 600,
+              letterSpacing: "0.04em",
+            }}
+          >
+            {disclosure.sublabel}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function ShippedRow({
   claim,
   onClick,
   highlighted,
+  editable,
+  onClaimEdited,
 }: {
   claim: CardClaim;
   onClick?: ProfileCardViewProps["onClaimClick"];
   highlighted: boolean;
+  editable?: boolean;
+  onClaimEdited?: (id: string, next: string) => void;
 }) {
   return (
     <div
-      onClick={() => onClick?.(claim.id, claim.beat)}
+      onClick={() => !editable && onClick?.(claim.id, claim.beat)}
       style={{
         padding: "14px 18px",
         borderRadius: 10,
@@ -1352,7 +1563,7 @@ function ShippedRow({
         gridTemplateColumns: "1fr auto",
         gap: 14,
         alignItems: "center",
-        cursor: onClick ? "pointer" : "default",
+        cursor: !editable && onClick ? "pointer" : "default",
         outline: highlighted ? `2px solid ${C[1]}` : "none",
         outlineOffset: 2,
       }}
@@ -1383,7 +1594,17 @@ function ShippedRow({
         <div
           style={{ fontSize: 11.5, color: T.sec, lineHeight: 1.5 }}
         >
-          <InlineMarkdown text={claim.text} />
+          {editable && onClaimEdited ? (
+            <EditableText
+              claimId={claim.id}
+              value={claim.text}
+              onSaved={(next) => onClaimEdited(claim.id, next)}
+            >
+              <InlineMarkdown text={claim.text} />
+            </EditableText>
+          ) : (
+            <InlineMarkdown text={claim.text} />
+          )}
         </div>
       </div>
       {claim.evidence_preview[0] && (
