@@ -366,9 +366,18 @@ function buildPhaseTree(envelopes: ScanEventEnvelope[]): {
     });
   }
 
-  // Track current phase as we walk events. Anything after the last
-  // stage-end with no new stage-start goes to the "unattached" bucket.
+  // Track current phase as we walk events. `lastCurrent` remembers the
+  // previous active phase so stray events that arrive in the tiny
+  // window between `stage-end` and the next `stage-start` still pin to
+  // a real phase instead of falsely lighting up "Finalizing".
+  //
+  // Why: the Fly worker publishes to the realtime DO fire-and-forget
+  // (apps/worker/scripts/run-scan.ts). A late `worker-update` from
+  // inventory can arrive at the DO *after* normalize's stage-start has
+  // been sequenced, so the client sees events outside their logical
+  // stage boundary. Pinning to `lastCurrent` keeps the UI faithful.
   let current: string | null = null;
+  let lastCurrent: string | null = null;
   const unattached: PhaseData = {
     id: "__finalizing__",
     title: "Finalizing",
@@ -380,12 +389,22 @@ function buildPhaseTree(envelopes: ScanEventEnvelope[]): {
     hasAny: false,
   };
 
+  const lastPhaseId = PHASE_ORDER[PHASE_ORDER.length - 1];
+
   // Track partial reasoning blocks by id so we can attribute tool/source
   // events to the right phase even if reasoning spans phase boundaries.
   const reasoningPhase = new Map<string, string | null>();
 
   const getBucket = (): PhaseData => {
     if (current && phaseMap.has(current)) return phaseMap.get(current)!;
+    // No active stage. Before the final pipeline phase (`bind`) has
+    // ended, treat the gap as "still inside the previous phase" — this
+    // is the fire-and-forget ordering case. Only after `bind` is done
+    // do we flip to the synthetic Finalizing bucket.
+    const bindDone = phaseMap.get(lastPhaseId)?.status === "done";
+    if (!bindDone && lastCurrent && phaseMap.has(lastCurrent)) {
+      return phaseMap.get(lastCurrent)!;
+    }
     unattached.hasAny = true;
     return unattached;
   };
@@ -421,8 +440,10 @@ function buildPhaseTree(envelopes: ScanEventEnvelope[]): {
         p.status = "done";
         p.duration_ms = s.duration_ms;
       }
-      // Stage ended; if nothing else starts, subsequent events land
-      // in the unattached bucket.
+      // Remember the phase that just ended so stray inter-stage events
+      // still pin to it (see `getBucket`). Only once `bind` has ended
+      // do post-pipeline events legitimately route to Finalizing.
+      lastCurrent = s.stage;
       current = null;
       continue;
     }
