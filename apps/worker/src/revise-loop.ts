@@ -24,6 +24,7 @@
 
 import { nanoid } from "nanoid";
 
+import type { AgentEventEmit } from "./agents/base.js";
 import { runHiringManagerReview } from "./agents/hiring-manager.js";
 import { runHookWriter } from "./agents/hook/writer.js";
 import { runHookCritic } from "./agents/hook/critic.js";
@@ -67,6 +68,8 @@ export interface ReviseLoopInput {
   /** Per-round checkpoint writer; called with `(round, payload)`. */
   saveRound?: (round: number, payload: RoundState) => Promise<void>;
   onProgress?: (text: string) => void;
+  emit?: AgentEventEmit;
+  messageId?: string;
 }
 
 export interface RoundState {
@@ -140,6 +143,8 @@ export async function runHiringReviseLoop(
       claims: currentProfile.claims,
       artifacts: currentProfile.artifacts,
       onProgress: input.onProgress,
+      emit: input.emit,
+      messageId: input.messageId,
     });
 
     loud(

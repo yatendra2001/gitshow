@@ -15,6 +15,7 @@
  * `14a0-hook-stability.json` for later inspection.
  */
 
+import type { AgentEventEmit } from "../base.js";
 import { runHookWriter } from "./writer.js";
 import { runHookCritic } from "./critic.js";
 import type {
@@ -42,6 +43,8 @@ export interface StabilityInput {
    */
   angle: HookAngleSelection;
   onProgress?: (text: string) => void;
+  emit?: AgentEventEmit;
+  messageId?: string;
 }
 
 export interface StabilityReport {
@@ -70,6 +73,8 @@ export async function runHookStabilityCheck(
     artifacts: input.artifacts,
     angle: input.angle,
     onProgress: input.onProgress,
+    emit: input.emit,
+    messageId: input.messageId,
   });
   const critique = await runHookCritic({
     session: input.session,
@@ -77,6 +82,8 @@ export async function runHookStabilityCheck(
     candidates,
     discover: input.discover,
     onProgress: input.onProgress,
+    emit: input.emit,
+    messageId: input.messageId,
   });
   const secondWinner =
     critique.winner_index !== null

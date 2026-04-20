@@ -687,6 +687,8 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
       profile,
       hookAngle,
       onProgress: stream,
+      emit: emitScoped,
+      messageId,
       saveRound: async (round, payload) => {
         await ckpt.saveFile(`13c-revise-round-${round}.json`, payload);
       },
@@ -728,6 +730,8 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
         canonicalWinner: hook,
         angle: hookAngle,
         onProgress: stream,
+        emit: emitScoped,
+        messageId,
       });
       stream(`[pipeline] hook stability: ${hookStability.verdict} (sim=${hookStability.similarity}) — ${hookStability.note}\n`);
       await ckpt.saveFile("14a0-hook-stability.json", hookStability);
