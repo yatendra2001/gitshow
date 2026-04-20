@@ -47,7 +47,10 @@ export default async function AppHomePage() {
   const session = await auth();
   if (!session?.user?.id) redirect("/signin");
   const userId = session.user.id;
-  const githubHandle = (session.user.name ?? "").trim();
+  // Prefer the GitHub login (username) captured in the signIn callback.
+  // Fall back to display name only if login never made it into the row
+  // (e.g. a sign-in from before migration 0005 landed).
+  const githubHandle = (session.user.login ?? session.user.name ?? "").trim();
 
   const { env } = await getCloudflareContext({ async: true });
 
