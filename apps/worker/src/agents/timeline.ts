@@ -7,7 +7,8 @@
  * and emits a deduplicated chronology. Small, cheap LLM call.
  */
 
-import { runAgentWithSubmit } from "./base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "./base.js";
+import { toolLabel } from "@gitshow/shared/phase-copy";
 import { renderDiscoverSummary, renderWorkerClaims } from "./prompt-helpers.js";
 import * as z from "zod/v4";
 import type {
@@ -54,6 +55,8 @@ export interface TimelineInput {
   workerOutputs: WorkerOutput[];
   shippedClaims: Array<{ text: string; label?: string; sublabel?: string }>;
   onProgress?: (text: string) => void;
+  emit?: AgentEventEmit;
+  messageId?: string;
 }
 
 const TIMELINE_PROMPT = `You produce a chronological career timeline for a developer — chart-ready data, not prose.
@@ -91,6 +94,9 @@ export async function runTimelineAgent(input: TimelineInput): Promise<TimelineOu
     usage: input.usage,
     label: "timeline",
     onProgress: input.onProgress,
+    emit: input.emit,
+    messageId: input.messageId,
+    toolLabels: (n, i) => toolLabel(n, i),
   });
 
   return result;

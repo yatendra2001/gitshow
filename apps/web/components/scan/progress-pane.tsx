@@ -36,6 +36,8 @@ export function ProgressPane({
   card,
   highlightClaimId,
   onClaimClick,
+  connection = "idle",
+  isDone = false,
 }: {
   scan: ScanRow;
   envelopes: ScanEventEnvelope[];
@@ -44,6 +46,8 @@ export function ProgressPane({
   card: ProfileCard | null;
   highlightClaimId?: string | null;
   onClaimClick?: (claimId: string, beat: CardClaim["beat"]) => void;
+  connection?: import("@/lib/use-scan-stream").StreamConnection;
+  isDone?: boolean;
 }) {
   const finalCard = card ?? partialCard;
 
@@ -53,6 +57,8 @@ export function ProgressPane({
         scan={scan}
         envelopes={envelopes}
         terminalLines={terminalLines}
+        connection={connection}
+        isDone={isDone}
       />
     );
   }
@@ -87,10 +93,14 @@ function RunningView({
   scan,
   envelopes,
   terminalLines,
+  connection,
+  isDone,
 }: {
   scan: ScanRow;
   envelopes: ScanEventEnvelope[];
   terminalLines: string[];
+  connection: import("@/lib/use-scan-stream").StreamConnection;
+  isDone: boolean;
 }) {
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
@@ -102,13 +112,8 @@ function RunningView({
           label="status"
           value={scan.status === "queued" ? "Warming up" : "Building your profile"}
         />
-        {scan.hiring_verdict && (
-          <HudPill
-            icon={<ActivityIcon />}
-            label="reviewer"
-            value={`${scan.hiring_verdict} ${scan.hiring_score ?? "—"}/100`}
-          />
-        )}
+        <ConnectionPill connection={connection} isDone={isDone} />
+        <LiveTicker envelopes={envelopes} connection={connection} />
       </div>
 
       <div className="gs-pane-scroll relative flex-1 overflow-y-auto px-5 py-5">
@@ -119,6 +124,78 @@ function RunningView({
         />
       </div>
     </div>
+  );
+}
+
+/**
+ * Small visible indicator that the WS is (or isn't) delivering events.
+ * Silent during healthy `live`; shouts during `reconnecting` / `lost`.
+ */
+function ConnectionPill({
+  connection,
+  isDone,
+}: {
+  connection: import("@/lib/use-scan-stream").StreamConnection;
+  isDone: boolean;
+}) {
+  if (isDone) return null;
+  if (connection === "live" || connection === "idle") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-background/60 px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+        <span className="size-1.5 rounded-full bg-[var(--chart-3)] gs-pulse" />
+        live
+      </span>
+    );
+  }
+  if (connection === "reconnecting") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--chart-4)]/40 bg-[var(--chart-4)]/[0.05] px-2 py-0.5 font-mono text-[10px] text-[var(--chart-4)]">
+        <span className="size-1.5 rounded-full bg-[var(--chart-4)] gs-pulse" />
+        reconnecting
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-[var(--destructive)]/40 bg-[var(--destructive)]/[0.05] px-2 py-0.5 font-mono text-[10px] text-[var(--destructive)]">
+      <span className="size-1.5 rounded-full bg-[var(--destructive)]" />
+      connection lost
+    </span>
+  );
+}
+
+/**
+ * Renders "last event Xs ago" so users can see events ARE flowing even
+ * during a long LLM reasoning chunk where the phase list looks static.
+ * Ticks every second; resets on any new envelope.
+ */
+function LiveTicker({
+  envelopes,
+  connection,
+}: {
+  envelopes: ScanEventEnvelope[];
+  connection: import("@/lib/use-scan-stream").StreamConnection;
+}) {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const lastAt = envelopes.length > 0
+    ? Math.max(...envelopes.map((e) => e.at))
+    : 0;
+  if (lastAt === 0) return null;
+  const ago = Math.max(0, Math.floor((now - lastAt) / 1000));
+  const stale = connection === "live" && ago > 30;
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 font-mono text-[10px] ${
+        stale
+          ? "border-[var(--chart-4)]/30 bg-[var(--chart-4)]/[0.04] text-[var(--chart-4)]"
+          : "border-border/50 bg-background/40 text-muted-foreground"
+      }`}
+    >
+      last event {ago < 1 ? "just now" : `${ago}s ago`}
+    </span>
   );
 }
 

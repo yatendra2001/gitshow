@@ -6,7 +6,8 @@
  * paragraph) and what the worker claims prove.
  */
 
-import { runAgentWithSubmit } from "./base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "./base.js";
+import { toolLabel } from "@gitshow/shared/phase-copy";
 import { renderDiscoverSummary, renderWorkerClaims } from "./prompt-helpers.js";
 import {
   WorkerOutputSchema,
@@ -32,6 +33,8 @@ export interface NumbersInput {
    */
   reviseInstruction?: string;
   priorNumbers?: WorkerOutput;
+  emit?: AgentEventEmit;
+  messageId?: string;
 }
 
 const NUMBERS_OUTPUT_SCHEMA = WorkerOutputSchema.extend({
@@ -77,6 +80,9 @@ export async function runNumbersAgent(input: NumbersInput): Promise<WorkerOutput
     usage: input.usage,
     label: "numbers",
     onProgress: input.onProgress,
+    emit: input.emit,
+    messageId: input.messageId,
+    toolLabels: (n, i) => toolLabel(n, i),
   });
 
   return { ...result, worker: "numbers" };

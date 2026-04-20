@@ -11,7 +11,8 @@
  * possible signal about what to edit.
  */
 
-import { runAgentWithSubmit } from "./base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "./base.js";
+import { toolLabel } from "@gitshow/shared/phase-copy";
 import { renderDiscoverSummary } from "./prompt-helpers.js";
 import {
   HiringManagerOutputSchema,
@@ -30,6 +31,8 @@ export interface HiringManagerInput {
   claims: Claim[];
   artifacts: Record<string, Artifact>;
   onProgress?: (text: string) => void;
+  emit?: AgentEventEmit;
+  messageId?: string;
 }
 
 const HIRING_MANAGER_PROMPT = `You are a senior hiring-manager-turned-evaluator reviewing a developer profile generated from public git history. Your job is to decide whether this profile is ready to be sent to real hiring managers and founders, or whether it needs another pass.
@@ -237,6 +240,9 @@ export async function runHiringManagerReview(
     usage: input.usage,
     label: "hiring-manager",
     onProgress: input.onProgress,
+    emit: input.emit,
+    messageId: input.messageId,
+    toolLabels: (n, i) => toolLabel(n, i),
   });
 
   return result;

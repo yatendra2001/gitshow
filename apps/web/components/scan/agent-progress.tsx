@@ -310,18 +310,58 @@ function buildReasoningBlock(envelopes: ScanEventEnvelope[]): {
   label: string;
   done: boolean;
 } {
-  const parts: string[] = [];
-  let label = "Thinking";
-  let mostRecentAt = 0;
+  // New M1 path: assemble streaming `reasoning-delta` → `reasoning-end`
+  // chunks by reasoning_id. Fall back to the legacy single-shot
+  // `reasoning` events for agents that haven't been rewired yet.
+  const byReasoningId = new Map<
+    string,
+    { text: string; label: string; agent: string; lastAt: number; done: boolean }
+  >();
+  const legacyParts: string[] = [];
+  let legacyLabel = "Thinking";
+  let legacyLastAt = 0;
+
   for (const env of envelopes) {
-    if (env.event.kind === "reasoning") {
-      parts.push(env.event.text);
-      label = humanizeAgent(env.event.agent);
-      mostRecentAt = env.at;
+    const e = env.event;
+    if (e.kind === "reasoning-delta") {
+      const rid = e.reasoning_id;
+      const prev = byReasoningId.get(rid);
+      if (prev) {
+        prev.text += e.text_delta;
+        prev.lastAt = env.at;
+      } else {
+        byReasoningId.set(rid, {
+          text: e.text_delta,
+          label: humanizeAgent(e.agent),
+          agent: e.agent,
+          lastAt: env.at,
+          done: false,
+        });
+      }
+    } else if (e.kind === "reasoning-end") {
+      const rid = e.reasoning_id;
+      const prev = byReasoningId.get(rid);
+      if (prev) {
+        prev.done = true;
+      }
+    } else if (e.kind === "reasoning") {
+      legacyParts.push(e.text);
+      legacyLabel = humanizeAgent(e.agent);
+      legacyLastAt = env.at;
     }
   }
-  const done = mostRecentAt > 0 && Date.now() - mostRecentAt > 4000;
-  return { text: parts.join("\n\n"), label, done };
+
+  // Prefer the most recent active reasoning stream. Fall back to legacy.
+  const streams = Array.from(byReasoningId.values()).sort(
+    (a, b) => a.lastAt - b.lastAt,
+  );
+  if (streams.length > 0) {
+    const latest = streams[streams.length - 1]!;
+    return { text: latest.text, label: latest.label, done: latest.done };
+  }
+
+  const done = legacyLastAt > 0 && Date.now() - legacyLastAt > 4000;
+  return { text: legacyParts.join("\n\n"), label: legacyLabel, done };
 }
 
 function humanizeAgent(agent: string): string {

@@ -11,7 +11,8 @@
  * system prompt, and an input formatter.
  */
 
-import { runAgentWithSubmit } from "../base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "../base.js";
+import { toolLabel } from "@gitshow/shared/phase-copy";
 import {
   WorkerOutputSchema,
   type WorkerOutput,
@@ -35,6 +36,10 @@ export interface WorkerDeps {
   /** Cache dir for web fetches. */
   profileDir: string;
   onProgress?: (text: string) => void;
+  /** Structured event emitter — carries reasoning/tool/source to the UI. */
+  emit?: AgentEventEmit;
+  /** Scan message id; stamped on every emitted event. */
+  messageId?: string;
 }
 
 export interface RunWorkerInput extends WorkerDeps {
@@ -84,6 +89,9 @@ export async function runWorker(input: RunWorkerInput): Promise<WorkerOutput> {
     usage: input.usage,
     label: input.name,
     onProgress: input.onProgress,
+    emit: input.emit,
+    messageId: input.messageId,
+    toolLabels: (name, inp) => toolLabel(name, inp),
   });
 
   // Post-process: assign claim IDs if not set, tag worker

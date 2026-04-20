@@ -6,7 +6,8 @@
  * requests a revision round.
  */
 
-import { runAgentWithSubmit } from "../base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "../base.js";
+import { toolLabel } from "@gitshow/shared/phase-copy";
 import { renderDiscoverSummary, renderWorkerClaims } from "../prompt-helpers.js";
 import {
   HookWriterOutputSchema,
@@ -36,6 +37,8 @@ export interface HookWriterInput {
   /** Optional critic feedback from a prior round, to revise against. */
   reviseInstruction?: string;
   onProgress?: (text: string) => void;
+  emit?: AgentEventEmit;
+  messageId?: string;
 }
 
 const HOOK_WRITER_PROMPT = `You write profile HOOKS — the 1-3 short declarative sentences at the top of a developer dossier that make a senior engineer say "forward this."
@@ -120,6 +123,9 @@ export async function runHookWriter(input: HookWriterInput): Promise<HookWriterO
     usage: input.usage,
     label: "hook-writer",
     onProgress: input.onProgress,
+    emit: input.emit,
+    messageId: input.messageId,
+    toolLabels: (n, i) => toolLabel(n, i),
   });
 
   return result;

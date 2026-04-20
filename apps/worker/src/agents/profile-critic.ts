@@ -7,7 +7,8 @@
  * The orchestrator routes flagged claims back to their source worker.
  */
 
-import { runAgentWithSubmit } from "./base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "./base.js";
+import { toolLabel } from "@gitshow/shared/phase-copy";
 import { renderDiscoverSummary } from "./prompt-helpers.js";
 import {
   ProfileCriticOutputSchema,
@@ -26,6 +27,8 @@ export interface ProfileCriticInput {
   claims: Claim[];
   artifacts: Record<string, Artifact>;
   onProgress?: (text: string) => void;
+  emit?: AgentEventEmit;
+  messageId?: string;
 }
 
 const CRITIC_PROMPT = `You are the final critic on a developer dossier. Your test: would a senior engineer forward this profile to a founder with "you should talk to this person"?
@@ -66,6 +69,9 @@ export async function runProfileCritic(
     usage: input.usage,
     label: "profile-critic",
     onProgress: input.onProgress,
+    emit: input.emit,
+    messageId: input.messageId,
+    toolLabels: (n, i) => toolLabel(n, i),
   });
 
   return result;

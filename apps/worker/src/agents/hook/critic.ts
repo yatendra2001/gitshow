@@ -6,7 +6,8 @@
  * send the writer back to the drawing board if nothing meets the bar.
  */
 
-import { runAgentWithSubmit } from "../base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "../base.js";
+import { toolLabel } from "@gitshow/shared/phase-copy";
 import { renderDiscoverSummary } from "../prompt-helpers.js";
 import {
   HookCriticOutputSchema,
@@ -23,6 +24,8 @@ export interface HookCriticInput {
   candidates: HookWriterOutput;
   discover: DiscoverOutput;
   onProgress?: (text: string) => void;
+  emit?: AgentEventEmit;
+  messageId?: string;
 }
 
 const HOOK_CRITIC_PROMPT = `You are a hook critic. You score 5 candidate hooks against 4 criteria, each 0-10:
@@ -71,6 +74,9 @@ export async function runHookCritic(input: HookCriticInput): Promise<HookCriticO
     usage: input.usage,
     label: "hook-critic",
     onProgress: input.onProgress,
+    emit: input.emit,
+    messageId: input.messageId,
+    toolLabels: (n, i) => toolLabel(n, i),
   });
 
   return result;
