@@ -135,7 +135,7 @@ function RunningView({
       <div className="sticky top-0 z-20 border-b border-border/50 bg-background/85 backdrop-blur">
         <div className="mx-auto flex max-w-[920px] items-center justify-between gap-4 px-6 py-3.5">
           <div className="flex items-center gap-3 min-w-0">
-            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--chart-1)] to-[var(--chart-2)] text-white shadow-sm">
+            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl border border-border/60 bg-card text-foreground">
               <Sparkles className="size-4" />
             </span>
             <div className="flex min-w-0 flex-col leading-tight">
@@ -152,10 +152,11 @@ function RunningView({
             <LiveTicker envelopes={envelopes} connection={connection} />
           </div>
         </div>
-        {/* Thin progress bar across the whole header */}
+        {/* Thin progress bar across the whole header — flat foreground
+            color, no gradient (matches the rest of the design system). */}
         <div className="relative h-[2px] w-full bg-border/30">
           <div
-            className="absolute inset-y-0 left-0 bg-gradient-to-r from-[var(--chart-1)] to-[var(--chart-2)] transition-[width] duration-700 ease-out"
+            className="absolute inset-y-0 left-0 bg-foreground transition-[width] duration-700 ease-out"
             style={{ width: `${percent}%` }}
           />
         </div>

@@ -28,13 +28,13 @@ For each primary-work repo (usually 1–3 at most), investigate:
 1. **What the product actually is.** Read the README. If sparse, list the root directory and read a key source file. Name the product in human terms ("a X-for-Y platform," not "a TypeScript/Go codebase"). If the owning org looks like a company, try browse_web on <org-name>.com or search_web for "<org-name> company" to discover a product page.
 
 1b. **Establish the employment relationship — mandatory.** If a primary-work repo exists (looks_like_team_repo is true), you MUST produce a claim that names WHO the developer works for. This is the single highest-value finding in the whole profile. Do this:
-   - If the user provided a LinkedIn URL (see session socials), \`browse_web\` it and read the current role + company.
+   - If the user provided a LinkedIn URL IN THE SOCIALS BLOCK, \`browse_web\` that exact URL. Do NOT construct a LinkedIn URL from the GitHub handle.
    - If they provided a personal site, browse it and read the role headline.
-   - Browse the org's GitHub page: \`https://github.com/<org>\`.
-   - Browse the product domain: \`https://<likely-product>.com\`.
-   - If the org name + product name suggest a known person, company, or brand, search for it ("<org-name> CEO", "<product> company").
-   - Connect the dots. Don't stop until you can answer: *who is the employer, what is the product, who is behind it?* The answer is usually 2-3 web fetches away.
+   - Browse the product domain (if the org name plausibly maps to one): \`https://<likely-product>.com\`.
+   - Search the web: \`search_web "<org-name> company"\` or \`search_web "<product> CEO"\`.
+   - Connect the dots using the evidence you actually have. Don't stop until you can answer: *who is the employer, what is the product, who is behind it?*
    - If after genuine effort the employer remains unconfirmed, SAY SO in a note — don't silently drop the question.
+   - HARD DON'T: never fabricate an external URL. \`linkedin.com/in/<handle>\` and \`<handle>.com\` are inferences, not facts — treat them as if they don't exist unless the user explicitly provided them.
 
 2. **Who's on the team.** Use the inventory's other_top_contributors list. Note the number of engineers and the user's rank. This is your strongest employment signal.
 

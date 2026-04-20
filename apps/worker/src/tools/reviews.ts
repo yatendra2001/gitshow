@@ -61,16 +61,40 @@ export function createFetchPrReviewsTool(ctx: ToolContext) {
       const byRepo = input.repo;
       const num = input.pr_number;
 
+      // Reviews on other-org PUBLIC repos don't need auth at all, and
+      // user OAuth tokens can get rejected on cross-org calls (401 Bad
+      // credentials). We try auth'd first for the rate limit; on 401
+      // we retry unauth'd so the tool degrades gracefully instead of
+      // killing every review fetch mid-scan.
+      const ghApi = async (
+        path: string,
+      ): Promise<{ stdout: string }> => {
+        try {
+          return await execFileAsync(
+            "gh",
+            ["api", path, "--paginate"],
+            { maxBuffer: 30 * 1024 * 1024, timeout: 60_000 },
+          );
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!/401|Bad credentials/i.test(msg)) throw err;
+          // Retry without the user's token for public-repo fallback.
+          return await execFileAsync(
+            "gh",
+            ["api", path, "--paginate"],
+            {
+              maxBuffer: 30 * 1024 * 1024,
+              timeout: 60_000,
+              env: { ...process.env, GH_TOKEN: "", GITHUB_TOKEN: "" },
+            },
+          );
+        }
+      };
+
       try {
         // Summary reviews (approved / changes_requested / commented + body)
-        const { stdout: reviewsRaw } = await execFileAsync(
-          "gh",
-          [
-            "api",
-            `/repos/${byRepo}/pulls/${num}/reviews`,
-            "--paginate",
-          ],
-          { maxBuffer: 30 * 1024 * 1024, timeout: 60_000 },
+        const { stdout: reviewsRaw } = await ghApi(
+          `/repos/${byRepo}/pulls/${num}/reviews`,
         );
         const reviews = safeJsonArray<GhReview>(reviewsRaw);
 
@@ -102,14 +126,8 @@ export function createFetchPrReviewsTool(ctx: ToolContext) {
         }
 
         // Inline code comments on specific lines
-        const { stdout: commentsRaw } = await execFileAsync(
-          "gh",
-          [
-            "api",
-            `/repos/${byRepo}/pulls/${num}/comments`,
-            "--paginate",
-          ],
-          { maxBuffer: 30 * 1024 * 1024, timeout: 60_000 },
+        const { stdout: commentsRaw } = await ghApi(
+          `/repos/${byRepo}/pulls/${num}/comments`,
         );
         const comments = safeJsonArray<GhReviewComment>(commentsRaw);
 
