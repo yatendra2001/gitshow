@@ -52,12 +52,19 @@ interface Env {
   PIPELINE_SHARED_SECRET: string;
 }
 
-// Ring-buffer tail we keep in DO storage per scan. Set high enough
-// that a typical full scan (~3k structured events) can be replayed
-// without falling back to D1, but not so high that per-scan storage
-// balloons. Clients that fall outside the ring get the `gap` frame
-// and paginate D1 on the web side.
-const RING_MAX_EVENTS = 4000;
+// Ring-buffer tail we keep in DO storage per scan.
+//
+// Sized for Cloudflare limits, not for full scans:
+//   - DO storage caps each key at 128 KB
+//   - WS message frames practically cap around 1 MB
+//
+// A typical event is 300-700 B (reasoning-delta chunks dominate).
+// 300 × ~600 B ≈ 180 KB, which exceeds 128 KB — so stay conservative.
+// The client backfills anything older than the ring from D1 via
+// paginated fetches (see apps/web/lib/use-scan-stream.ts), so this
+// cap only needs to span typical reconnect jitter (a few seconds of
+// event volume), not the whole scan.
+const RING_MAX_EVENTS = 150;
 const RING_KEY = "ring";
 const SEQ_KEY = "seq";
 const PING_INTERVAL_MS = 20_000;
