@@ -184,7 +184,7 @@ export const HookAngleSelectionSchema = z.object({
   angle: HookAngleSchema,
   reason: z
     .string()
-    .max(400)
+    .max(1000)
     .describe(
       "One sentence explaining why this angle dominates for THIS developer. " +
       "Must cite the specific evidence (maintainer name, product name, team-scale stat, etc.).",
@@ -235,13 +235,13 @@ export const HookCriticOutputSchema = z.object({
         verifiable: z.number().min(0).max(10),
         surprising: z.number().min(0).max(10),
         earned: z.number().min(0).max(10),
-        reasoning: z.string().max(300),
+        reasoning: z.string().max(1000),
       })
     )
     .length(5),
   revise_instruction: z
     .string()
-    .max(500)
+    .max(1200)
     .optional()
     .describe("If winner is null, tell the writer what to change for the next round"),
 });
@@ -292,13 +292,13 @@ export const ProfileCriticOutputSchema = z.object({
       z.object({
         claim_id: z.string(),
         reason: z.enum(["not_specific", "not_verifiable", "not_surprising", "not_earned", "generic", "factually_wrong"]),
-        note: z.string().max(300),
+        note: z.string().max(800),
       })
     )
     .max(30)
     .describe("Claims that should be regenerated or cut"),
-  top_strengths: z.array(z.string().max(200)).max(5),
-  top_gaps: z.array(z.string().max(200)).max(5),
+  top_strengths: z.array(z.string().max(400)).max(5),
+  top_gaps: z.array(z.string().max(400)).max(5),
 });
 export type ProfileCriticOutput = z.infer<typeof ProfileCriticOutputSchema>;
 
@@ -313,8 +313,8 @@ export type ProfileCriticOutput = z.infer<typeof ProfileCriticOutputSchema>;
 
 export const HiringManagerAxisSchema = z.object({
   score: z.number().int().min(0).max(10),
-  issues: z.array(z.string().max(400)).default([]),
-  suggestions: z.array(z.string().max(400)).default([]),
+  issues: z.array(z.string().max(1000)).default([]),
+  suggestions: z.array(z.string().max(1000)).default([]),
 });
 export type HiringManagerAxis = z.infer<typeof HiringManagerAxisSchema>;
 
@@ -329,7 +329,7 @@ export const HiringManagerOutputSchema = z.object({
     evidence: HiringManagerAxisSchema,
     disclosure: HiringManagerAxisSchema,
   }),
-  block_triggers: z.array(z.string().max(400)).default([]),
+  block_triggers: z.array(z.string().max(1000)).default([]),
   top_three_fixes: z
     .array(
       z.object({
@@ -341,7 +341,7 @@ export const HiringManagerOutputSchema = z.object({
     .max(5),
   forwarding_test: z.object({
     would_a_senior_eng_forward_this: z.boolean(),
-    why_or_why_not: z.string().max(400),
+    why_or_why_not: z.string().max(1000),
   }),
 });
 export type HiringManagerOutput = z.infer<typeof HiringManagerOutputSchema>;

@@ -152,13 +152,17 @@ function RunningView({
             <LiveTicker envelopes={envelopes} connection={connection} />
           </div>
         </div>
-        {/* Thin progress bar across the whole header — flat foreground
-            color, no gradient (matches the rest of the design system). */}
-        <div className="relative h-[2px] w-full bg-border/30">
+        {/* Thin progress bar across the whole header. Accent-colored so
+            it's clearly a loading indicator even on white/cream. A
+            shimmer sweep on top of the filled portion sells "live"
+            without adding a gradient to the base color. */}
+        <div className="relative h-[3px] w-full overflow-hidden bg-border/30">
           <div
-            className="absolute inset-y-0 left-0 bg-foreground transition-[width] duration-700 ease-out"
+            className="absolute inset-y-0 left-0 bg-[var(--chart-1)] transition-[width] duration-700 ease-out"
             style={{ width: `${percent}%` }}
-          />
+          >
+            <span className="gs-progress-shimmer absolute inset-0" aria-hidden />
+          </div>
         </div>
       </div>
 
