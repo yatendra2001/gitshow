@@ -160,8 +160,18 @@ export function useScanStream({
     if (closedRef.current || isDone) return;
     let ws: WebSocket;
     try {
-      const proto = window.location.protocol === "https:" ? "wss" : "ws";
-      const url = `${proto}://${window.location.host}/api/ws/scan/${encodeURIComponent(scanId)}`;
+      // Connect DIRECT to the realtime worker. Routing through the
+      // Next/OpenNext web worker breaks WS upgrades (the `webSocket`
+      // field on the Response object doesn't survive the proxy). The
+      // realtime worker is publicly addressable and the scan_id is a
+      // nanoid, so this is safe for MVP.
+      const realtimeHost =
+        (typeof window !== "undefined" &&
+          (
+            window as unknown as { __GITSHOW_REALTIME_HOST__?: string }
+          ).__GITSHOW_REALTIME_HOST__) ||
+        "gitshow-realtime.yatendra2001kumar.workers.dev";
+      const url = `wss://${realtimeHost}/scans/${encodeURIComponent(scanId)}/ws`;
       ws = new WebSocket(url);
     } catch {
       scheduleReconnect();
