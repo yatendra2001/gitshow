@@ -1,55 +1,68 @@
 "use client";
 
 /**
- * Agent progress stack — the Plan / Chain of Thought / Reasoning /
- * Queue / Tools / Sources / Terminal stack used by the right pane
- * during the initial scan AND by the chat pane during a revise.
+ * Agent progress — per-phase nested rendering of the M1 structured
+ * event stream.
  *
- * Keeping it as one component so both surfaces render the same
- * primitives with the same event stream, just filtered to the window
- * that matters for each surface.
+ * Structure:
+ *   [Phase card]            (one per pipeline phase)
+ *     header                (humanized title + status + duration)
+ *     └ current-stage body  (only for the running phase)
+ *         └ Reasoning       (one block per reasoning_id; streams tokens
+ *                            and auto-collapses to "Thought for Xs" on
+ *                            reasoning-end)
+ *         └ Tool cards      (one per tool_id; live status badge)
+ *         └ Sources chips   (chip per source-added)
+ *
+ * Done phases collapse to a one-line summary. Pending phases render
+ * as dim rows. The UX intentionally mirrors chatbot's Reasoning/Tool
+ * primitives — same auto-open-while-streaming + collapse-to-"Thought
+ * for Xs" pattern.
+ *
+ * Raw stream events are piped to a hidden developer terminal behind
+ * a toggle, not spilled into the main view. The text-dump the user
+ * was seeing was the OpenRouter agent's onProgress callback getting
+ * dumped into the Terminal — the Reasoning block was being fed the
+ * same tokens via reasoning-delta, but the Terminal's verbosity
+ * drowned it out.
  */
 
 import * as React from "react";
-import type { ScanEventEnvelope } from "@gitshow/shared/events";
-import { Plan } from "@/components/ai-elements/plan";
+import type {
+  ScanEventEnvelope,
+  ReasoningDeltaEvent,
+  ReasoningEndEvent,
+  ToolStartEvent,
+  ToolEndEvent,
+  SourceAddedEvent,
+  StageStartEvent,
+  StageEndEvent,
+} from "@gitshow/shared/events";
+import { Reasoning } from "@/components/ai-elements/reasoning";
+import { Tool, type ToolStatus } from "@/components/ai-elements/tool";
+import { Sources, type SourceItem } from "@/components/ai-elements/sources";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { Terminal } from "@/components/ai-elements/terminal";
-import { Queue, type QueueRow } from "@/components/ai-elements/queue";
-import { Reasoning } from "@/components/ai-elements/reasoning";
-import {
-  ChainOfThought,
-  type CoTStep,
-} from "@/components/ai-elements/chain-of-thought";
-import { Sources, type SourceItem } from "@/components/ai-elements/sources";
-import { Tool, type ToolStatus } from "@/components/ai-elements/tool";
-import { Task } from "@/components/ai-elements/task";
-import {
-  projectPhases,
-  currentPhase,
-  type PhaseState,
-} from "@/lib/use-scan-stream";
 import { PHASE_COPY, PHASE_ORDER, humanizeWorker } from "@/lib/phase-copy";
-import { Sparkles } from "lucide-react";
+import { cn } from "@/lib/utils";
+import {
+  ChevronRight,
+  CheckCircle2,
+  Circle,
+  CircleDashed,
+  AlertCircle,
+  Sparkles,
+  Terminal as TerminalIcon,
+} from "lucide-react";
 
 export interface AgentProgressProps {
-  /** Full envelope stream — we slice to the visible window internally. */
   envelopes: ScanEventEnvelope[];
-  /** Raw DO stream text lines. */
   terminalLines: string[];
-  /** Set to an `at` millis cursor to only render events at/after it.
-   *  Used by the chat-pane inline progress to scope to the current
-   *  revise, rather than the whole scan history. */
   sinceAt?: number;
-  /** Leading card copy. When absent we infer from the current phase. */
   planTitle?: string;
   planDescription?: string;
   planStreaming?: boolean;
-  /** Compact mode drops the PLAN card (the chat renders its own
-   *  "Rewriting…" message already) and tightens spacing. */
   compact?: boolean;
-  /** Hide the Terminal block. Useful inline in chat where vertical
-   *  space is precious. */
   hideTerminal?: boolean;
   className?: string;
 }
@@ -58,9 +71,6 @@ export function AgentProgress({
   envelopes,
   terminalLines,
   sinceAt,
-  planTitle,
-  planDescription,
-  planStreaming,
   compact = false,
   hideTerminal = false,
   className,
@@ -70,298 +80,507 @@ export function AgentProgress({
     return envelopes.filter((e) => e.at >= sinceAt);
   }, [envelopes, sinceAt]);
 
-  // Scoped window with zero events → the Fly machine is still booting.
-  // Render a warm-up card so the user sees something move immediately.
-  const isWarmingUp = !!sinceAt && scoped.length === 0;
-
-  const phases = React.useMemo(() => {
-    const all = projectPhases(scoped, PHASE_ORDER);
-    if (!sinceAt) return all;
-    // In scoped mode we're watching a slice of the pipeline (typically
-    // a revise). Drop still-pending scan phases — otherwise the Queue
-    // shows "Reading your GitHub" as upcoming even though that phase
-    // ran to completion days ago on the original scan.
-    return all.filter((p) => p.status !== "pending");
-  }, [scoped, sinceAt]);
-  const cur = currentPhase(phases);
-
-  const cotSteps = React.useMemo(() => buildCoTSteps(scoped), [scoped]);
-  const reasoning = React.useMemo(
-    () => buildReasoningBlock(scoped),
+  const { phases, unattached } = React.useMemo(
+    () => buildPhaseTree(scoped),
     [scoped],
   );
-  const sources = React.useMemo(() => buildSources(scoped), [scoped]);
-  const queue = React.useMemo(() => buildQueue(phases), [phases]);
-  const tools = React.useMemo(() => buildTools(scoped), [scoped]);
-  const effectiveLog = React.useMemo(
-    () => [...synthLogLines(scoped), ...terminalLines],
-    [scoped, terminalLines],
-  );
 
-  // When no card-specific title is given, infer one from the
-  // most-recent running phase. Handy for the right pane's default.
-  const inferredTitle = cur && cur.phase in PHASE_COPY
-    ? PHASE_COPY[cur.phase as keyof typeof PHASE_COPY].title
-    : null;
-  const inferredDesc =
-    cur && cur.phase in PHASE_COPY
-      ? PHASE_COPY[cur.phase as keyof typeof PHASE_COPY].activity
-      : null;
+  const runningPhase = phases.find((p) => p.status === "running");
 
   return (
-    <div className={className}>
-      <div className={compact ? "space-y-2" : "space-y-4"}>
-        {isWarmingUp && <WarmUpCard compact={compact} />}
+    <div className={cn("flex flex-col gap-3", className)}>
+      {phases.map((phase) => (
+        <PhaseCard
+          key={phase.id}
+          phase={phase}
+          autoOpen={phase.id === runningPhase?.id || phase.status === "running"}
+          compact={compact}
+        />
+      ))}
 
-        {!compact && (planTitle ?? inferredTitle) && !isWarmingUp && (
-          <Plan
-            title={planTitle ?? inferredTitle ?? "Working on it"}
-            description={planDescription ?? inferredDesc ?? undefined}
-            isStreaming={planStreaming ?? true}
-          />
+      {/* Post-bind events that aren't wrapped in a stage — show them
+          as a "Finalizing" free-form block so they don't disappear. */}
+      {unattached && unattached.hasAny ? (
+        <PhaseCard
+          phase={unattached}
+          autoOpen={!runningPhase}
+          compact={compact}
+        />
+      ) : null}
+
+      {!hideTerminal && terminalLines.length > 0 ? (
+        <DevTerminal lines={terminalLines} />
+      ) : null}
+    </div>
+  );
+}
+
+// ─── Phase card ─────────────────────────────────────────────────────
+
+interface PhaseData {
+  id: string;
+  title: string;
+  subtitle?: string;
+  status: "pending" | "running" | "done" | "warn" | "failed";
+  duration_ms?: number;
+  reasonings: ReasoningBlock[];
+  tools: ToolCall[];
+  sources: SourceRow[];
+  /** For the synthetic "unattached" bucket. */
+  hasAny?: boolean;
+}
+
+interface ReasoningBlock {
+  id: string;
+  agent: string;
+  label: string;
+  text: string;
+  done: boolean;
+  started_at: number;
+  ended_at?: number;
+}
+
+interface ToolCall {
+  id: string;
+  name: string;
+  label: string;
+  input_preview?: string;
+  output_preview?: string;
+  status: ToolStatus;
+  error?: string;
+}
+
+interface SourceRow {
+  id: string;
+  kind: string;
+  preview: string;
+}
+
+function PhaseCard({
+  phase,
+  autoOpen,
+  compact,
+}: {
+  phase: PhaseData;
+  autoOpen: boolean;
+  compact: boolean;
+}) {
+  const [open, setOpen] = React.useState(autoOpen);
+  React.useEffect(() => {
+    setOpen(autoOpen);
+  }, [autoOpen]);
+
+  const hasBody =
+    phase.reasonings.length > 0 ||
+    phase.tools.length > 0 ||
+    phase.sources.length > 0;
+
+  return (
+    <div
+      className={cn(
+        "rounded-xl border transition-colors duration-200",
+        phase.status === "running"
+          ? "border-[var(--chart-1)]/40 bg-[var(--chart-1)]/[0.03]"
+          : phase.status === "done"
+            ? "border-border/30 bg-card/40"
+            : phase.status === "failed" || phase.status === "warn"
+              ? "border-[var(--destructive)]/30 bg-[var(--destructive)]/[0.04]"
+              : "border-border/20 bg-card/20 opacity-70",
+      )}
+    >
+      <button
+        type="button"
+        onClick={() => hasBody && setOpen((v) => !v)}
+        disabled={!hasBody}
+        className={cn(
+          "flex w-full items-center gap-3 px-3.5 py-2.5 text-left",
+          hasBody && "cursor-pointer hover:bg-muted/20",
         )}
-
-        {cotSteps.length > 0 && (
-          <ChainOfThought steps={cotSteps} streaming={planStreaming ?? true} />
-        )}
-
-        {reasoning.text.length > 0 && (
-          <Reasoning
-            text={reasoning.text}
-            streaming={(planStreaming ?? true) && !reasoning.done}
-            label={reasoning.label}
-          />
-        )}
-
-        {(queue.running.length > 0 || queue.upNext.length > 0 || queue.done.length > 0) && (
-          <Queue
-            running={queue.running}
-            upNext={queue.upNext}
-            done={queue.done}
-          />
-        )}
-
-        {tools.length > 0 && (
-          <Task
-            title="Tools"
-            subtitle={`${tools.length} call${tools.length === 1 ? "" : "s"}`}
-            status="running"
-            defaultOpen={!compact}
+        aria-expanded={open}
+      >
+        <PhaseStatusIcon status={phase.status} />
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
+          <span
+            className={cn(
+              "truncate text-[14px] font-medium",
+              phase.status === "pending" && "text-muted-foreground",
+            )}
           >
+            {phase.title}
+          </span>
+          {phase.status === "running" && phase.subtitle ? (
+            <Shimmer
+              className="hidden text-[12px] text-muted-foreground/80 sm:inline"
+              duration={2.5}
+            >
+              {phase.subtitle}
+            </Shimmer>
+          ) : null}
+        </div>
+        <div className="flex items-center gap-2 text-[11px] text-muted-foreground font-mono">
+          {phase.duration_ms !== undefined ? (
+            <span>
+              {phase.duration_ms < 1000
+                ? `${phase.duration_ms}ms`
+                : `${(phase.duration_ms / 1000).toFixed(1)}s`}
+            </span>
+          ) : null}
+          {phase.tools.length > 0 ? (
+            <span className="hidden sm:inline">
+              {phase.tools.length} tool{phase.tools.length === 1 ? "" : "s"}
+            </span>
+          ) : null}
+          {hasBody ? (
+            <ChevronRight
+              className={cn(
+                "size-3.5 transition-transform duration-200",
+                open && "rotate-90",
+              )}
+            />
+          ) : null}
+        </div>
+      </button>
+
+      {open && hasBody ? (
+        <div className="border-t border-border/20 px-3.5 py-3 space-y-3">
+          {phase.reasonings.map((r) => (
+            <Reasoning
+              key={r.id}
+              text={r.text}
+              label={r.label}
+              streaming={!r.done}
+              elapsedMs={
+                r.ended_at && r.started_at
+                  ? r.ended_at - r.started_at
+                  : undefined
+              }
+            />
+          ))}
+          {phase.tools.length > 0 ? (
             <div className="space-y-1.5">
-              {tools.map((t) => (
+              {phase.tools.map((t) => (
                 <Tool
                   key={t.id}
-                  name={t.name}
+                  name={t.label}
                   status={t.status}
-                  subtitle={t.subtitle}
-                  output={t.output}
+                  subtitle={t.name !== t.label ? t.name : undefined}
+                  input={t.input_preview}
+                  output={t.output_preview}
                   error={t.error}
+                  defaultOpen={false}
                 />
               ))}
             </div>
-          </Task>
-        )}
-
-        {sources.length > 0 && <Sources items={sources} />}
-
-        {!hideTerminal && effectiveLog.length > 0 && (
-          <Terminal
-            lines={effectiveLog}
-            title={compact ? "What the agent is doing" : "Live log"}
-          />
-        )}
-      </div>
+          ) : null}
+          {phase.sources.length > 0 ? (
+            <Sources
+              items={phase.sources.map<SourceItem>((s) => ({
+                id: s.id,
+                url: "",
+                label: `${s.kind} · ${s.preview}`,
+              }))}
+            />
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
 
-/**
- * Warm-up placeholder shown during the gap between "/api/revise
- * returned" and "first real event arrived". Fly needs 10–30s to boot
- * a cold machine; without this the chat pane went dead for that
- * entire window, which read as the app being broken. Three thin rows,
- * each shimmering, then the real events overwrite us.
- */
-function WarmUpCard({ compact }: { compact: boolean }) {
-  return (
-    <div
-      className={`gs-enter rounded-xl border border-border bg-card/70 p-3.5 backdrop-blur-sm ${
-        compact ? "" : "space-y-2"
-      }`}
-    >
-      <div className="flex items-center gap-2">
-        <Sparkles className="size-4 text-blue-400 gs-pulse" />
-        <Shimmer className="text-sm font-medium text-foreground" duration={2}>
-          Waking up the worker…
-        </Shimmer>
+function PhaseStatusIcon({ status }: { status: PhaseData["status"] }) {
+  if (status === "running") {
+    return (
+      <div className="relative size-4 shrink-0">
+        <span className="absolute inset-0 rounded-full bg-[var(--chart-1)]/50 animate-ping" />
+        <span className="absolute inset-1 rounded-full bg-[var(--chart-1)]" />
       </div>
-      <div className="mt-2 space-y-1.5">
-        <WarmupLine delay={0} text="Spinning up a fresh machine" />
-        <WarmupLine delay={0.4} text="Pulling your latest profile" />
-        <WarmupLine delay={0.8} text="Planning the rewrite" />
-      </div>
-    </div>
-  );
+    );
+  }
+  if (status === "done") {
+    return <CheckCircle2 className="size-4 shrink-0 text-[var(--chart-3)]" />;
+  }
+  if (status === "failed") {
+    return <AlertCircle className="size-4 shrink-0 text-[var(--destructive)]" />;
+  }
+  if (status === "warn") {
+    return <AlertCircle className="size-4 shrink-0 text-[var(--chart-4)]" />;
+  }
+  return <Circle className="size-4 shrink-0 text-muted-foreground/40" />;
 }
 
-function WarmupLine({ delay, text }: { delay: number; text: string }) {
+// ─── Dev terminal (raw log, collapsed by default) ──────────────────
+
+function DevTerminal({ lines }: { lines: string[] }) {
+  const [open, setOpen] = React.useState(false);
   return (
-    <div
-      className="flex items-center gap-2 text-[12px] leading-relaxed text-muted-foreground"
-      style={{ animationDelay: `${delay}s` }}
-    >
-      <span
-        className="relative mt-0.5 flex size-1.5 shrink-0"
-        style={{ animationDelay: `${delay}s` }}
+    <div className="rounded-xl border border-border/20 bg-card/20">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center justify-between px-3.5 py-2 text-left hover:bg-muted/20"
+        aria-expanded={open}
       >
-        <span className="absolute inline-flex size-full animate-ping rounded-full bg-blue-500/60" />
-        <span className="relative inline-flex size-1.5 rounded-full bg-blue-500/80" />
-      </span>
-      <Shimmer className="text-muted-foreground" duration={2.4}>
-        {text}
-      </Shimmer>
+        <span className="flex items-center gap-2 text-[12px] text-muted-foreground">
+          <TerminalIcon className="size-3.5" />
+          Developer log
+          <span className="font-mono text-[11px] text-muted-foreground/70">
+            ({lines.length} line{lines.length === 1 ? "" : "s"})
+          </span>
+        </span>
+        <ChevronRight
+          className={cn(
+            "size-3.5 text-muted-foreground transition-transform duration-200",
+            open && "rotate-90",
+          )}
+        />
+      </button>
+      {open ? (
+        <div className="border-t border-border/20 p-0">
+          <Terminal lines={lines} title="" />
+        </div>
+      ) : null}
     </div>
   );
 }
 
-// ─── Event projections (moved here from progress-pane) ─────────────
+// ─── Event → phase-tree projection ─────────────────────────────────
 
-function buildCoTSteps(envelopes: ScanEventEnvelope[]): CoTStep[] {
-  const byStage = new Map<
-    string,
-    {
-      title: string;
-      chips: { id: string; label: string; url?: string }[];
-      done: boolean;
-    }
-  >();
-  const stageOrder: string[] = [];
+function buildPhaseTree(envelopes: ScanEventEnvelope[]): {
+  phases: PhaseData[];
+  unattached?: PhaseData;
+} {
+  // Initialize ordered phases from the canonical pipeline order so
+  // pending ones appear in the queue even before their events arrive.
+  const phaseMap = new Map<string, PhaseData>();
+  for (const id of PHASE_ORDER) {
+    const copy = (PHASE_COPY as Record<string, { title: string; activity: string; done: string }>)[id];
+    if (!copy) continue;
+    phaseMap.set(id, {
+      id,
+      title: copy.title,
+      subtitle: copy.activity,
+      status: "pending",
+      reasonings: [],
+      tools: [],
+      sources: [],
+    });
+  }
+
+  // Track current phase as we walk events. Anything after the last
+  // stage-end with no new stage-start goes to the "unattached" bucket.
+  let current: string | null = null;
+  const unattached: PhaseData = {
+    id: "__finalizing__",
+    title: "Finalizing",
+    subtitle: "Reviewing, polishing, writing the card…",
+    status: "running",
+    reasonings: [],
+    tools: [],
+    sources: [],
+    hasAny: false,
+  };
+
+  // Track partial reasoning blocks by id so we can attribute tool/source
+  // events to the right phase even if reasoning spans phase boundaries.
+  const reasoningPhase = new Map<string, string | null>();
+
+  const getBucket = (): PhaseData => {
+    if (current && phaseMap.has(current)) return phaseMap.get(current)!;
+    unattached.hasAny = true;
+    return unattached;
+  };
 
   for (const env of envelopes) {
     const e = env.event;
-    if (e.kind === "stage-start" && e.stage) {
-      const copy = (
-        PHASE_COPY as Record<
-          string,
-          { activity: string; done: string; title: string }
-        >
-      )[e.stage];
-      if (!byStage.has(e.stage)) {
-        stageOrder.push(e.stage);
-        byStage.set(e.stage, {
-          title: copy?.activity ?? e.stage,
-          chips: [],
+
+    if (e.kind === "stage-start") {
+      const s = e as StageStartEvent;
+      current = s.stage;
+      let p = phaseMap.get(s.stage);
+      if (!p) {
+        p = {
+          id: s.stage,
+          title: s.stage,
+          subtitle: s.detail,
+          status: "running",
+          reasonings: [],
+          tools: [],
+          sources: [],
+        };
+        phaseMap.set(s.stage, p);
+      }
+      p.status = "running";
+      if (s.detail) p.subtitle = s.detail;
+      continue;
+    }
+
+    if (e.kind === "stage-end") {
+      const s = e as StageEndEvent;
+      const p = phaseMap.get(s.stage);
+      if (p) {
+        p.status = "done";
+        p.duration_ms = s.duration_ms;
+      }
+      // Stage ended; if nothing else starts, subsequent events land
+      // in the unattached bucket.
+      current = null;
+      continue;
+    }
+
+    if (e.kind === "stage-warn") {
+      const p = phaseMap.get(e.stage);
+      if (p && p.status === "running") p.status = "warn";
+      continue;
+    }
+
+    if (e.kind === "error") {
+      const p = e.stage ? phaseMap.get(e.stage) : null;
+      if (p) p.status = "failed";
+      continue;
+    }
+
+    if (e.kind === "reasoning-delta") {
+      const d = e as ReasoningDeltaEvent;
+      const bucket = getBucket();
+      reasoningPhase.set(d.reasoning_id, bucket.id);
+      let rb = bucket.reasonings.find((r) => r.id === d.reasoning_id);
+      if (!rb) {
+        rb = {
+          id: d.reasoning_id,
+          agent: d.agent,
+          label: d.title ?? humanizeAgent(d.agent),
+          text: "",
           done: false,
+          started_at: env.at,
+        };
+        bucket.reasonings.push(rb);
+      }
+      rb.text += d.text_delta;
+      continue;
+    }
+
+    if (e.kind === "reasoning-end") {
+      const r = e as ReasoningEndEvent;
+      const phaseId = reasoningPhase.get(r.reasoning_id);
+      const bucket = phaseId
+        ? phaseMap.get(phaseId) ?? unattached
+        : getBucket();
+      const rb = bucket.reasonings.find((x) => x.id === r.reasoning_id);
+      if (rb) {
+        rb.done = true;
+        rb.ended_at = env.at;
+      }
+      continue;
+    }
+
+    if (e.kind === "reasoning") {
+      // Legacy single-shot reasoning — append as one "done" block.
+      const bucket = getBucket();
+      const id = `leg_${env.id}`;
+      bucket.reasonings.push({
+        id,
+        agent: e.agent,
+        label: humanizeAgent(e.agent),
+        text: e.text,
+        done: true,
+        started_at: env.at,
+        ended_at: env.at,
+      });
+      continue;
+    }
+
+    if (e.kind === "tool-start") {
+      const t = e as ToolStartEvent;
+      const bucket = getBucket();
+      if (!bucket.tools.find((x) => x.id === t.tool_id)) {
+        bucket.tools.push({
+          id: t.tool_id,
+          name: t.tool_name,
+          label: t.display_label,
+          input_preview: t.input_preview,
+          status: "running",
         });
       }
+      continue;
     }
-    if (e.kind === "stage-end" && e.stage && byStage.has(e.stage)) {
-      const row = byStage.get(e.stage)!;
-      row.done = true;
-      const copy = (
-        PHASE_COPY as Record<
-          string,
-          { activity: string; done: string; title: string }
-        >
-      )[e.stage];
-      if (copy) row.title = copy.done;
-    }
-    if (e.kind === "worker-update" && e.worker) {
-      const last = stageOrder[stageOrder.length - 1];
-      if (!last) continue;
-      const row = byStage.get(last);
-      if (!row) continue;
-      if (e.detail) {
-        const urls = e.detail.match(/https?:\/\/[^\s)]+/g) ?? [];
-        for (const u of urls) {
-          if (!row.chips.find((c) => c.url === u)) {
-            row.chips.push({
-              id: `${env.id}-${row.chips.length}`,
-              label: safeHost(u),
-              url: u,
-            });
-          }
+
+    if (e.kind === "tool-end") {
+      const t = e as ToolEndEvent;
+      // Find the phase that holds this tool (may be any phase — tools
+      // can outlive the phase they started in if events arrive OOO).
+      for (const p of phaseMap.values()) {
+        const tc = p.tools.find((x) => x.id === t.tool_id);
+        if (tc) {
+          tc.status =
+            t.status === "ok"
+              ? "completed"
+              : t.status === "err"
+                ? "error"
+                : "denied";
+          tc.output_preview = t.output_preview;
+          if (t.error_message) tc.error = t.error_message;
+          break;
         }
       }
-      const name = humanizeWorker(e.worker);
-      if (!row.chips.find((c) => c.label === name)) {
-        row.chips.push({
-          id: `${env.id}-w${row.chips.length}`,
-          label: name,
+      // Check unattached too.
+      const tc = unattached.tools.find((x) => x.id === t.tool_id);
+      if (tc) {
+        tc.status =
+          t.status === "ok"
+            ? "completed"
+            : t.status === "err"
+              ? "error"
+              : "denied";
+        tc.output_preview = t.output_preview;
+        if (t.error_message) tc.error = t.error_message;
+      }
+      continue;
+    }
+
+    if (e.kind === "source-added") {
+      const s = e as SourceAddedEvent;
+      const bucket = getBucket();
+      if (!bucket.sources.find((x) => x.id === s.source_id)) {
+        bucket.sources.push({
+          id: s.source_id,
+          kind: s.source_kind,
+          preview: s.preview,
         });
       }
+      continue;
+    }
+
+    if (e.kind === "worker-update") {
+      // Attach parallel-worker state to the current phase's tools list
+      // as a synthetic tool so users see "cross-repo / temporal / …"
+      // progressing during the workers stage.
+      const bucket = getBucket();
+      const id = `worker:${e.worker}`;
+      let tool = bucket.tools.find((x) => x.id === id);
+      if (!tool) {
+        tool = {
+          id,
+          name: e.worker,
+          label: humanizeWorker(e.worker),
+          status: "running",
+        };
+        bucket.tools.push(tool);
+      }
+      tool.status =
+        e.status === "done"
+          ? "completed"
+          : e.status === "failed"
+            ? "error"
+            : "running";
+      if (e.detail) tool.input_preview = e.detail;
+      continue;
     }
   }
 
-  return stageOrder.map<CoTStep>((phase) => {
-    const row = byStage.get(phase)!;
-    return {
-      id: phase,
-      title: row.title,
-      chips: row.chips.slice(0, 6),
-      done: row.done,
-    };
-  });
-}
-
-function buildReasoningBlock(envelopes: ScanEventEnvelope[]): {
-  text: string;
-  label: string;
-  done: boolean;
-} {
-  // New M1 path: assemble streaming `reasoning-delta` → `reasoning-end`
-  // chunks by reasoning_id. Fall back to the legacy single-shot
-  // `reasoning` events for agents that haven't been rewired yet.
-  const byReasoningId = new Map<
-    string,
-    { text: string; label: string; agent: string; lastAt: number; done: boolean }
-  >();
-  const legacyParts: string[] = [];
-  let legacyLabel = "Thinking";
-  let legacyLastAt = 0;
-
-  for (const env of envelopes) {
-    const e = env.event;
-    if (e.kind === "reasoning-delta") {
-      const rid = e.reasoning_id;
-      const prev = byReasoningId.get(rid);
-      if (prev) {
-        prev.text += e.text_delta;
-        prev.lastAt = env.at;
-      } else {
-        byReasoningId.set(rid, {
-          text: e.text_delta,
-          label: humanizeAgent(e.agent),
-          agent: e.agent,
-          lastAt: env.at,
-          done: false,
-        });
-      }
-    } else if (e.kind === "reasoning-end") {
-      const rid = e.reasoning_id;
-      const prev = byReasoningId.get(rid);
-      if (prev) {
-        prev.done = true;
-      }
-    } else if (e.kind === "reasoning") {
-      legacyParts.push(e.text);
-      legacyLabel = humanizeAgent(e.agent);
-      legacyLastAt = env.at;
-    }
-  }
-
-  // Prefer the most recent active reasoning stream. Fall back to legacy.
-  const streams = Array.from(byReasoningId.values()).sort(
-    (a, b) => a.lastAt - b.lastAt,
-  );
-  if (streams.length > 0) {
-    const latest = streams[streams.length - 1]!;
-    return { text: latest.text, label: latest.label, done: latest.done };
-  }
-
-  const done = legacyLastAt > 0 && Date.now() - legacyLastAt > 4000;
-  return { text: legacyParts.join("\n\n"), label: legacyLabel, done };
+  return {
+    phases: Array.from(phaseMap.values()),
+    unattached: unattached.hasAny ? unattached : undefined,
+  };
 }
 
 function humanizeAgent(agent: string): string {
@@ -386,175 +605,11 @@ function humanizeAgent(agent: string): string {
       return "Double-checking every claim";
     case "hiring-manager":
       return "Reviewer reading your profile";
+    case "timeline":
+      return "Laying out your timeline";
+    case "intake":
+      return "Picking your intake questions";
     default:
       return agent.replace(/[-_]/g, " ");
-  }
-}
-
-function buildSources(envelopes: ScanEventEnvelope[]): SourceItem[] {
-  const seen = new Set<string>();
-  const out: SourceItem[] = [];
-  for (const env of envelopes) {
-    const e = env.event;
-    const detail =
-      e.kind === "worker-update"
-        ? e.detail
-        : e.kind === "stage-end"
-          ? e.detail
-          : undefined;
-    if (!detail) continue;
-    const urls = detail.match(/https?:\/\/[^\s)]+/g) ?? [];
-    for (const u of urls) {
-      if (seen.has(u)) continue;
-      seen.add(u);
-      out.push({ id: `${env.id}-${seen.size}`, url: u });
-    }
-  }
-  return out;
-}
-
-function buildTools(
-  envelopes: ScanEventEnvelope[],
-): Array<{
-  id: string;
-  name: string;
-  subtitle?: string;
-  status: ToolStatus;
-  output?: string;
-  error?: string;
-}> {
-  const byWorker = new Map<
-    string,
-    {
-      status: ToolStatus;
-      subtitle?: string;
-      output?: string;
-      error?: string;
-    }
-  >();
-  for (const env of envelopes) {
-    const e = env.event;
-    if (e.kind !== "worker-update" || !e.worker) continue;
-    const prior = byWorker.get(e.worker) ?? { status: "pending" as ToolStatus };
-    if (e.status === "running") prior.status = "running";
-    else if (e.status === "done") prior.status = "completed";
-    else if (e.status === "failed") prior.status = "error";
-    if (e.detail) {
-      if (e.status === "done") prior.output = e.detail;
-      else if (e.status === "failed") prior.error = e.detail;
-      else prior.subtitle = e.detail;
-    }
-    byWorker.set(e.worker, prior);
-  }
-  return Array.from(byWorker.entries()).map(([name, state]) => ({
-    id: name,
-    name: humanizeWorker(name),
-    subtitle: state.subtitle,
-    status: state.status,
-    output: state.output,
-    error: state.error,
-  }));
-}
-
-function buildQueue(phases: PhaseState[]): {
-  running: QueueRow[];
-  upNext: QueueRow[];
-  done: QueueRow[];
-} {
-  const running: QueueRow[] = [];
-  const upNext: QueueRow[] = [];
-  const done: QueueRow[] = [];
-
-  for (const p of phases) {
-    const copy = (
-      PHASE_COPY as Record<
-        string,
-        { title: string; activity: string; done: string }
-      >
-    )[p.phase];
-    if (!copy) continue;
-    if (p.status === "running" || p.status === "warn") {
-      running.push({
-        id: p.phase,
-        title: copy.title,
-        subtitle: copy.activity,
-      });
-    } else if (p.status === "done") {
-      done.push({ id: p.phase, title: copy.done });
-    } else if (p.status === "failed") {
-      running.push({
-        id: p.phase,
-        title: `${copy.title} — hit a snag`,
-        subtitle: p.warnings?.[0] ?? "Continuing with what worked.",
-      });
-    } else {
-      upNext.push({ id: p.phase, title: copy.title });
-    }
-  }
-  return { running, upNext: upNext.slice(0, 4), done: done.reverse() };
-}
-
-function synthLogLines(envelopes: ScanEventEnvelope[]): string[] {
-  const out: string[] = [];
-  for (const env of envelopes) {
-    const t = fmtTime(env.at);
-    const e = env.event;
-    if (e.kind === "stage-start" && e.stage) {
-      const copy = (
-        PHASE_COPY as Record<
-          string,
-          { activity: string; done: string; title: string }
-        >
-      )[e.stage];
-      out.push(
-        `[${t}] info  ${copy?.title ?? e.stage} starting…`,
-      );
-      if (copy?.activity) out.push(`[${t}]         ${copy.activity}`);
-    } else if (e.kind === "stage-end" && e.stage) {
-      const copy = (
-        PHASE_COPY as Record<
-          string,
-          { activity: string; done: string; title: string }
-        >
-      )[e.stage];
-      const dur = e.duration_ms
-        ? ` ${Math.round(e.duration_ms / 100) / 10}s`
-        : "";
-      out.push(
-        `[${t}] ok    ${copy?.done ?? e.stage} done${dur}${e.detail ? ` · ${e.detail}` : ""}`,
-      );
-    } else if (e.kind === "stage-warn") {
-      out.push(`[${t}] warn  ${e.stage ? `${e.stage}: ` : ""}${e.message}`);
-    } else if (e.kind === "worker-update" && e.worker) {
-      const name = humanizeWorker(e.worker);
-      if (e.status === "running") {
-        out.push(`[${t}] running ${name}…`);
-      } else if (e.status === "done") {
-        out.push(`[${t}] ok     ${name}${e.detail ? ` · ${e.detail}` : ""}`);
-      } else if (e.status === "failed") {
-        out.push(`[${t}] error  ${name}${e.detail ? ` · ${e.detail}` : ""}`);
-      }
-    } else if (e.kind === "reasoning") {
-      const txt = e.text.length > 160 ? `${e.text.slice(0, 160)}…` : e.text;
-      out.push(`[${t}] think  ${humanizeAgent(e.agent)}: ${txt}`);
-    } else if (e.kind === "error") {
-      out.push(`[${t}] error  ${e.stage ? `${e.stage}: ` : ""}${e.message}`);
-    }
-  }
-  return out;
-}
-
-function fmtTime(ms: number): string {
-  const d = new Date(ms);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(
-    d.getMinutes(),
-  ).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
-}
-
-function safeHost(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url;
   }
 }
