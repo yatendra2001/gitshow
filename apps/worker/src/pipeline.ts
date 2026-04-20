@@ -606,31 +606,42 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
   }
 
   // ── 12. Profile critic ─────────────────────────────────────
+  // Advisory stage: flags claims it thinks are unreliable. Output is
+  // used only to downgrade confidence — the profile still ships without
+  // it. So we swallow failures here: occasionally the model fails to
+  // call its submit tool 3x in a row (OpenRouter / Sonnet tool-calling
+  // hiccup) and we should NOT let that lose a 40-minute scan.
   if (shouldRun(ckpt.currentPhase, "critic")) {
     await withStage("critic", async () => {
-      const critique = await runProfileCritic({
-        session: input.session,
-        usage,
-        discover,
-        claims: profile.claims,
-        artifacts: profile.artifacts,
-        onProgress: stream,
-        emit: emitScoped,
-        messageId,
-      });
-      await ckpt.saveCritic(critique);
+      try {
+        const critique = await runProfileCritic({
+          session: input.session,
+          usage,
+          discover,
+          claims: profile.claims,
+          artifacts: profile.artifacts,
+          onProgress: stream,
+          emit: emitScoped,
+          messageId,
+        });
+        await ckpt.saveCritic(critique);
 
-      // Soft action: mark flagged claims with lower confidence in the profile
-      const flagged = new Set(critique.flagged_claims.map((f) => f.claim_id));
-      if (flagged.size > 0) {
-        profile = {
-          ...profile,
-          claims: profile.claims.map((c) =>
-            flagged.has(c.id)
-              ? { ...c, confidence: "low", extra: { ...(c.extra ?? {}), critic_flag: critique.flagged_claims.find((f) => f.claim_id === c.id) } }
-              : c,
-          ),
-        };
+        // Soft action: mark flagged claims with lower confidence.
+        const flagged = new Set(critique.flagged_claims.map((f) => f.claim_id));
+        if (flagged.size > 0) {
+          profile = {
+            ...profile,
+            claims: profile.claims.map((c) =>
+              flagged.has(c.id)
+                ? { ...c, confidence: "low", extra: { ...(c.extra ?? {}), critic_flag: critique.flagged_claims.find((f) => f.claim_id === c.id) } }
+                : c,
+            ),
+          };
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        stream(`[pipeline] WARNING: profile-critic failed, shipping unflagged: ${msg.slice(0, 240)}\n`);
+        ckpt.addError(`profile-critic: ${msg.slice(0, 400)}`);
       }
     });
   } else {
