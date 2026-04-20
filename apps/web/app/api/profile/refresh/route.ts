@@ -3,6 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { nanoid } from "nanoid";
 import { FlyClient } from "@gitshow/shared/cloud/fly";
 import { auth } from "@/auth";
+import { getUserGitHubToken } from "@/lib/user-token";
 
 /**
  * POST /api/profile/refresh
@@ -104,11 +105,16 @@ export async function POST() {
     );
   }
 
+  const userGhToken = await getUserGitHubToken(env.DB, uid);
+  if (!userGhToken) {
+    return NextResponse.json({ error: "no_github_token" }, { status: 403 });
+  }
+
   try {
     const fly = FlyClient.fromEnv();
     const machine = await fly.spawnScanMachine({
       scanId,
-      env: buildEnv(env, { scanId, handle: row.handle, model }),
+      env: buildEnv(env, { scanId, handle: row.handle, model, userGhToken }),
     });
     await env.DB.prepare(
       `UPDATE scans SET fly_machine_id = ?, updated_at = ? WHERE id = ?`,
@@ -136,7 +142,7 @@ export async function POST() {
 
 function buildEnv(
   env: CloudflareEnv,
-  s: { scanId: string; handle: string; model: string },
+  s: { scanId: string; handle: string; model: string; userGhToken: string },
 ): Record<string, string> {
   const out: Record<string, string> = {
     SCAN_ID: s.scanId,
@@ -150,7 +156,7 @@ function buildEnv(
     R2_ACCESS_KEY_ID: require_(env, "R2_ACCESS_KEY_ID"),
     R2_SECRET_ACCESS_KEY: require_(env, "R2_SECRET_ACCESS_KEY"),
     OPENROUTER_API_KEY: require_(env, "OPENROUTER_API_KEY"),
-    GH_TOKEN: require_(env, "GH_TOKEN"),
+    GH_TOKEN: s.userGhToken,
   };
   const opt = env as unknown as Record<string, string | undefined>;
   if (opt.REALTIME_ENDPOINT) out.REALTIME_ENDPOINT = opt.REALTIME_ENDPOINT;

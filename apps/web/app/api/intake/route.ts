@@ -5,6 +5,7 @@ import { z } from "zod";
 import { FlyClient } from "@gitshow/shared/cloud/fly";
 import { auth } from "@/auth";
 import { createIntakeSession } from "@/lib/intake";
+import { getUserGitHubToken } from "@/lib/user-token";
 
 /**
  * POST /api/intake — kick off a 60-second pre-scan that generates
@@ -45,6 +46,21 @@ export async function POST(req: Request) {
   const intakeId = `intake-${nanoid(10)}`;
   const model = parse.data.model ?? "anthropic/claude-sonnet-4.6";
 
+  // The user's GitHub OAuth token is REQUIRED — it's what gives the
+  // Fly worker read access to their private + org repos. If missing,
+  // signal upstream instead of silently downgrading to public-only.
+  const userGhToken = await getUserGitHubToken(env.DB, session.user.id);
+  if (!userGhToken) {
+    return NextResponse.json(
+      {
+        error: "no_github_token",
+        detail:
+          "We don't have a GitHub access token for you. Sign out and back in, and approve the repo scope.",
+      },
+      { status: 403 },
+    );
+  }
+
   try {
     await createIntakeSession(env.DB, {
       id: intakeId,
@@ -74,6 +90,7 @@ export async function POST(req: Request) {
         intakeId,
         handle: parse.data.handle,
         model,
+        userGhToken,
       }),
     });
   } catch (err) {
@@ -93,7 +110,7 @@ export async function POST(req: Request) {
 
 function buildIntakeEnv(
   env: CloudflareEnv,
-  s: { intakeId: string; handle: string; model: string },
+  s: { intakeId: string; handle: string; model: string; userGhToken: string },
 ): Record<string, string> {
   return {
     INTAKE_ID: s.intakeId,
@@ -104,7 +121,10 @@ function buildIntakeEnv(
     CF_API_TOKEN: requireVar(env, "CF_API_TOKEN"),
     D1_DATABASE_ID: requireVar(env, "D1_DATABASE_ID"),
     OPENROUTER_API_KEY: requireVar(env, "OPENROUTER_API_KEY"),
-    GH_TOKEN: requireVar(env, "GH_TOKEN"),
+    // Use the user's OAuth token — the `repo` scope gives access to
+    // their private + org repos. The bot GH_TOKEN env (public-only)
+    // is the fallback for any code that explicitly reaches for it.
+    GH_TOKEN: s.userGhToken,
   };
 }
 

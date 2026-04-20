@@ -4,6 +4,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { FlyClient } from "@gitshow/shared/cloud/fly";
 import { auth } from "@/auth";
+import { getUserGitHubToken } from "@/lib/user-token";
 
 /**
  * POST /api/scan — create a scan row + spawn a Fly machine to run it.
@@ -91,6 +92,14 @@ export async function POST(req: Request) {
     );
   }
 
+  const userGhToken = await getUserGitHubToken(env.DB, session.user.id);
+  if (!userGhToken) {
+    return NextResponse.json(
+      { error: "no_github_token" },
+      { status: 403 },
+    );
+  }
+
   // Spawn the Fly machine. If it fails, mark the scan failed so the UI
   // can show a clear error instead of hanging in `queued`.
   try {
@@ -105,6 +114,7 @@ export async function POST(req: Request) {
         linkedin: body.socials?.linkedin,
         website: body.socials?.website,
         contextNotes: body.context_notes,
+        userGhToken,
       }),
     });
 
@@ -138,6 +148,7 @@ function buildMachineEnv(
     linkedin?: string;
     website?: string;
     contextNotes?: string;
+    userGhToken: string;
   },
 ): Record<string, string> {
   const out: Record<string, string> = {
@@ -145,8 +156,6 @@ function buildMachineEnv(
     HANDLE: s.handle,
     MODEL: s.model,
     GITSHOW_CLOUD_MODE: "1",
-    // Propagate CF + OpenRouter + Fly secrets so the machine can write
-    // back into D1/R2 and hit OpenRouter without a separate vault.
     CF_ACCOUNT_ID: requireVar(env, "CF_ACCOUNT_ID"),
     CF_API_TOKEN: requireVar(env, "CF_API_TOKEN"),
     D1_DATABASE_ID: requireVar(env, "D1_DATABASE_ID"),
@@ -154,7 +163,7 @@ function buildMachineEnv(
     R2_ACCESS_KEY_ID: requireVar(env, "R2_ACCESS_KEY_ID"),
     R2_SECRET_ACCESS_KEY: requireVar(env, "R2_SECRET_ACCESS_KEY"),
     OPENROUTER_API_KEY: requireVar(env, "OPENROUTER_API_KEY"),
-    GH_TOKEN: requireVar(env, "GH_TOKEN"),
+    GH_TOKEN: s.userGhToken,
   };
   if (s.twitter) out.TWITTER = s.twitter;
   if (s.linkedin) out.LINKEDIN = s.linkedin;

@@ -151,7 +151,7 @@ export default function IntakePage({
         {intake?.status === "failed" ? (
           <FailedState error={intake.error} />
         ) : isLoading ? (
-          <LoadingState />
+          <LoadingState status={intake?.status} />
         ) : intake ? (
           <QuestionList
             intake={intake}
@@ -169,17 +169,61 @@ export default function IntakePage({
 
 // ─── Components ─────────────────────────────────────────────────────
 
-function LoadingState() {
+const LOADING_LINES = [
+  "Reading your bio and top repos…",
+  "Looking at your recent pull requests…",
+  "Checking which orgs you're active in…",
+  "Deciding what to ask you about…",
+  "Almost there — polishing the questions…",
+];
+
+function LoadingState({ status }: { status?: IntakeView["status"] }) {
+  const [elapsed, setElapsed] = useState(0);
+  const [lineIndex, setLineIndex] = useState(0);
+
+  useEffect(() => {
+    const started = Date.now();
+    const t = setInterval(() => {
+      const secs = Math.floor((Date.now() - started) / 1000);
+      setElapsed(secs);
+      setLineIndex(Math.min(LOADING_LINES.length - 1, Math.floor(secs / 12)));
+    }, 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const line = LOADING_LINES[lineIndex] ?? LOADING_LINES[0];
+  const stuck = elapsed > 180;
+
   return (
     <div className="rounded-2xl border border-border/40 bg-card/60 p-6 shadow-[var(--shadow-card)] gs-enter">
-      <div className="flex items-center gap-3">
-        <span className="h-2 w-2 rounded-full bg-[var(--primary)] gs-pulse" />
-        <span className="gs-shimmer text-[14px]">Reading your GitHub…</span>
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="h-2 w-2 rounded-full bg-[var(--primary)] gs-pulse shrink-0" />
+          <span
+            key={lineIndex}
+            className="gs-shimmer text-[14px] truncate gs-fade"
+          >
+            {line}
+          </span>
+        </div>
+        <span className="text-[11px] font-mono text-muted-foreground/70 shrink-0">
+          {elapsed}s
+        </span>
       </div>
-      <p className="mt-3 text-[13px] leading-relaxed text-muted-foreground">
-        We're looking at your bio, top repos, and recent activity. This takes
-        about a minute.
+      <p className="text-[13px] leading-relaxed text-muted-foreground">
+        {status === "pending"
+          ? "Starting the intake worker — usually 10-30s to boot."
+          : "We're looking at your bio, top repos, and recent activity. This takes about a minute."}
       </p>
+      {stuck ? (
+        <div className="mt-4 rounded-xl border border-[var(--destructive)]/30 bg-[var(--destructive)]/[0.04] p-3 text-[12px] leading-relaxed">
+          <div className="font-medium mb-1">Taking longer than expected.</div>
+          <p className="text-muted-foreground">
+            The intake worker usually finishes in under a minute. If it stays
+            stuck past 3 min, refresh and restart from your home page.
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }
