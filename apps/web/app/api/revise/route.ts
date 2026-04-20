@@ -123,6 +123,43 @@ export async function POST(req: Request) {
       );
     }
     dispatches = classified.dispatches;
+
+    // Resolve dispatches whose claim_id came back empty. This happens
+    // when the card filtered the beat (e.g. legacy cards emitted
+    // before the hook-visibility fix had the hook claim gated out).
+    // The claim itself still lives in D1 — look it up by scan_id +
+    // beat and patch the dispatch before we spawn Fly.
+    const resolved: ClassifiedDispatch[] = [];
+    for (const d of dispatches) {
+      if (d.claimId) {
+        resolved.push(d);
+        continue;
+      }
+      const row = await env.DB.prepare(
+        `SELECT id FROM claims WHERE scan_id = ? AND beat = ? ORDER BY idx ASC LIMIT 1`,
+      )
+        .bind(scanId, d.beat)
+        .first<{ id: string }>();
+      if (row?.id) {
+        resolved.push({ ...d, claimId: row.id });
+      }
+    }
+    if (resolved.length === 0) {
+      return NextResponse.json(
+        {
+          error: "no_match",
+          detail:
+            "Couldn't find a claim to rewrite for that feedback. Try @hook, @numbers, or @disclosure.",
+          suggestions: [
+            "@hook tighten the opener",
+            "@numbers pick different KPIs",
+            "@disclosure rewrite the honest paragraph",
+          ],
+        },
+        { status: 422 },
+      );
+    }
+    dispatches = resolved;
   }
 
   let fly: FlyClient;
