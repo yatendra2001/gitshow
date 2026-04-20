@@ -247,8 +247,11 @@ function makeDispatch(
   if (beat === "hook") claimId = card.hook?.id;
   else if (beat === "number") claimId = card.numbers[0]?.id;
   else if (beat === "disclosure") claimId = card.disclosure?.id;
-  if (!claimId) return null;
-  return { claimId, beat, guidance, reason };
+  // Empty claim id is a signal to the API route: the card doesn't
+  // expose this beat (e.g. hook was filtered out by the old
+  // confidence gate), but the claim likely still exists in D1.
+  // The route resolves it from the claims table before spawning.
+  return { claimId: claimId ?? "", beat, guidance, reason };
 }
 
 /** Human-readable summary of dispatches. */
