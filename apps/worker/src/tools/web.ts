@@ -126,19 +126,17 @@ async function browseWeb(url: string, ctx: ToolContext): Promise<string> {
   // without winning on quality.
   const jina = await fetchJina(url);
   if (jina.kind === "ok") {
-    const trimmed = jina.text.slice(0, 40_000);
-    await writeFile(cachePath, trimmed, "utf-8");
-    ensureSinkArtifact(ctx, id, url, trimmed);
-    return formatBrowseResult(url, trimmed, { cached: false });
+    await writeFile(cachePath, jina.text, "utf-8");
+    ensureSinkArtifact(ctx, id, url, jina.text);
+    return formatBrowseResult(url, jina.text, { cached: false });
   }
 
   const direct = await fetchDirect(url);
   if (direct.kind === "ok") {
-    const trimmed = direct.text.slice(0, 40_000);
-    await writeFile(cachePath, trimmed, "utf-8");
-    ensureSinkArtifact(ctx, id, url, trimmed);
+    await writeFile(cachePath, direct.text, "utf-8");
+    ensureSinkArtifact(ctx, id, url, direct.text);
     ctx.log(`[web] direct-fetch rescued ${url} (jina: ${jina.reason})\n`);
-    return formatBrowseResult(url, trimmed, { cached: false });
+    return formatBrowseResult(url, direct.text, { cached: false });
   }
 
   return `[error] failed to fetch ${url}: jina=${jina.reason}; direct=${direct.reason}. Skip or try a different URL.`;
@@ -223,13 +221,21 @@ function ensureSinkArtifact(
   };
 }
 
+// Max chars returned to the LLM per browse_web call. Sized for current
+// 1M-context models (Sonnet 4.6 et al.) where tool outputs of ~8k tokens
+// are trivially handled. 32k chars ≈ 8k tokens — enough to capture a
+// long-form blog post, a LinkedIn "about" section, or a full talk
+// transcript without truncation. The on-disk cache holds the full body
+// regardless; truncation here only bounds per-call token spend.
+const BROWSE_LLM_MAX_CHARS = 32_000;
+
 function formatBrowseResult(
   url: string,
   text: string,
   meta: { cached: boolean },
 ): string {
   const id = webArtifactId(url);
-  const slice = text.slice(0, 8_000);
+  const slice = text.slice(0, BROWSE_LLM_MAX_CHARS);
   const truncated = text.length > slice.length;
   const header = `artifact_id: ${id}\nurl: ${url}\n${meta.cached ? "cached: true\n" : ""}`;
   const foot = truncated
