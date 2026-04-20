@@ -10,6 +10,7 @@ import {
   markIntakeConsumed,
   buildContextFromIntake,
 } from "@/lib/intake";
+import { getUserGitHubToken } from "@/lib/user-token";
 
 /**
  * POST /api/intake/[id]/answers
@@ -101,6 +102,18 @@ export async function POST(
     );
   }
 
+  const userGhToken = await getUserGitHubToken(env.DB, session.user.id);
+  if (!userGhToken) {
+    return NextResponse.json(
+      {
+        error: "no_github_token",
+        detail:
+          "We don't have a GitHub access token for you. Sign out and back in so we can read your repos.",
+      },
+      { status: 403 },
+    );
+  }
+
   try {
     const fly = FlyClient.fromEnv();
     const machine = await fly.spawnScanMachine({
@@ -110,6 +123,7 @@ export async function POST(
         handle: intake.handle,
         model,
         contextNotes: contextNotes ?? undefined,
+        userGhToken,
       }),
     });
     await env.DB.prepare(
@@ -140,7 +154,13 @@ export async function POST(
 
 function buildScanEnv(
   env: CloudflareEnv,
-  s: { scanId: string; handle: string; model: string; contextNotes?: string },
+  s: {
+    scanId: string;
+    handle: string;
+    model: string;
+    contextNotes?: string;
+    userGhToken: string;
+  },
 ): Record<string, string> {
   const out: Record<string, string> = {
     SCAN_ID: s.scanId,
@@ -154,7 +174,8 @@ function buildScanEnv(
     R2_ACCESS_KEY_ID: requireVar(env, "R2_ACCESS_KEY_ID"),
     R2_SECRET_ACCESS_KEY: requireVar(env, "R2_SECRET_ACCESS_KEY"),
     OPENROUTER_API_KEY: requireVar(env, "OPENROUTER_API_KEY"),
-    GH_TOKEN: requireVar(env, "GH_TOKEN"),
+    // User's OAuth access_token — `repo` scope covers private + org repos.
+    GH_TOKEN: s.userGhToken,
   };
   if (s.contextNotes) out.CONTEXT_NOTES = s.contextNotes;
   // Optional envs — not on CloudflareEnv's hard type yet, so read via

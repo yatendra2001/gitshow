@@ -79,37 +79,60 @@ export function PrivacyDrawer({
               </button>
             </header>
             <div className="px-5 py-4 space-y-5 text-[13px] leading-relaxed">
-              <Section title="From GitHub — public only">
+              <Section title="Scopes we requested">
                 <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                  <li>Your bio, top repos, PRs, and review history.</li>
                   <li>
-                    Commit history in your deep-read repos (open-source
-                    data — nothing private).
+                    <span className="font-mono text-[12px]">read:user</span> —
+                    your profile + public activity.
                   </li>
                   <li>
-                    Readme and file contents from repos the scan chose to
-                    examine.
+                    <span className="font-mono text-[12px]">user:email</span> —
+                    your primary email, so we can ping you when a scan finishes.
+                  </li>
+                  <li>
+                    <span className="font-mono text-[12px]">repo</span> — read
+                    access to every repo you've granted, public or private,
+                    personal or org (orgs must also approve the app).
+                  </li>
+                </ul>
+                <p className="mt-2 text-[12px] text-muted-foreground/80">
+                  Revoke anytime at{" "}
+                  <a
+                    href="https://github.com/settings/applications"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline underline-offset-2 hover:text-foreground"
+                  >
+                    github.com/settings/applications
+                  </a>
+                  .
+                </p>
+              </Section>
+              <Section title="What the scan reads">
+                <ul className="list-disc list-inside space-y-1 text-muted-foreground">
+                  <li>Your bio, repos, PRs, and review history.</li>
+                  <li>
+                    Commit metadata (messages, hashes, authors, timestamps)
+                    for the repos you grant — including private and org repos.
+                  </li>
+                  <li>
+                    Readme + source files briefly, while the LLM picks patterns.
+                    File contents are never persisted; only the derived claims.
                   </li>
                 </ul>
               </Section>
-              <Section title="What we do NOT touch">
+              <Section title="What we store">
                 <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                  <li>Private repos. Your OAuth grant is scoped read-only to public data.</li>
-                  <li>Your email, contacts, or anything outside GitHub.</li>
-                  <li>Anyone else's private repos or identity.</li>
+                  <li>The profile JSON (hook, KPIs, insights, shipped) in Cloudflare R2.</li>
+                  <li>Scan progress events in Cloudflare D1 (phase starts/ends, reasoning summaries).</li>
+                  <li>Commit/PR/review references so claims can point at evidence.</li>
                 </ul>
               </Section>
-              <Section title="Where it lives">
+              <Section title="What we do NOT store">
                 <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                  <li>Your scan events are in a Cloudflare D1 database.</li>
-                  <li>
-                    Profile JSON + intermediate artifacts are in Cloudflare
-                    R2 (S3-compatible).
-                  </li>
-                  <li>
-                    No data is sent to third parties beyond the LLM provider
-                    (OpenRouter → Anthropic / Claude).
-                  </li>
+                  <li>Source-code file contents from any repo.</li>
+                  <li>Anything outside GitHub.</li>
+                  <li>Anyone else's private data — only what your grants permit.</li>
                 </ul>
               </Section>
               <Section title="Delete everything">
