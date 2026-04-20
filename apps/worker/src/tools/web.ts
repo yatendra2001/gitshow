@@ -83,19 +83,73 @@ const BROWSE_SCHEMA = z.object({
     .describe("One sentence: why are you fetching this URL?"),
 });
 
+/**
+ * Block classes of fabricated URLs at the tool layer — prompts alone
+ * don't fully prevent the model from constructing e.g.
+ * `linkedin.com/in/<github-handle>`. We reject the call and return a
+ * tool error explaining why so the model doesn't burn retries.
+ */
+function reasonToBlockBrowse(
+  url: string,
+  ctx: ToolContext,
+): string | null {
+  let host: string;
+  try {
+    host = new URL(url).hostname.toLowerCase();
+  } catch {
+    return "URL is not parseable.";
+  }
+  const handle = ctx.session.handle.toLowerCase();
+  const provided = ctx.session.socials ?? {};
+  // LinkedIn: only allow if the user provided this exact URL. Agents
+  // cannot invent linkedin.com/in/<handle> from the GitHub handle.
+  if (host.endsWith("linkedin.com")) {
+    const linkedin = (provided.linkedin ?? "").toLowerCase();
+    if (!linkedin) {
+      return `LinkedIn was not provided by the user — do NOT fabricate a LinkedIn URL from the GitHub handle. Skip this claim entirely.`;
+    }
+    if (!url.toLowerCase().startsWith(linkedin)) {
+      return `The only approved LinkedIn URL for this scan is ${linkedin} — other LinkedIn URLs are not verified. Use the approved one or skip.`;
+    }
+  }
+  // Twitter/X: same rule. The approved handle comes from socials.twitter.
+  if (host.endsWith("twitter.com") || host.endsWith("x.com")) {
+    const twitter = (provided.twitter ?? "").toLowerCase();
+    if (!twitter) {
+      return `Twitter/X handle was not provided by the user — do NOT guess from the GitHub handle. Skip.`;
+    }
+    // Expect the path to contain the provided handle.
+    const path = new URL(url).pathname.toLowerCase();
+    if (!path.includes(twitter.replace(/^@/, ""))) {
+      return `The approved Twitter handle is @${twitter.replace(/^@/, "")}. URL does not match; skip.`;
+    }
+  }
+  // github.com — prefer the gh CLI. Specific github.com/user/repo URLs
+  // are fine (we link to them), but scraping github.com pages that the
+  // CLI would serve is wasteful. Allow but nudge via description.
+  return null;
+}
+
 export function createBrowseTool(ctx: ToolContext, counters: ToolCounters) {
   return tool({
     name: "browse_web",
     description:
-      "Fetch the text content of a specific URL. Use when you need to verify a " +
-      "fact or enrich a specific source (the dev's personal site home page, a " +
-      "LinkedIn URL, a specific blog post, a conference talk page). Returns " +
-      "readable text + stores the artifact under a stable id you MUST cite in " +
-      "any claim drawn from it. Budget-limited per worker.",
+      "Fetch the text content of a specific URL. Use for EXTERNAL sources — the " +
+      "user's personal site, a LinkedIn/Twitter URL they provided, a blog post, " +
+      "a conference talk page. Do NOT browse github.com URLs (owned repo pages, " +
+      "commits, PRs, issues) — that content is already in your artifact table via " +
+      "the gh CLI. Do NOT construct a LinkedIn or Twitter URL from the GitHub " +
+      "handle — only visit ones the user provided verbatim. Returns readable text " +
+      "+ stores the artifact under a stable id you MUST cite.",
     inputSchema: BROWSE_SCHEMA,
     execute: async (input) => {
       if (counters.web >= ctx.webBudget) {
         return `[error] web budget exceeded (${ctx.webBudget} calls). Use the artifacts you've already gathered.`;
+      }
+      const block = reasonToBlockBrowse(input.url, ctx);
+      if (block) {
+        ctx.log(`[web] blocked browse ${input.url} — ${block}\n`);
+        return `[blocked] ${block}`;
       }
       counters.web += 1;
       ctx.usage.recordWebCall();
