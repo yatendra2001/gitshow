@@ -88,29 +88,45 @@ export function useScanStream({
   const gapPluggingRef = useRef(false);
 
   // ── Ingestion ─────────────────────────────────────────────────────
-  const ingestEnvelope = useCallback((env: ScanEventEnvelope) => {
-    if (env.event.kind === "stream") {
+  //
+  // Batched: paginated backfill can deliver hundreds of events per
+  // page. Per-event setEnvelopes + sort made reload O(N² log N) — on a
+  // 3k-event scan the client was spending seconds just re-sorting.
+  // Do one state commit per batch and one sort at the end.
+  const ingestMany = useCallback((items: ScanEventEnvelope[]) => {
+    if (items.length === 0) return;
+    const streamLines: string[] = [];
+    const fresh: ScanEventEnvelope[] = [];
+    for (const env of items) {
+      if (env.event.kind === "stream") {
+        streamLines.push((env.event as { text: string }).text);
+        continue;
+      }
+      if (seenIds.current.has(env.id)) continue;
+      seenIds.current.add(env.id);
+      if (env.id > lastSeqRef.current) lastSeqRef.current = env.id;
+      fresh.push(env);
+    }
+    if (streamLines.length > 0) {
       setTerminalLines((prev) => {
-        const next = [...prev, (env.event as { text: string }).text];
+        const next = prev.concat(streamLines);
         return next.length > MAX_TERMINAL_LINES
           ? next.slice(-MAX_TERMINAL_LINES)
           : next;
       });
-      return;
     }
-    if (seenIds.current.has(env.id)) return;
-    seenIds.current.add(env.id);
-    if (env.id > lastSeqRef.current) lastSeqRef.current = env.id;
-    setEnvelopes((prev) => {
-      const next = [...prev, env];
-      next.sort((a, b) => a.id - b.id);
-      return next;
-    });
+    if (fresh.length > 0) {
+      setEnvelopes((prev) => {
+        const next = prev.concat(fresh);
+        next.sort((a, b) => a.id - b.id);
+        return next;
+      });
+    }
   }, []);
 
-  const ingestMany = useCallback(
-    (items: ScanEventEnvelope[]) => items.forEach(ingestEnvelope),
-    [ingestEnvelope],
+  const ingestEnvelope = useCallback(
+    (env: ScanEventEnvelope) => ingestMany([env]),
+    [ingestMany],
   );
 
   // ── HTTP backfill ─────────────────────────────────────────────────
@@ -401,21 +417,18 @@ export function useScanStream({
     closedRef.current = false;
     setConnection("idle");
 
-    // 1. Initial backfill — paginate until we've caught up to the DB
-    //    head OR hit a terminal. The WS's `hello` will probably
-    //    duplicate some of the tail; `seenIds` dedupes.
+    // Open the WS immediately and paginate D1 in the background.
     //
-    //    A single page of 500 is not enough for a full scan, which
-    //    emits ~3000 structured events. The old one-shot code left
-    //    the UI without stage-starts for everything that rolled off
-    //    the DO ring — phases appeared pending even as the scan
-    //    finished around them.
+    // Why: the old code awaited the full D1 backfill before opening
+    // the socket. For a scan with ~3k events that's 6+ sequential
+    // round-trips — the page reload sat blank for seconds before
+    // rendering anything. With WS-first, the DO's `hello` delivers
+    // the last 150 events in one round-trip so the current phase +
+    // recent activity paint within ~200 ms. The backfill then fills
+    // in older phase history as pages arrive; seenIds dedupes.
+    openWebSocket();
     void paginateBackfill(0).then((terminal) => {
-      if (terminal) {
-        setIsDone(true);
-        return;
-      }
-      openWebSocket();
+      if (terminal) setIsDone(true);
     });
 
     return () => {

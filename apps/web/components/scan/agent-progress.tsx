@@ -65,6 +65,17 @@ export interface AgentProgressProps {
   compact?: boolean;
   hideTerminal?: boolean;
   className?: string;
+  /**
+   * Optional seed from the SSR snapshot of the scans row. Phases up to
+   * and including `lastCompletedPhase` render as done; `currentPhase`
+   * renders as running. Lets a reload paint the skeleton instantly —
+   * the D1 backfill then fills in the reasoning / tool / source detail
+   * as it arrives.
+   */
+  phaseSeed?: {
+    currentPhase?: string | null;
+    lastCompletedPhase?: string | null;
+  };
 }
 
 export function AgentProgress({
@@ -74,6 +85,7 @@ export function AgentProgress({
   compact = false,
   hideTerminal = false,
   className,
+  phaseSeed,
 }: AgentProgressProps) {
   const scoped = React.useMemo(() => {
     if (!sinceAt) return envelopes;
@@ -81,8 +93,8 @@ export function AgentProgress({
   }, [envelopes, sinceAt]);
 
   const { phases, unattached } = React.useMemo(
-    () => buildPhaseTree(scoped),
-    [scoped],
+    () => buildPhaseTree(scoped, phaseSeed),
+    [scoped, phaseSeed],
   );
 
   const runningPhase = phases.find((p) => p.status === "running");
@@ -345,21 +357,37 @@ function DevTerminal({ lines }: { lines: string[] }) {
 
 // ─── Event → phase-tree projection ─────────────────────────────────
 
-function buildPhaseTree(envelopes: ScanEventEnvelope[]): {
+function buildPhaseTree(
+  envelopes: ScanEventEnvelope[],
+  seed?: {
+    currentPhase?: string | null;
+    lastCompletedPhase?: string | null;
+  },
+): {
   phases: PhaseData[];
   unattached?: PhaseData;
 } {
   // Initialize ordered phases from the canonical pipeline order so
   // pending ones appear in the queue even before their events arrive.
   const phaseMap = new Map<string, PhaseData>();
-  for (const id of PHASE_ORDER) {
+  // Seed statuses from the scan row. On reload this paints the whole
+  // queue in its correct state before the D1 backfill lands — no more
+  // blank grid waiting for the first page of events.
+  const lastCompletedIdx = seed?.lastCompletedPhase
+    ? PHASE_ORDER.indexOf(seed.lastCompletedPhase as (typeof PHASE_ORDER)[number])
+    : -1;
+  for (let i = 0; i < PHASE_ORDER.length; i++) {
+    const id = PHASE_ORDER[i];
     const copy = (PHASE_COPY as Record<string, { title: string; activity: string; done: string }>)[id];
     if (!copy) continue;
+    let status: PhaseData["status"] = "pending";
+    if (i <= lastCompletedIdx) status = "done";
+    else if (seed?.currentPhase && id === seed.currentPhase) status = "running";
     phaseMap.set(id, {
       id,
       title: copy.title,
       subtitle: copy.activity,
-      status: "pending",
+      status,
       reasonings: [],
       tools: [],
       sources: [],

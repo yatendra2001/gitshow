@@ -97,7 +97,7 @@ export type Artifact = z.infer<typeof ArtifactSchema>;
 export const ClaimSchema = z.object({
   id: z.string().describe("Stable claim ID"),
   beat: BeatSchema,
-  text: z.string().max(600).describe("What renders on the page"),
+  text: z.string().max(1000).describe("What renders on the page"),
   evidence_ids: z
     .array(z.string())
     .min(1)
@@ -335,7 +335,7 @@ export const HiringManagerOutputSchema = z.object({
       z.object({
         axis: z.string().max(50),
         claim_id: z.string().optional(),
-        fix: z.string().max(600),
+        fix: z.string().max(1000),
       })
     )
     .max(5),
