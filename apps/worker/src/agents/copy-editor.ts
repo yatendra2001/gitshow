@@ -15,7 +15,8 @@
  * Runs AFTER assemble, BEFORE critic. Preserves evidence_ids + all IDs.
  */
 
-import { runAgentWithSubmit } from "./base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "./base.js";
+import { toolLabel } from "@gitshow/shared/phase-copy";
 import * as z from "zod/v4";
 import type {
   Profile,
@@ -58,6 +59,8 @@ export interface CopyEditorInput {
    * exactly what a prior reviewer said was wrong.
    */
   reviseInstruction?: string;
+  emit?: AgentEventEmit;
+  messageId?: string;
 }
 
 const COPY_EDITOR_PROMPT = `You are the voice editor on a developer-profile pipeline. Upstream agents produce claims that are accurate but read like AI wrote them. Your one job is to rewrite the prose so the page sounds like a human.
@@ -123,6 +126,9 @@ export async function runCopyEditor(input: CopyEditorInput): Promise<Profile> {
     usage: input.usage,
     label: "copy-editor",
     onProgress: input.onProgress,
+    emit: input.emit,
+    messageId: input.messageId,
+    toolLabels: (n, i) => toolLabel(n, i),
   });
 
   return applyEdits(input.profile, result.edits, result.distinctive_paragraph);

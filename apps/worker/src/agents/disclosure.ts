@@ -7,7 +7,8 @@
  * cut the section entirely. Do NOT manufacture remediation.
  */
 
-import { runAgentWithSubmit } from "./base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "./base.js";
+import { toolLabel } from "@gitshow/shared/phase-copy";
 import { renderDiscoverSummary, renderWorkerClaims } from "./prompt-helpers.js";
 import {
   WorkerOutputSchema,
@@ -29,6 +30,8 @@ export interface DisclosureInput {
   /** Hiring-manager revise-loop signal — reviewer's critique + prior disclosure. */
   reviseInstruction?: string;
   priorDisclosure?: WorkerOutput;
+  emit?: AgentEventEmit;
+  messageId?: string;
 }
 
 // 0 or 1 disclosure claim — the agent may return none.
@@ -73,6 +76,9 @@ export async function runDisclosureAgent(
     usage: input.usage,
     label: "disclosure",
     onProgress: input.onProgress,
+    emit: input.emit,
+    messageId: input.messageId,
+    toolLabels: (n, i) => toolLabel(n, i),
   });
 
   return { ...result, worker: "disclosure" };

@@ -23,7 +23,9 @@ export function SplitPane({
   scan: ScanRow;
   initialCard: ProfileCard | null;
 }) {
-  const { envelopes, terminalLines } = useScanStream({ scanId: scan.id });
+  const { envelopes, terminalLines, connection, isDone } = useScanStream({
+    scanId: scan.id,
+  });
 
   const [card, setCard] = React.useState<ProfileCard | null>(initialCard);
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
@@ -183,6 +185,8 @@ export function SplitPane({
         card={card}
         highlightClaimId={highlightClaimId}
         onClaimClick={onClaimClick}
+        connection={connection}
+        isDone={isDone}
       />
     </div>
   );

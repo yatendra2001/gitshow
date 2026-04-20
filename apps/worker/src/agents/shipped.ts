@@ -7,7 +7,8 @@
  * Cap at 7 projects. If more exist, cut the weakest.
  */
 
-import { runAgentWithSubmit } from "./base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "./base.js";
+import { toolLabel } from "@gitshow/shared/phase-copy";
 import { renderDiscoverSummary } from "./prompt-helpers.js";
 import {
   WorkerOutputSchema,
@@ -26,6 +27,8 @@ export interface ShippedInput {
   workerOutputs: WorkerOutput[];
   artifacts: Record<string, Artifact>;
   onProgress?: (text: string) => void;
+  emit?: AgentEventEmit;
+  messageId?: string;
 }
 
 const SHIPPED_OUTPUT_SCHEMA = WorkerOutputSchema.extend({
@@ -77,6 +80,9 @@ export async function runShippedAgent(
     usage: input.usage,
     label: "shipped",
     onProgress: input.onProgress,
+    emit: input.emit,
+    messageId: input.messageId,
+    toolLabels: (n, i) => toolLabel(n, i),
   });
 
   return { ...result, worker: "shipped" };

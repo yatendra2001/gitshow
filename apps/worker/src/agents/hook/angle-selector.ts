@@ -13,7 +13,8 @@
  * writer picked randomly across all possible angles each invocation.
  */
 
-import { runAgentWithSubmit } from "../base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "../base.js";
+import { toolLabel } from "@gitshow/shared/phase-copy";
 import { renderDiscoverSummary, renderWorkerClaims } from "../prompt-helpers.js";
 import {
   HookAngleSelectionSchema,
@@ -37,6 +38,8 @@ export interface AngleSelectorInput {
    */
   reviseInstruction?: string;
   priorAngle?: HookAngleSelection;
+  emit?: AgentEventEmit;
+  messageId?: string;
 }
 
 const ANGLE_SELECTOR_PROMPT = `You are a developer-profile strategist. Your single job: given the evidence the workers have gathered about this developer, pick the ONE framing angle that dominates.
@@ -93,6 +96,9 @@ export async function runAngleSelector(
     usage: input.usage,
     label: "angle-selector",
     onProgress: input.onProgress,
+    emit: input.emit,
+    messageId: input.messageId,
+    toolLabels: (n, i) => toolLabel(n, i),
   });
 
   return result;

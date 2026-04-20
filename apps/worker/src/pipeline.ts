@@ -345,6 +345,8 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
           artifactSink,
           profileDir: ckpt.checkpointDir,
           onProgress: stream,
+          emit: emitScoped,
+          messageId,
         };
 
         const workers = [
@@ -413,6 +415,8 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
         discover,
         workerOutputs,
         onProgress: stream,
+        emit: emitScoped,
+        messageId,
       });
       stream(`[pipeline] hook angle: ${hookAngle.angle} — ${hookAngle.reason}\n`);
 
@@ -430,6 +434,8 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
           angle: hookAngle,
           reviseInstruction,
           onProgress: stream,
+          emit: emitScoped,
+          messageId,
         });
         const critique = await runHookCritic({
           session: input.session,
@@ -437,6 +443,8 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
           candidates,
           discover,
           onProgress: stream,
+          emit: emitScoped,
+          messageId,
         });
         last = { candidates: candidates.candidates, critique };
         if (critique.winner_index !== null) {
@@ -477,6 +485,8 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
         workerOutputs,
         artifacts,
         onProgress: stream,
+        emit: emitScoped,
+        messageId,
       });
       await ckpt.saveNumbers(n);
       return n;
@@ -496,6 +506,8 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
         workerOutputs,
         artifacts,
         onProgress: stream,
+        emit: emitScoped,
+        messageId,
       });
       await ckpt.saveDisclosure(d);
       return d;
@@ -515,6 +527,8 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
         workerOutputs,
         artifacts,
         onProgress: stream,
+        emit: emitScoped,
+        messageId,
       });
       await ckpt.saveShipped(s);
       return s;
@@ -566,6 +580,8 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
         usage,
         profile,
         onProgress: stream,
+        emit: emitScoped,
+        messageId,
       });
       profile = edited;
       await ckpt.saveFile("11b-copy-edited.json", profile);
@@ -599,6 +615,8 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
         claims: profile.claims,
         artifacts: profile.artifacts,
         onProgress: stream,
+        emit: emitScoped,
+        messageId,
       });
       await ckpt.saveCritic(critique);
 
@@ -727,6 +745,8 @@ export async function runPipeline(input: RunPipelineInput): Promise<Profile> {
       usage,
       discover,
       workerOutputs,
+      emit: emitScoped,
+      messageId,
       shippedClaims: profile.claims
         .filter((c) => c.beat === "shipped-line")
         .map((c) => ({ text: c.text, label: c.label, sublabel: c.sublabel })),
