@@ -10,7 +10,7 @@ import { useRouter } from "next/navigation";
  */
 export function StartFirstScanButton({
   handle,
-  label = "Start the 60-second intake",
+  label = "Get started",
 }: {
   handle: string;
   label?: string;

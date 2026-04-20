@@ -80,6 +80,26 @@ export function SplitPane({
     [],
   );
 
+  // Local, optimistic drop when a claim is removed. DELETE
+  // /api/claims/:id has already fired and returned OK; we just pull
+  // the item out of local state so the UI reflects the removal.
+  const onClaimRemoved = React.useCallback((claimId: string) => {
+    setCard((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        hook: prev.hook && prev.hook.id === claimId ? null : prev.hook,
+        numbers: prev.numbers.filter((n) => n.id !== claimId),
+        patterns: prev.patterns.filter((p) => p.id !== claimId),
+        shipped: prev.shipped.filter((s) => s.id !== claimId),
+        disclosure:
+          prev.disclosure && prev.disclosure.id === claimId
+            ? null
+            : prev.disclosure,
+      };
+    });
+  }, []);
+
   return (
     <div className="h-screen w-full">
       <ProgressPane
@@ -92,6 +112,7 @@ export function SplitPane({
         isDone={isDone}
         editable={effectiveStatus === "succeeded"}
         onClaimEdited={onClaimEdited}
+        onClaimRemoved={onClaimRemoved}
         isPublished={isPublished}
         onPublishedChange={setIsPublished}
       />

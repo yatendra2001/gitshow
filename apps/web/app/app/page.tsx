@@ -12,14 +12,16 @@ import { DeleteAccountHandler } from "./_delete-handler";
 
 /**
  * /app — the authenticated home. Single-person model:
- *   - No scan → CTA to start the 60-second intake.
+ *   - No scan → CTA to start the intake flow.
  *   - Scan running → link into the live /s/[id] progress view.
- *   - Scan succeeded → render the lean profile in place + Share /
- *     Refresh / Revise affordances.
+ *   - Scan succeeded + published → render the lean profile in place
+ *     + Refresh / Delete affordances.
+ *   - Scan succeeded but NOT published yet (draft) → show a preview
+ *     of the draft card + "Review and publish" / "Refresh" actions.
+ *     This covers the gap introduced by dropping auto-publish: a
+ *     finished scan should always surface here instead of the raw
+ *     "Let's build your profile" empty state.
  *   - Scan failed → show the last reason + "Try again".
- *
- * The legacy /dashboard multi-scan list is gone; that page now
- * redirects here.
  */
 
 export const dynamic = "force-dynamic";
@@ -88,7 +90,13 @@ export default async function AppHomePage() {
 
   const hasProfile = Boolean(cardData);
   const isScanning = Boolean(activeScan);
-  const lastFailed = latestScan?.status === "failed" && !activeScan && !hasProfile;
+  // A "draft" is a succeeded scan the user hasn't published yet.
+  // Post-PR#40 scan completion no longer auto-publishes, so /app must
+  // land returning users on their draft — not on the fresh intake CTA.
+  const draftScan =
+    latestScan?.status === "succeeded" && !hasProfile ? latestScan : null;
+  const lastFailed =
+    latestScan?.status === "failed" && !activeScan && !hasProfile && !draftScan;
 
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -124,6 +132,8 @@ export default async function AppHomePage() {
           publicSlug={cardData!.row.public_slug}
           lastScanAt={cardData!.row.last_scan_at}
         />
+      ) : draftScan ? (
+        <DraftState scan={draftScan} />
       ) : lastFailed ? (
         <FailedState scan={latestScan!} />
       ) : (
@@ -144,16 +154,15 @@ function EmptyState({ handle }: { handle: string }) {
   return (
     <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
       <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
-        First up
+        Welcome
       </div>
       <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
-        Let's build your profile.
+        Build your profile
       </h1>
       <p className="text-[14px] leading-relaxed text-muted-foreground mb-6">
-        We'll spend about a minute looking at your GitHub, ask you 3-5
-        quick questions, then start a 40-minute scan. You can close the
-        tab — we'll email you when it's ready at{" "}
-        <span className="font-mono">gitshow.io/{handle || "{handle}"}</span>.
+        We&apos;ll read your GitHub, ask a few quick questions, then run a full
+        analysis. You can close the tab — we&apos;ll email you when it&apos;s ready
+        at <span className="font-mono">gitshow.io/{handle || "{handle}"}</span>.
       </p>
       <StartFirstScanButton handle={handle} />
     </section>
@@ -166,10 +175,10 @@ function ScanningState({ scan }: { scan: ScanSlim }) {
     <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
       <div className="flex items-center gap-2 text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
         <span className="h-1.5 w-1.5 rounded-full bg-[var(--primary)] gs-pulse" />
-        <span>Scanning</span>
+        <span>Working on it</span>
       </div>
       <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
-        We're reading your code.
+        Reading your code
       </h1>
       <p className="text-[14px] leading-relaxed text-muted-foreground mb-6">
         {scan.current_phase ? (
@@ -178,18 +187,46 @@ function ScanningState({ scan }: { scan: ScanSlim }) {
             {elapsedMin} minute{elapsedMin === 1 ? "" : "s"}.
           </>
         ) : (
-          <>Getting set up — this takes about a minute before the first update.</>
+          <>Getting set up. The first update usually arrives within a minute.</>
         )}
         <br />
-        You can close this tab. We'll email you when it's ready.
+        You can close this tab — we&apos;ll email you when it&apos;s ready.
       </p>
       <div className="flex flex-wrap gap-2">
         <Link
           href={`/s/${scan.id}`}
           className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-11"
         >
-          Watch progress →
+          See progress →
         </Link>
+      </div>
+    </section>
+  );
+}
+
+function DraftState({ scan }: { scan: ScanSlim }) {
+  return (
+    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
+      <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
+        Draft ready
+      </div>
+      <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
+        Your profile is ready to review
+      </h1>
+      <p className="text-[14px] leading-relaxed text-muted-foreground mb-6">
+        The scan for @{scan.handle} finished. Review the draft, edit anything
+        that needs fixing, and publish when it&apos;s right —{" "}
+        <span className="font-mono">gitshow.io/{scan.handle}</span> goes live
+        the moment you do.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href={`/s/${scan.id}`}
+          className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-11"
+        >
+          Review and publish →
+        </Link>
+        <RefreshButton />
       </div>
     </section>
   );
@@ -199,10 +236,10 @@ function FailedState({ scan }: { scan: ScanSlim }) {
   return (
     <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
       <div className="text-[12px] uppercase tracking-wide text-[var(--destructive)]/80 mb-2">
-        Didn't finish
+        Didn&apos;t finish
       </div>
       <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
-        The last scan hit a snag.
+        The last scan hit a snag
       </h1>
       {scan.error ? (
         <p className="mb-4 rounded-xl border border-border/40 bg-card/60 p-3 text-[12px] leading-relaxed text-muted-foreground">

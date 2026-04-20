@@ -5,6 +5,50 @@ import { auth } from "@/auth";
 import { getScanByIdForUser, updateClaimStatus } from "@/lib/scans";
 
 /**
+ * DELETE /api/claims/[id]
+ *
+ * Permanently removes a claim from the profile. Used by the inline
+ * editor's per-row remove buttons so a user can cut a number /
+ * pattern / shipped item / disclosure they don't want shown.
+ *
+ * Permission: user must own the parent scan. The row is hard-deleted;
+ * there's no "user_removed" status because the claim is gone from
+ * both the profile and the public /{handle} card (mergeUserEdits
+ * won't find it anymore).
+ */
+export async function DELETE(
+  _req: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
+  const { id: claimId } = await params;
+
+  const { env } = await getCloudflareContext({ async: true });
+  const claim = await env.DB.prepare(
+    `SELECT id, scan_id FROM claims WHERE id = ? LIMIT 1`,
+  )
+    .bind(claimId)
+    .first<{ id: string; scan_id: string }>();
+  if (!claim) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+  const scan = await getScanByIdForUser(
+    env.DB,
+    claim.scan_id,
+    session.user.id,
+  );
+  if (!scan) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+
+  await env.DB.prepare(`DELETE FROM claims WHERE id = ?`).bind(claimId).run();
+  return NextResponse.json({ ok: true });
+}
+
+/**
  * PATCH /api/claims/[id]
  *
  * In-place claim edits (no Fly roundtrip). Three operations:
