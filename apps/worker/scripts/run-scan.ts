@@ -48,6 +48,18 @@ import type { ScanSession, ScanSocials } from "../src/schemas.js";
 const HEARTBEAT_INTERVAL_MS = 30_000;
 const BASE_DIR = "profiles";
 
+/**
+ * Read an optional scalar from a pipeline event in one place. Events
+ * carry different shapes; this pulls a field if it exists and the
+ * value is defined, else returns null. Keeps the D1 insert call
+ * readable instead of six copies of `"key" in ev ? … : null`.
+ */
+function evField<T>(ev: PipelineEvent, key: string): T | null {
+  if (!(key in ev)) return null;
+  const v = (ev as unknown as Record<string, unknown>)[key];
+  return (v ?? null) as T | null;
+}
+
 async function main() {
   if (process.env.GITSHOW_CLOUD_MODE !== "1") {
     logger.error(
@@ -143,28 +155,17 @@ async function main() {
       // exact shape without a schema library.
       const eventInsert = d1.insertEvent(scanId, {
         kind: ev.kind as PersistedEventKind,
-        stage: "stage" in ev ? ((ev.stage as string | undefined) ?? null) : null,
-        worker:
-          "worker" in ev ? ((ev.worker as string | undefined) ?? null) : null,
-        status:
-          "status" in ev ? ((ev.status as string | undefined) ?? null) : null,
-        duration_ms:
-          "duration_ms" in ev
-            ? ((ev.duration_ms as number | undefined) ?? null)
-            : null,
+        stage: evField<string>(ev, "stage"),
+        worker: evField<string>(ev, "worker"),
+        status: evField<string>(ev, "status"),
+        duration_ms: evField<number>(ev, "duration_ms"),
         message:
           ev.kind === "stage-warn" || ev.kind === "error"
             ? ev.message
-            : "detail" in ev && ev.detail
-              ? ev.detail
-              : null,
+            : evField<string>(ev, "detail"),
         data_json: ev,
-        parent_id:
-          "parent_id" in ev ? ((ev.parent_id as string | undefined) ?? null) : null,
-        message_id:
-          "message_id" in ev
-            ? ((ev.message_id as string | undefined) ?? null)
-            : null,
+        parent_id: evField<string>(ev, "parent_id"),
+        message_id: evField<string>(ev, "message_id"),
       });
 
       const statusUpdate =
