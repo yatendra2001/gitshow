@@ -2,12 +2,13 @@
 
 import * as React from "react";
 import type { ScanEventEnvelope } from "@gitshow/shared/events";
-import { HudPill } from "@/components/ai-elements/context";
+import { PIPELINE_PHASES } from "@gitshow/shared/events";
+import { PHASE_COPY } from "@/lib/phase-copy";
 import { AgentProgress } from "@/components/scan/agent-progress";
 import { ProfileCardView } from "@/components/scan/profile-card";
 import type { ScanRow } from "@/lib/scans";
 import type { ProfileCard, CardClaim } from "@gitshow/shared/schemas";
-import { Sparkles, AlertCircle } from "lucide-react";
+import { Sparkles, AlertCircle, Pencil, ExternalLink, Check } from "lucide-react";
 
 /**
  * Right pane. Three hard states, picked off scan.status:
@@ -105,30 +106,73 @@ function RunningView({
   connection: import("@/lib/use-scan-stream").StreamConnection;
   isDone: boolean;
 }) {
+  const totalPhases = PIPELINE_PHASES.length;
+  // Done-phase count from envelopes (stage-end); falls back to the
+  // seeded last_completed_phase so the bar paints before events arrive.
+  const doneFromEvents = envelopes.filter(
+    (e) => e.event.kind === "stage-end" && "stage" in e.event,
+  ).length;
+  const seedDoneIdx = scan.last_completed_phase
+    ? PIPELINE_PHASES.indexOf(
+        scan.last_completed_phase as (typeof PIPELINE_PHASES)[number],
+      ) + 1
+    : 0;
+  const doneCount = Math.max(doneFromEvents, seedDoneIdx);
+  const percent = Math.min(99, Math.round((doneCount / totalPhases) * 100));
+
+  const currentLabel =
+    scan.current_phase && (PHASE_COPY as Record<string, { title: string }>)[scan.current_phase]
+      ? (PHASE_COPY as Record<string, { title: string }>)[scan.current_phase]!.title
+      : scan.status === "queued"
+        ? "Warming up"
+        : "Building your profile";
+
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
       <span className="gs-noise" aria-hidden />
 
-      <div className="flex items-center gap-2 overflow-x-auto border-b border-border/80 px-5 py-2.5 backdrop-blur-sm">
-        <HudPill
-          icon={<Sparkles />}
-          label="status"
-          value={scan.status === "queued" ? "Warming up" : "Building your profile"}
-        />
-        <ConnectionPill connection={connection} isDone={isDone} />
-        <LiveTicker envelopes={envelopes} connection={connection} />
+      {/* Sticky header — gradient avatar, live status line, connection pills */}
+      <div className="sticky top-0 z-20 border-b border-border/50 bg-background/85 backdrop-blur">
+        <div className="mx-auto flex max-w-[920px] items-center justify-between gap-4 px-6 py-3.5">
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--chart-1)] to-[var(--chart-2)] text-white shadow-sm">
+              <Sparkles className="size-4" />
+            </span>
+            <div className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate font-sans text-[14px] font-semibold text-foreground">
+                Building @{scan.handle}'s profile
+              </span>
+              <span className="truncate font-mono text-[11px] text-muted-foreground">
+                {currentLabel} · {percent}%
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <ConnectionPill connection={connection} isDone={isDone} />
+            <LiveTicker envelopes={envelopes} connection={connection} />
+          </div>
+        </div>
+        {/* Thin progress bar across the whole header */}
+        <div className="relative h-[2px] w-full bg-border/30">
+          <div
+            className="absolute inset-y-0 left-0 bg-gradient-to-r from-[var(--chart-1)] to-[var(--chart-2)] transition-[width] duration-700 ease-out"
+            style={{ width: `${percent}%` }}
+          />
+        </div>
       </div>
 
-      <div className="gs-pane-scroll relative flex-1 overflow-y-auto px-5 py-5">
-        <AgentProgress
-          envelopes={envelopes}
-          terminalLines={terminalLines}
-          planStreaming
-          phaseSeed={{
-            currentPhase: scan.current_phase,
-            lastCompletedPhase: scan.last_completed_phase,
-          }}
-        />
+      <div className="gs-pane-scroll relative flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-[920px] px-6 py-6">
+          <AgentProgress
+            envelopes={envelopes}
+            terminalLines={terminalLines}
+            planStreaming
+            phaseSeed={{
+              currentPhase: scan.current_phase,
+              lastCompletedPhase: scan.last_completed_phase,
+            }}
+          />
+        </div>
       </div>
     </div>
   );
@@ -237,28 +281,40 @@ function SucceededView({
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-[#FAFAF7]">
       {/* Header bar — sticky, above the artifact */}
-      <div className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b border-border/40 bg-[#FAFAF7]/90 px-5 py-3 backdrop-blur">
-        <div className="flex items-center gap-3">
-          <span className="font-sans text-[13px] font-semibold text-foreground">
-            your profile · @{card.handle}
-          </span>
-          {scan.hiring_verdict && (
-            <span className="font-mono text-[10px] uppercase tracking-wider text-slate-600">
-              reviewer · {scan.hiring_verdict} {scan.hiring_score ?? "—"}/100
+      <div className="sticky top-0 z-30 border-b border-slate-200/80 bg-[#FAFAF7]/95 backdrop-blur-md">
+        <div className="mx-auto flex max-w-[920px] items-center justify-between gap-3 px-6 py-3.5">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 font-mono text-[11px] font-bold text-white">
+              {card.handle.slice(0, 2).toUpperCase()}
             </span>
-          )}
-          {editable && (
-            <span className="font-mono text-[10px] text-slate-500">
-              · click anything to edit
-            </span>
-          )}
+            <div className="flex min-w-0 flex-col leading-tight">
+              <span className="truncate font-sans text-[13.5px] font-semibold text-slate-900">
+                @{card.handle}'s profile
+              </span>
+              <div className="flex items-center gap-2 font-mono text-[10px] text-slate-500">
+                {scan.hiring_verdict && (
+                  <span className="uppercase tracking-wider">
+                    reviewer · {scan.hiring_verdict} {scan.hiring_score ?? "—"}/100
+                  </span>
+                )}
+                {editable && (
+                  <>
+                    {scan.hiring_verdict && <span className="text-slate-300">·</span>}
+                    <span className="inline-flex items-center gap-1 text-slate-600">
+                      <Pencil className="size-2.5" /> click anything to edit
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          <PublishControl
+            scanId={scan.id}
+            handle={card.handle}
+            isPublished={isPublished ?? false}
+            onPublishedChange={onPublishedChange}
+          />
         </div>
-        <PublishControl
-          scanId={scan.id}
-          handle={card.handle}
-          isPublished={isPublished ?? false}
-          onPublishedChange={onPublishedChange}
-        />
       </div>
 
       {/* Card scroll container */}
@@ -376,28 +432,42 @@ function PublishControl({
         type="button"
         onClick={publish}
         disabled={busy}
-        className="inline-flex items-center gap-1.5 rounded-md bg-[#0F172A] px-3 py-1.5 font-mono text-[11px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+        className="group inline-flex shrink-0 items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 font-sans text-[13px] font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-px hover:bg-slate-800 hover:shadow-md active:translate-y-0 disabled:opacity-60 disabled:hover:translate-y-0"
       >
-        {busy ? "Publishing…" : "Publish"}
+        {busy ? (
+          <>
+            <span className="inline-block size-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+            <span>Publishing…</span>
+          </>
+        ) : (
+          <>
+            <Sparkles className="size-3.5 transition-transform group-hover:rotate-12" />
+            <span>Publish</span>
+          </>
+        )}
       </button>
     );
   }
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex shrink-0 items-center gap-2">
       <a
         href={`/${handle}`}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600/10 px-3 py-1.5 font-mono text-[11px] font-medium text-emerald-700 transition-colors hover:bg-emerald-600/15"
+        className="group inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 font-mono text-[11px] font-medium text-emerald-800 transition-colors hover:border-emerald-300 hover:bg-emerald-100"
       >
-        Published · gitshow.io/{handle} ↗
+        <Check className="size-3.5 text-emerald-600" />
+        <span>
+          gitshow.io/<span className="font-semibold">{handle}</span>
+        </span>
+        <ExternalLink className="size-3 text-emerald-600/70 transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
       </a>
       <button
         type="button"
         onClick={unpublish}
         disabled={busy}
-        className="font-mono text-[10px] text-slate-500 underline-offset-2 hover:text-slate-800 hover:underline disabled:opacity-60"
+        className="font-mono text-[10px] text-slate-500 underline-offset-2 transition-colors hover:text-slate-900 hover:underline disabled:opacity-60"
       >
         {busy ? "…" : "Unpublish"}
       </button>

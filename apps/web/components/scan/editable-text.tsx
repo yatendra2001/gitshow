@@ -113,10 +113,23 @@ export function EditableText({
     return (
       <span
         className={className}
-        style={style}
+        style={{
+          ...style,
+          cursor: "text",
+          borderRadius: 6,
+          padding: "2px 4px",
+          margin: "-2px -4px",
+          transition: "background 160ms ease",
+          display: style?.display ?? "inline",
+        }}
+        onMouseEnter={(e) => {
+          (e.currentTarget as HTMLSpanElement).style.background =
+            "rgba(59, 130, 246, 0.08)";
+        }}
+        onMouseLeave={(e) => {
+          (e.currentTarget as HTMLSpanElement).style.background = "transparent";
+        }}
         onClick={(e) => {
-          // Don't hijack clicks on anchors/buttons inside children —
-          // evidence receipts and external links must still work.
           const t = e.target as HTMLElement;
           if (t.closest("a,button")) return;
           e.stopPropagation();
