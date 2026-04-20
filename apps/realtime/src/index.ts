@@ -52,7 +52,12 @@ interface Env {
   PIPELINE_SHARED_SECRET: string;
 }
 
-const RING_MAX_EVENTS = 200;
+// Ring-buffer tail we keep in DO storage per scan. Set high enough
+// that a typical full scan (~3k structured events) can be replayed
+// without falling back to D1, but not so high that per-scan storage
+// balloons. Clients that fall outside the ring get the `gap` frame
+// and paginate D1 on the web side.
+const RING_MAX_EVENTS = 4000;
 const RING_KEY = "ring";
 const SEQ_KEY = "seq";
 const PING_INTERVAL_MS = 20_000;

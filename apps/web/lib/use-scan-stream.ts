@@ -55,6 +55,10 @@ const PING_TIMEOUT_MS = 45_000;
 const RECONNECT_MIN_MS = 1_000;
 const RECONNECT_MAX_MS = 30_000;
 const LOST_CONNECTION_MS = 30_000;
+/** D1 backfill page size. Route caps at 500; this stays under that. */
+const BACKFILL_PAGE_LIMIT = 500;
+/** Safety cap on total backfill pages per gap fill, to avoid runaways. */
+const BACKFILL_MAX_PAGES = 40;
 
 export function useScanStream({
   scanId,
@@ -68,6 +72,13 @@ export function useScanStream({
 
   const seenIds = useRef<Set<number>>(new Set());
   const lastSeqRef = useRef(0);
+  /**
+   * Snapshot of `lastSeqRef` at the moment each WS connection opens.
+   * Used to compute gap ranges correctly — we can't read `lastSeqRef`
+   * after the hello arrives because its backlog has already advanced
+   * the pointer past the gap we're trying to fill.
+   */
+  const preWsSeqRef = useRef(0);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -102,28 +113,78 @@ export function useScanStream({
     [ingestEnvelope],
   );
 
-  // ── HTTP one-shot backfill (initial + gap plug) ───────────────────
-  const fetchBackfill = useCallback(
-    async (since: number, until?: number): Promise<boolean> => {
+  // ── HTTP backfill ─────────────────────────────────────────────────
+  //
+  // One D1 call. Returns the events it got (caller decides what to do
+  // with them) and the scan's terminal flag. `ingestMany` is applied
+  // here so pagination logic can just inspect event counts.
+  const fetchBackfillPage = useCallback(
+    async (
+      since: number,
+      until?: number,
+      limit = BACKFILL_PAGE_LIMIT,
+    ): Promise<{ count: number; lastId: number; terminal: boolean } | null> => {
       try {
-        const qs = new URLSearchParams({ since: String(since) });
+        const qs = new URLSearchParams({
+          since: String(since),
+          limit: String(limit),
+        });
         if (until !== undefined) qs.set("until", String(until));
         const resp = await fetch(
           `/api/scan/${encodeURIComponent(scanId)}/events?${qs.toString()}`,
           { cache: "no-store" },
         );
-        if (!resp.ok) return false;
+        if (!resp.ok) return null;
         const data = (await resp.json()) as {
           events: ScanEventEnvelope[];
           terminal: boolean;
         };
-        ingestMany(data.events ?? []);
-        return data.terminal;
+        const events = data.events ?? [];
+        if (events.length > 0) ingestMany(events);
+        return {
+          count: events.length,
+          lastId: events.length > 0 ? events[events.length - 1].id : since,
+          terminal: data.terminal,
+        };
       } catch {
-        return false;
+        return null;
       }
     },
     [scanId, ingestMany],
+  );
+
+  /**
+   * Paginate D1 backfill over `(since, untilInclusive]`. Keeps calling
+   * fetchBackfillPage, advancing `since` to the last id we got, until
+   * either the range is covered, a page returns short (DB exhausted),
+   * or the safety cap trips.
+   *
+   * Exists because a full scan emits ~3000 structured events — more
+   * than one page of 500 can carry. The old one-shot backfill lost
+   * every event past the first page, which is why the phase list
+   * showed an empty run of pending rows ending in a lone completed
+   * phase once the realtime WS started delivering tail events.
+   */
+  const paginateBackfill = useCallback(
+    async (
+      sinceExclusive: number,
+      untilInclusive?: number,
+    ): Promise<boolean> => {
+      let cursor = sinceExclusive;
+      let terminal = false;
+      for (let page = 0; page < BACKFILL_MAX_PAGES; page++) {
+        if (untilInclusive !== undefined && cursor >= untilInclusive) break;
+        const result = await fetchBackfillPage(cursor, untilInclusive);
+        if (!result) break;
+        terminal = result.terminal;
+        if (result.count === 0) break;
+        if (result.lastId <= cursor) break;
+        cursor = result.lastId;
+        if (result.count < BACKFILL_PAGE_LIMIT) break;
+      }
+      return terminal;
+    },
+    [fetchBackfillPage],
   );
 
   // ── Keepalive watchdog ────────────────────────────────────────────
@@ -185,6 +246,11 @@ export function useScanStream({
       clearLostTimer();
       armPingWatchdog();
 
+      // Snapshot where we were BEFORE hello's backlog advances
+      // lastSeqRef. Hello + gap frame handlers use this to compute
+      // the missing-range correctly.
+      preWsSeqRef.current = lastSeqRef.current;
+
       // Ask the DO to resume from our last known seq. On the first
       // connection this is 0, which means "send the whole ring."
       // After a reconnect it's the highest id we've already seen.
@@ -216,8 +282,30 @@ export function useScanStream({
       switch ((frame as { kind?: string }).kind) {
         case "hello": {
           const hello = frame as Extract<ServerFrame, { kind: "hello" }>;
-          if (Array.isArray(hello.backlog)) {
-            ingestMany(hello.backlog);
+          const backlog = Array.isArray(hello.backlog) ? hello.backlog : [];
+          // If the DO's ring starts newer than what we already have,
+          // there's a hole between `preWsSeqRef` and the first backlog
+          // id. Fill it from D1 first — otherwise the UI renders an
+          // empty run of phases terminating in a lone "done" row,
+          // because only the tail of the scan made it into the ring.
+          if (backlog.length > 0) {
+            const oldestInBacklog = backlog[0].id;
+            const expectedNext = preWsSeqRef.current + 1;
+            if (
+              oldestInBacklog > expectedNext &&
+              !gapPluggingRef.current
+            ) {
+              gapPluggingRef.current = true;
+              try {
+                await paginateBackfill(
+                  preWsSeqRef.current,
+                  oldestInBacklog - 1,
+                );
+              } finally {
+                gapPluggingRef.current = false;
+              }
+            }
+            ingestMany(backlog);
           }
           armPingWatchdog();
           break;
@@ -240,7 +328,10 @@ export function useScanStream({
           gapPluggingRef.current = true;
           const { oldest_seq } = frame as Extract<ServerFrame, { kind: "gap" }>;
           try {
-            await fetchBackfill(lastSeqRef.current, oldest_seq - 1);
+            // Use the pre-WS seq. `lastSeqRef` has been advanced by
+            // hello's backlog and can sit past `oldest_seq`, which
+            // would produce an empty SQL range (since > until).
+            await paginateBackfill(preWsSeqRef.current, oldest_seq - 1);
           } finally {
             gapPluggingRef.current = false;
           }
@@ -284,7 +375,7 @@ export function useScanStream({
     scanId,
     ingestEnvelope,
     ingestMany,
-    fetchBackfill,
+    paginateBackfill,
     armPingWatchdog,
     armLostTimer,
     clearLostTimer,
@@ -310,12 +401,17 @@ export function useScanStream({
     closedRef.current = false;
     setConnection("idle");
 
-    // 1. Initial backfill — catches everything that happened before we
-    //    got here. The WS's `hello` will probably duplicate some, but
-    //    we dedupe by envelope id.
-    void fetchBackfill(0).then((terminal) => {
+    // 1. Initial backfill — paginate until we've caught up to the DB
+    //    head OR hit a terminal. The WS's `hello` will probably
+    //    duplicate some of the tail; `seenIds` dedupes.
+    //
+    //    A single page of 500 is not enough for a full scan, which
+    //    emits ~3000 structured events. The old one-shot code left
+    //    the UI without stage-starts for everything that rolled off
+    //    the DO ring — phases appeared pending even as the scan
+    //    finished around them.
+    void paginateBackfill(0).then((terminal) => {
       if (terminal) {
-        // Scan already reached a terminal state; skip WS entirely.
         setIsDone(true);
         return;
       }
@@ -334,7 +430,7 @@ export function useScanStream({
       }
       wsRef.current = null;
     };
-  }, [disabled, fetchBackfill, openWebSocket]);
+  }, [disabled, paginateBackfill, openWebSocket]);
 
   return {
     envelopes,
