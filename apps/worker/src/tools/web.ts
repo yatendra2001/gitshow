@@ -118,28 +118,30 @@ async function browseWeb(url: string, ctx: ToolContext): Promise<string> {
     return formatBrowseResult(url, cached, { cached: true });
   }
 
-  // Try direct fetch first — cheapest path, works for static sites and
-  // JSON APIs. Falls back to Jina Reader on 403 / 429 / 5xx / abort,
-  // which lets us get past most bot-protection (LinkedIn public URLs,
-  // Cloudflare-fronted blogs, SPA sites that need JS rendering).
-  const direct = await fetchDirect(url);
-  if (direct.kind === "ok") {
-    const trimmed = direct.text.slice(0, 40_000);
-    await writeFile(cachePath, trimmed, "utf-8");
-    ensureSinkArtifact(ctx, id, url, trimmed);
-    return formatBrowseResult(url, trimmed, { cached: false });
-  }
-
+  // Jina Reader is the default: it renders JS, strips chrome, returns
+  // clean markdown, and gets past most bot-protection that blocks a
+  // raw fetch (LinkedIn public pages, Cloudflare-fronted blogs, SPA
+  // sites). Direct is the fallback for the rare case Jina rate-limits
+  // or is down — it also covers static sites where Jina adds latency
+  // without winning on quality.
   const jina = await fetchJina(url);
   if (jina.kind === "ok") {
     const trimmed = jina.text.slice(0, 40_000);
     await writeFile(cachePath, trimmed, "utf-8");
     ensureSinkArtifact(ctx, id, url, trimmed);
-    ctx.log(`[web] jina-reader rescued ${url} (direct: ${direct.reason})\n`);
     return formatBrowseResult(url, trimmed, { cached: false });
   }
 
-  return `[error] failed to fetch ${url}: direct=${direct.reason}; jina=${jina.reason}. Skip or try a different URL.`;
+  const direct = await fetchDirect(url);
+  if (direct.kind === "ok") {
+    const trimmed = direct.text.slice(0, 40_000);
+    await writeFile(cachePath, trimmed, "utf-8");
+    ensureSinkArtifact(ctx, id, url, trimmed);
+    ctx.log(`[web] direct-fetch rescued ${url} (jina: ${jina.reason})\n`);
+    return formatBrowseResult(url, trimmed, { cached: false });
+  }
+
+  return `[error] failed to fetch ${url}: jina=${jina.reason}; direct=${direct.reason}. Skip or try a different URL.`;
 }
 
 type FetchOutcome =
