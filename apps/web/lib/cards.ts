@@ -39,14 +39,17 @@ export async function getScanCard(
 }
 
 /**
- * Overlay user-edited claim text onto a card. The R2 `14-card.json`
- * is frozen at scan completion; every post-scan edit lives in the D1
- * `claims` table with status=user_edited. Merging at read time means
- * we don't have to re-emit the R2 card on every edit — the card in
- * R2 stays the snapshot, D1 is the current truth.
+ * Reconcile a card against the live D1 `claims` table.
  *
- * Mutates nothing; returns a new card with the text swapped where an
- * edit exists.
+ *   - user_edited  → swap the text onto the card
+ *   - hard-deleted → drop the claim from the card entirely
+ *
+ * The R2 `14-card.json` is frozen at scan completion; D1 is the
+ * current source of truth for what the user wants to keep. Merging
+ * at read time means we don't have to re-emit the R2 card on every
+ * edit or delete.
+ *
+ * Mutates nothing; returns a new card.
  */
 export async function mergeUserEdits(
   card: ProfileCard,
@@ -55,26 +58,41 @@ export async function mergeUserEdits(
 ): Promise<ProfileCard> {
   try {
     const resp = await db
-      .prepare(
-        `SELECT id, text FROM claims
-           WHERE scan_id = ? AND status = 'user_edited'`,
-      )
+      .prepare(`SELECT id, text, status FROM claims WHERE scan_id = ?`)
       .bind(scanId)
-      .all<{ id: string; text: string }>();
-    const edits = new Map<string, string>();
+      .all<{ id: string; text: string; status: string }>();
+    const live = new Map<string, { text: string; status: string }>();
     for (const row of resp.results ?? []) {
-      edits.set(row.id, row.text);
+      live.set(row.id, { text: row.text, status: row.status });
     }
-    if (edits.size === 0) return card;
-    const swap = (c: ProfileCard["hook"]) =>
-      c && edits.has(c.id) ? { ...c, text: edits.get(c.id)! } : c;
+    // If D1 has no rows at all (very old scan pre-dating the claims
+    // upsert), fall back to the card as-is so the user doesn't see a
+    // nuked profile.
+    if (live.size === 0) return card;
+
+    const applyEdit = (c: ProfileCard["hook"]) => {
+      if (!c) return c;
+      const row = live.get(c.id);
+      if (!row) return null; // deleted from D1 → drop
+      if (row.status === "user_edited") {
+        return { ...c, text: row.text };
+      }
+      return c;
+    };
+    const filterList = <T extends { id: string }>(
+      list: T[],
+    ): T[] =>
+      list
+        .map((c) => applyEdit(c as unknown as ProfileCard["hook"]) as T | null)
+        .filter((c): c is T => c !== null);
+
     return {
       ...card,
-      hook: swap(card.hook),
-      numbers: card.numbers.map((n) => swap(n)!),
-      patterns: card.patterns.map((p) => swap(p)!),
-      shipped: card.shipped.map((s) => swap(s)!),
-      disclosure: swap(card.disclosure),
+      hook: applyEdit(card.hook) ?? null,
+      numbers: filterList(card.numbers),
+      patterns: filterList(card.patterns),
+      shipped: filterList(card.shipped),
+      disclosure: applyEdit(card.disclosure) ?? null,
     };
   } catch {
     return card;

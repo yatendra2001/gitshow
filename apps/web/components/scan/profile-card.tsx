@@ -637,12 +637,14 @@ export interface ProfileCardViewProps {
   /** Highlight a claim as the active revise target. */
   highlightClaimId?: string | null;
   /**
-   * When true, every visible claim text becomes click-to-edit. The
-   * caller passes an onClaimEdited callback so local state can be
-   * refreshed after a successful PATCH /api/claims/:id.
+   * When true, every visible claim text becomes click-to-edit and
+   * each removable claim gets a small delete affordance. The caller
+   * passes onClaimEdited / onClaimRemoved callbacks so local state
+   * can be refreshed after a successful PATCH/DELETE.
    */
   editable?: boolean;
   onClaimEdited?: (claimId: string, nextText: string) => void;
+  onClaimRemoved?: (claimId: string) => void;
 }
 
 export function ProfileCardView({
@@ -652,6 +654,7 @@ export function ProfileCardView({
   highlightClaimId,
   editable = false,
   onClaimEdited,
+  onClaimRemoved,
 }: ProfileCardViewProps) {
   const av = useMemo(
     () => card.handle.slice(0, 2).toUpperCase(),
@@ -758,6 +761,7 @@ export function ProfileCardView({
           highlightClaimId={highlightClaimId}
           editable={editable}
           onClaimEdited={onClaimEdited}
+          onClaimRemoved={onClaimRemoved}
         />
 
         {/* CAREER ARC */}
@@ -933,6 +937,7 @@ export function ProfileCardView({
                   highlighted={p.id === highlightClaimId}
                   editable={editable}
                   onClaimEdited={onClaimEdited}
+                  onClaimRemoved={onClaimRemoved}
                 />
               ))}
             </div>
@@ -947,6 +952,7 @@ export function ProfileCardView({
             highlightClaimId={highlightClaimId}
             editable={editable}
             onClaimEdited={onClaimEdited}
+            onClaimRemoved={onClaimRemoved}
           />
         )}
 
@@ -958,6 +964,7 @@ export function ProfileCardView({
             highlightClaimId={highlightClaimId}
             editable={editable}
             onClaimEdited={onClaimEdited}
+            onClaimRemoved={onClaimRemoved}
           />
         )}
 
@@ -995,6 +1002,88 @@ export function ProfileCardView({
 }
 
 // ─── Subcomponents ─────────────────────────────────────────────────
+
+/**
+ * Small × button rendered in the top-right of an editable card.
+ * Fires DELETE /api/claims/:id after a confirm. On success the
+ * onRemoved callback drops the claim from local state.
+ */
+function RemoveButton({
+  claimId,
+  label,
+  onRemoved,
+  floating = true,
+}: {
+  claimId: string;
+  /** Short noun describing what gets removed — used in confirm dialog. */
+  label: string;
+  onRemoved: (id: string) => void;
+  /** Absolute-position it in the top-right corner of the parent. */
+  floating?: boolean;
+}) {
+  const [busy, setBusy] = useState(false);
+  const onClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (busy) return;
+    if (!confirm(`Remove ${label}? You can regenerate with a refresh scan.`)) {
+      return;
+    }
+    setBusy(true);
+    try {
+      const resp = await fetch(`/api/claims/${encodeURIComponent(claimId)}`, {
+        method: "DELETE",
+      });
+      if (!resp.ok) {
+        const body = await resp.text();
+        throw new Error(body.slice(0, 160) || `HTTP ${resp.status}`);
+      }
+      onRemoved(claimId);
+    } catch (err) {
+      alert(`Remove failed: ${err instanceof Error ? err.message : err}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={busy}
+      aria-label={`Remove ${label}`}
+      title={`Remove ${label}`}
+      style={{
+        position: floating ? "absolute" : "static",
+        top: floating ? 8 : undefined,
+        right: floating ? 8 : undefined,
+        width: 22,
+        height: 22,
+        borderRadius: 6,
+        border: "none",
+        background: "transparent",
+        color: T.mu,
+        cursor: busy ? "default" : "pointer",
+        fontSize: 14,
+        lineHeight: 1,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        transition: "background 140ms ease, color 140ms ease",
+        opacity: busy ? 0.5 : 1,
+      }}
+      onMouseEnter={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.background =
+          "rgba(239, 68, 68, 0.08)";
+        (e.currentTarget as HTMLButtonElement).style.color = "#EF4444";
+      }}
+      onMouseLeave={(e) => {
+        (e.currentTarget as HTMLButtonElement).style.background = "transparent";
+        (e.currentTarget as HTMLButtonElement).style.color = T.mu;
+      }}
+    >
+      ×
+    </button>
+  );
+}
 
 function HeroSection({
   card,
@@ -1150,12 +1239,14 @@ function NumbersSection({
   highlightClaimId,
   editable,
   onClaimEdited,
+  onClaimRemoved,
 }: {
   card: ProfileCard;
   onClaimClick?: ProfileCardViewProps["onClaimClick"];
   highlightClaimId?: string | null;
   editable?: boolean;
   onClaimEdited?: (id: string, next: string) => void;
+  onClaimRemoved?: (id: string) => void;
 }) {
   if (card.numbers.length === 0) return null;
   return (
@@ -1173,17 +1264,25 @@ function NumbersSection({
           return (
             <div
               key={n.id}
-              onClick={() => onClaimClick?.(n.id, n.beat)}
+              onClick={() => !editable && onClaimClick?.(n.id, n.beat)}
               style={{
+                position: "relative",
                 padding: "18px 18px",
                 borderRadius: 12,
                 background: T.card,
                 border: `1px solid ${T.border}`,
-                cursor: onClaimClick ? "pointer" : "default",
+                cursor: !editable && onClaimClick ? "pointer" : "default",
                 outline: highlight ? `2px solid ${C[1]}` : "none",
                 outlineOffset: 2,
               }}
             >
+              {editable && onClaimRemoved && (
+                <RemoveButton
+                  claimId={n.id}
+                  label={`the "${n.label ?? "number"}" tile`}
+                  onRemoved={onClaimRemoved}
+                />
+              )}
               <div
                 style={{
                   display: "flex",
@@ -1253,24 +1352,24 @@ function PatternCard({
   highlighted,
   editable,
   onClaimEdited,
+  onClaimRemoved,
 }: {
   claim: CardClaim;
   onClick?: ProfileCardViewProps["onClaimClick"];
   highlighted: boolean;
   editable?: boolean;
   onClaimEdited?: (id: string, next: string) => void;
+  onClaimRemoved?: (id: string) => void;
 }) {
   const url = firstEvidenceUrl(claim);
   const [expanded, setExpanded] = useState(false);
   const CLAMP_LINES = 2;
-  // Rough char heuristic so we only show the "read more" affordance when
-  // the text actually overflows 2 lines. At ~50 chars/line at 12.5px
-  // this is a conservative threshold.
   const isLong = claim.text.length > 140;
 
   return (
     <div
       style={{
+        position: "relative",
         padding: "18px 22px",
         borderRadius: 12,
         background: T.card,
@@ -1279,6 +1378,13 @@ function PatternCard({
         outlineOffset: 2,
       }}
     >
+      {editable && onClaimRemoved && (
+        <RemoveButton
+          claimId={claim.id}
+          label="this pattern"
+          onRemoved={onClaimRemoved}
+        />
+      )}
       {claim.label && (
         <div
           style={{
@@ -1401,12 +1507,14 @@ function ShippedSection({
   highlightClaimId,
   editable,
   onClaimEdited,
+  onClaimRemoved,
 }: {
   shipped: CardClaim[];
   onClaimClick?: ProfileCardViewProps["onClaimClick"];
   highlightClaimId?: string | null;
   editable?: boolean;
   onClaimEdited?: (id: string, next: string) => void;
+  onClaimRemoved?: (id: string) => void;
 }) {
   const MAX_COMPACT = 4;
   const [expanded, setExpanded] = useState(false);
@@ -1425,6 +1533,7 @@ function ShippedSection({
             highlighted={s.id === highlightClaimId}
             editable={editable}
             onClaimEdited={onClaimEdited}
+            onClaimRemoved={onClaimRemoved}
           />
         ))}
       </div>
@@ -1459,12 +1568,14 @@ function DisclosureSection({
   highlightClaimId,
   editable,
   onClaimEdited,
+  onClaimRemoved,
 }: {
   disclosure: CardClaim;
   onClaimClick?: ProfileCardViewProps["onClaimClick"];
   highlightClaimId?: string | null;
   editable?: boolean;
   onClaimEdited?: (id: string, next: string) => void;
+  onClaimRemoved?: (id: string) => void;
 }) {
   return (
     <section style={{ marginBottom: 36 }}>
@@ -1474,6 +1585,7 @@ function DisclosureSection({
           !editable && onClaimClick?.(disclosure.id, disclosure.beat)
         }
         style={{
+          position: "relative",
           padding: "22px 26px",
           borderRadius: 12,
           background: "#FDFBF5",
@@ -1485,6 +1597,13 @@ function DisclosureSection({
           outlineOffset: 2,
         }}
       >
+        {editable && onClaimRemoved && (
+          <RemoveButton
+            claimId={disclosure.id}
+            label="the next-chapter section"
+            onRemoved={onClaimRemoved}
+          />
+        )}
         {disclosure.label && (
           <h3
             style={{
@@ -1544,17 +1663,20 @@ function ShippedRow({
   highlighted,
   editable,
   onClaimEdited,
+  onClaimRemoved,
 }: {
   claim: CardClaim;
   onClick?: ProfileCardViewProps["onClaimClick"];
   highlighted: boolean;
   editable?: boolean;
   onClaimEdited?: (id: string, next: string) => void;
+  onClaimRemoved?: (id: string) => void;
 }) {
   return (
     <div
       onClick={() => !editable && onClick?.(claim.id, claim.beat)}
       style={{
+        position: "relative",
         padding: "14px 18px",
         borderRadius: 10,
         background: T.card,
@@ -1568,6 +1690,13 @@ function ShippedRow({
         outlineOffset: 2,
       }}
     >
+      {editable && onClaimRemoved && (
+        <RemoveButton
+          claimId={claim.id}
+          label={`${claim.label ?? "this project"}`}
+          onRemoved={onClaimRemoved}
+        />
+      )}
       <div>
         <div
           style={{

@@ -31,6 +31,7 @@ export function ProgressPane({
   isDone = false,
   editable = false,
   onClaimEdited,
+  onClaimRemoved,
   isPublished = false,
   onPublishedChange,
 }: {
@@ -45,6 +46,7 @@ export function ProgressPane({
   isDone?: boolean;
   editable?: boolean;
   onClaimEdited?: (claimId: string, nextText: string) => void;
+  onClaimRemoved?: (claimId: string) => void;
   isPublished?: boolean;
   onPublishedChange?: (next: boolean) => void;
 }) {
@@ -73,6 +75,7 @@ export function ProgressPane({
         terminalLines={terminalLines}
         editable={editable}
         onClaimEdited={onClaimEdited}
+        onClaimRemoved={onClaimRemoved}
         isPublished={isPublished}
         onPublishedChange={onPublishedChange}
       />
@@ -262,10 +265,9 @@ function SucceededView({
   card,
   highlightClaimId,
   onClaimClick,
-  envelopes,
-  terminalLines,
   editable,
   onClaimEdited,
+  onClaimRemoved,
   isPublished,
   onPublishedChange,
 }: {
@@ -277,12 +279,10 @@ function SucceededView({
   terminalLines: string[];
   editable?: boolean;
   onClaimEdited?: (claimId: string, nextText: string) => void;
+  onClaimRemoved?: (claimId: string) => void;
   isPublished?: boolean;
   onPublishedChange?: (next: boolean) => void;
 }) {
-  const [showProgress, setShowProgress] = React.useState(false);
-  const hasProgress = envelopes.length > 0;
-
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-[#FAFAF7]">
       {/* Header bar — sticky, above the artifact */}
@@ -322,7 +322,10 @@ function SucceededView({
         </div>
       </div>
 
-      {/* Card scroll container */}
+      {/* Card scroll container — scan history intentionally removed
+          from the finished profile. The rendered profile should read
+          as a final document; process details live on /app under
+          "See scan details" for anyone who wants them. */}
       <div className="flex-1 overflow-y-auto">
         <ProfileCardView
           card={card}
@@ -331,41 +334,8 @@ function SucceededView({
           highlightClaimId={highlightClaimId}
           editable={editable}
           onClaimEdited={onClaimEdited}
+          onClaimRemoved={onClaimRemoved}
         />
-        {hasProgress ? (
-          <div className="mx-auto max-w-[880px] px-7 pb-24">
-            <div className="mt-4 rounded-xl border border-slate-200 bg-white/60 p-4">
-              <button
-                type="button"
-                onClick={() => setShowProgress((v) => !v)}
-                className="group flex w-full items-center gap-2 text-left"
-                aria-expanded={showProgress}
-              >
-                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-slate-700 group-hover:text-slate-900">
-                  {showProgress ? "Hide" : "Show"} scan history
-                </span>
-                <span className="font-mono text-[11px] text-slate-500">
-                  · {envelopes.length} events
-                </span>
-                <span
-                  className={`ml-auto font-mono text-[11px] text-slate-500 transition-transform duration-200 ${
-                    showProgress ? "rotate-90" : ""
-                  }`}
-                >
-                  ▸
-                </span>
-              </button>
-              {showProgress ? (
-                <div className="mt-4 rounded-lg bg-[#0F172A] p-4 text-slate-100">
-                  <AgentProgress
-                    envelopes={envelopes}
-                    terminalLines={terminalLines}
-                  />
-                </div>
-              ) : null}
-            </div>
-          </div>
-        ) : null}
       </div>
     </div>
   );
