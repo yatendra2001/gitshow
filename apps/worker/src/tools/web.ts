@@ -118,38 +118,87 @@ async function browseWeb(url: string, ctx: ToolContext): Promise<string> {
     return formatBrowseResult(url, cached, { cached: true });
   }
 
+  // Try direct fetch first — cheapest path, works for static sites and
+  // JSON APIs. Falls back to Jina Reader on 403 / 429 / 5xx / abort,
+  // which lets us get past most bot-protection (LinkedIn public URLs,
+  // Cloudflare-fronted blogs, SPA sites that need JS rendering).
+  const direct = await fetchDirect(url);
+  if (direct.kind === "ok") {
+    const trimmed = direct.text.slice(0, 40_000);
+    await writeFile(cachePath, trimmed, "utf-8");
+    ensureSinkArtifact(ctx, id, url, trimmed);
+    return formatBrowseResult(url, trimmed, { cached: false });
+  }
+
+  const jina = await fetchJina(url);
+  if (jina.kind === "ok") {
+    const trimmed = jina.text.slice(0, 40_000);
+    await writeFile(cachePath, trimmed, "utf-8");
+    ensureSinkArtifact(ctx, id, url, trimmed);
+    ctx.log(`[web] jina-reader rescued ${url} (direct: ${direct.reason})\n`);
+    return formatBrowseResult(url, trimmed, { cached: false });
+  }
+
+  return `[error] failed to fetch ${url}: direct=${direct.reason}; jina=${jina.reason}. Skip or try a different URL.`;
+}
+
+type FetchOutcome =
+  | { kind: "ok"; text: string }
+  | { kind: "err"; reason: string };
+
+async function fetchDirect(url: string): Promise<FetchOutcome> {
   try {
     const res = await fetch(url, {
       redirect: "follow",
       headers: {
         "User-Agent": "GitShow/0.2 (+https://github.com/yatendrakumar/gitshow)",
-        "Accept": "text/html,application/xhtml+xml,application/json;q=0.9,text/plain;q=0.8",
+        Accept:
+          "text/html,application/xhtml+xml,application/json;q=0.9,text/plain;q=0.8",
       },
       signal: AbortSignal.timeout(20_000),
     });
-
     if (!res.ok) {
-      return `[error] ${url} returned HTTP ${res.status} ${res.statusText}. Try a different URL or skip.`;
+      return { kind: "err", reason: `HTTP ${res.status}` };
     }
-
     const contentType = res.headers.get("content-type") ?? "";
-    let text: string;
-
     if (contentType.includes("application/json")) {
       const json = await res.json();
-      text = JSON.stringify(json, null, 2);
-    } else {
-      const html = await res.text();
-      text = htmlToText(html);
+      return { kind: "ok", text: JSON.stringify(json, null, 2) };
     }
-
-    const trimmed = text.slice(0, 40_000);
-    await writeFile(cachePath, trimmed, "utf-8");
-    ensureSinkArtifact(ctx, id, url, trimmed);
-    return formatBrowseResult(url, trimmed, { cached: false });
+    const html = await res.text();
+    return { kind: "ok", text: htmlToText(html) };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    return `[error] failed to fetch ${url}: ${msg.slice(0, 200)}. Try a different URL or skip.`;
+    return { kind: "err", reason: msg.slice(0, 120) };
+  }
+}
+
+/**
+ * Jina Reader — free anonymous endpoint that fetches a URL, renders JS
+ * if needed, and returns clean markdown. Handles most bot-protected
+ * sites (LinkedIn public pages, Cloudflare-fronted blogs) that refuse
+ * our direct fetch. No API key; rate-limited, which is fine for our
+ * per-worker budgets.
+ *
+ * Docs: https://jina.ai/reader
+ */
+async function fetchJina(url: string): Promise<FetchOutcome> {
+  try {
+    const res = await fetch(`https://r.jina.ai/${url}`, {
+      redirect: "follow",
+      headers: {
+        Accept: "text/plain",
+        "User-Agent": "GitShow/0.2 (+https://github.com/yatendrakumar/gitshow)",
+      },
+      signal: AbortSignal.timeout(30_000),
+    });
+    if (!res.ok) return { kind: "err", reason: `HTTP ${res.status}` };
+    const text = await res.text();
+    if (!text.trim()) return { kind: "err", reason: "empty body" };
+    return { kind: "ok", text };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return { kind: "err", reason: msg.slice(0, 120) };
   }
 }
 
