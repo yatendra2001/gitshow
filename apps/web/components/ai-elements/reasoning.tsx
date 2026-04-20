@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import { Brain, ChevronDown } from "lucide-react";
+import { Streamdown } from "streamdown";
 import { cn } from "@/lib/utils";
 
 /**
@@ -108,7 +109,25 @@ export function Reasoning({
           <div
             className={cn(
               "gs-pane-scroll max-h-64 overflow-y-auto border-t border-border/60 px-4 py-3",
-              "font-serif text-[13.5px] leading-relaxed text-muted-foreground",
+              // Sans at [13px]/1.65 matches chatbot's reasoning rhythm —
+              // serif felt out of place for an agent scratchpad. Markdown
+              // goes through Streamdown so **bold**, lists, and code
+              // blocks render as you'd expect.
+              "font-sans text-[13px] leading-[1.65] text-foreground/85",
+              "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-[1px] [&_code]:text-[12px] [&_code]:font-mono",
+              "[&_pre]:bg-muted/60 [&_pre]:rounded-md [&_pre]:p-2 [&_pre]:text-[12px] [&_pre]:leading-relaxed [&_pre]:overflow-x-auto [&_pre]:my-2",
+              "[&_pre_code]:bg-transparent [&_pre_code]:p-0",
+              "[&_h1]:text-[15px] [&_h1]:font-semibold [&_h1]:mt-3 [&_h1]:mb-1.5",
+              "[&_h2]:text-[14px] [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1.5",
+              "[&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1",
+              "[&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1.5 [&_ul]:space-y-0.5",
+              "[&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1.5 [&_ol]:space-y-0.5",
+              "[&_li]:marker:text-muted-foreground/50",
+              "[&_p]:my-1.5 first:[&_p]:mt-0 last:[&_p]:mb-0",
+              "[&_strong]:font-semibold [&_strong]:text-foreground",
+              "[&_em]:italic",
+              "[&_a]:underline [&_a]:underline-offset-2 [&_a]:text-[var(--primary)]",
+              "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_blockquote]:my-2",
             )}
           >
             <ReasoningBody text={text} streaming={streaming} />
@@ -120,9 +139,16 @@ export function Reasoning({
 }
 
 /**
- * Splits the streamed text on whitespace and animates each new word in
- * with a gentle blur+rise. We compare against previous render to avoid
- * re-animating everything on a re-render — React key is "position".
+ * Renders the streaming text as markdown via Streamdown. Streamdown is
+ * built for append-only streams: it only re-parses the suffix that
+ * changed so rendering stays cheap as tokens arrive. Caret appears at
+ * the tail while streaming.
+ *
+ * Some upstream reasoning payloads come in as soft-wrapped lines (one
+ * word per line) when OpenRouter's SDK emits fine-grained chunks. We
+ * lightly normalize that before feeding to the parser so bullets and
+ * paragraphs stay intact — without swallowing intentional line breaks
+ * in code blocks.
  */
 function ReasoningBody({
   text,
@@ -131,21 +157,31 @@ function ReasoningBody({
   text: string;
   streaming: boolean;
 }) {
-  const words = React.useMemo(() => text.split(/(\s+)/), [text]);
+  const normalized = React.useMemo(() => normalizeReasoning(text), [text]);
   return (
-    <p className="whitespace-pre-wrap">
-      {words.map((w, i) =>
-        w.match(/^\s+$/) ? (
-          <span key={i}>{w}</span>
-        ) : (
-          <span key={i} className="gs-stream inline">
-            {w}
-          </span>
-        ),
-      )}
-      {streaming && (
+    <div className="whitespace-pre-wrap">
+      <Streamdown>{normalized}</Streamdown>
+      {streaming ? (
         <span className="gs-caret ml-[2px] inline-block h-[0.9em] w-[2px] translate-y-[2px] bg-blue-400" />
-      )}
-    </p>
+      ) : null}
+    </div>
   );
+}
+
+function normalizeReasoning(raw: string): string {
+  // Skip normalization for anything that looks like it already contains
+  // code/fenced blocks — they're intentionally line-sensitive.
+  if (raw.includes("```")) return raw;
+  // Join runs of single-word lines into flowing paragraphs. OpenRouter's
+  // streaming sometimes emits each token on its own line which the
+  // markdown parser would otherwise render as a hard-break soup.
+  return raw
+    .split(/\n{2,}/)
+    .map((para) => {
+      const lines = para.split("\n");
+      const isFragmented =
+        lines.length > 3 && lines.every((l) => l.trim().split(/\s+/).length <= 2);
+      return isFragmented ? lines.join(" ").replace(/\s+/g, " ").trim() : para;
+    })
+    .join("\n\n");
 }
