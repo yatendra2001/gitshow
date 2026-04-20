@@ -65,13 +65,20 @@ export function emitCard(input: EmitCardInput): ProfileCard {
     };
   };
 
-  // HARD GATE: block confidence=low claims from the card entirely.
-  // If the critic said it's unreliable, the UI doesn't render it. The
-  // full profile still carries them in 13-profile.json for audit / edit;
-  // they just don't leak to the frontend card. Prevents the "999 / 1,003
-  // features", "EY Scholar", and self-reported-credential class of error
-  // without any prompt changes.
-  const trustedClaims = profile.claims.filter((c) => c.confidence !== "low");
+  // HARD GATE: block confidence=low claims from the card.
+  //
+  // Exception: the HOOK claim. The hook is the hero headline — hiding
+  // it leaves the card rendering "Hook is still generating…" placeholder
+  // text (see profile-card.tsx ~L1149), which looks like the pipeline
+  // silently failed. When the critic flags the hook, the revise-loop
+  // typically regenerates it. But if the best-seen profile across revise
+  // rounds keeps the flagged hook (e.g. a later revise round regressed),
+  // we still want the user to see a hook — even a flagged one — rather
+  // than a placeholder. The UI is free to annotate low-confidence hooks
+  // visually; dropping them is never the right move.
+  const trustedClaims = profile.claims.filter(
+    (c) => c.confidence !== "low" || c.beat === "hook",
+  );
 
   // Compute which pattern claims are primary (shown in main panel) vs.
   // secondary (additional context). Caps primary at 6; selects by

@@ -107,6 +107,19 @@ export async function runAngleSelector(
 function buildInput(input: AngleSelectorInput): string {
   const parts: string[] = [renderDiscoverSummary(input.discover)];
 
+  // Intake context (employer, positioning intent) often settles which
+  // angle is dominant — "founding engineer at X" almost always points
+  // at OPERATOR_DENSITY or CREDENTIAL_ANCHOR, but without the note the
+  // selector only sees public GitHub and may pick a weaker angle.
+  if (input.session.context_notes) {
+    parts.push(
+      ``,
+      `## Context the user gave at intake`,
+      input.session.context_notes,
+      ``,
+    );
+  }
+
   if (input.reviseInstruction && input.priorAngle) {
     parts.push(
       `## Revision (the hook picked under a prior angle was flagged)`,

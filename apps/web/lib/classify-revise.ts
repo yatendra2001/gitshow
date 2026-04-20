@@ -64,6 +64,18 @@ const SCOPE_ALL_RE =
 const QUALITY_RE =
   /\b(too (long|much text|many)|concise|shorter|trim|tight(er|en)?|bulky?|bold|formatting|rewrite|redo|better|clean(er)?|crisp(er)?|punchy|boring|bad|weak|verbose|fewer|less)\b/i;
 
+/**
+ * Generic feedback signals: "feels wrong", "fix this", "doesn't mention X",
+ * "add my employer", "missing Y". These don't point at a specific beat —
+ * the user's giving correction-style feedback about the overall profile.
+ * Route to the hook (the hero line) with the full guidance attached; the
+ * hook-writer is the agent best positioned to weave a correction into
+ * the most visible surface. Better than punting with "I can't tell what
+ * you meant" — punting makes the user feel the system is broken.
+ */
+const FEEDBACK_RE =
+  /\b(wrong|incorrect|missing|mention|include|add|doesn'?t (?:say|mention|include)|feels (?:off|wrong|weird)|fix|off|work(?:s|ed|ing)? at|employer|company|job|role)\b/i;
+
 export type ClassificationResult =
   | { ok: true; dispatches: ClassifiedDispatch[] }
   | { ok: false; error: ClassifiedError };
@@ -135,8 +147,19 @@ export function classifyRevise(
     return notRevisable(unsupportedHits[0]!);
   }
 
-  // 4) Nothing matched — DO NOT silently default. Ask the user what
-  //    they meant.
+  // 4) Generic feedback with no specific beat. The message reads like
+  //    correction ("missing X", "feels wrong", "doesn't mention Y") —
+  //    route to hook with the full guidance attached. Hook regen is the
+  //    most visible fix and the writer is best at weaving corrections
+  //    into the opener. Only trigger when there's actually a feedback
+  //    signal; truly unrelated messages still fall through to "no match".
+  if (FEEDBACK_RE.test(guidance)) {
+    const d = makeDispatch("hook", card, guidance, "feedback → hook");
+    if (d) return { ok: true, dispatches: [d] };
+  }
+
+  // 5) Nothing matched — ask the user to name a beat instead of
+  //    silently defaulting.
   return {
     ok: false,
     error: {
