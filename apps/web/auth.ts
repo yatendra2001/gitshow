@@ -41,6 +41,59 @@ export const { handlers, auth, signIn, signOut } = NextAuth(async () => {
       }),
     ],
     trustHost: true,
+    callbacks: {
+      /**
+       * Runs on every sign-in. The D1 adapter has already upserted the
+       * users row at this point (default columns: id, name, email,
+       * emailVerified, image). We fold in the GitHub login — which
+       * lives on the raw provider profile — and stash it in the new
+       * users.login column so the rest of the app can display
+       * @yatendra2001 instead of the display name.
+       */
+      async signIn({ user, account, profile }) {
+        try {
+          const login = (profile as { login?: unknown })?.login;
+          if (
+            user?.id &&
+            account?.provider === "github" &&
+            typeof login === "string" &&
+            login.length > 0
+          ) {
+            await env.DB.prepare(
+              `UPDATE users SET login = ? WHERE id = ?`,
+            )
+              .bind(login, user.id)
+              .run();
+          }
+        } catch (err) {
+          console.error("[auth.signIn.updateLogin]", err);
+          // Don't block sign-in on a login-persist failure — the user
+          // still gets in; next sign-in will retry the UPDATE.
+        }
+        return true;
+      },
+      /**
+       * Project the users.login column onto session.user so server
+       * components can read `session.user.login` with proper typing.
+       */
+      async session({ session, user }) {
+        if (session.user && user?.id) {
+          try {
+            const row = await env.DB.prepare(
+              `SELECT login FROM users WHERE id = ? LIMIT 1`,
+            )
+              .bind(user.id)
+              .first<{ login: string | null }>();
+            if (row?.login) {
+              (session.user as { login?: string }).login = row.login;
+            }
+          } catch (err) {
+            console.error("[auth.session.fetchLogin]", err);
+          }
+        }
+        return session;
+      },
+    },
     // NextAuth's own `debug` writes full payloads including tokens.
     // Keep off unless actively debugging — events below cover what we
     // usually care about (without the secrets).

@@ -19,6 +19,7 @@ export default {
       const path = request.nextUrl.pathname;
       const isProtected =
         path.startsWith("/dashboard") ||
+        path.startsWith("/app") ||
         (path.startsWith("/s/") && path !== "/s/demo");
       if (!isProtected) return true;
       return !!auth?.user;
