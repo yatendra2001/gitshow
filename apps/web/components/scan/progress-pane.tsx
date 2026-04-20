@@ -71,6 +71,8 @@ export function ProgressPane({
         isLive={!!card}
         highlightClaimId={highlightClaimId}
         onClaimClick={onClaimClick}
+        envelopes={envelopes}
+        terminalLines={terminalLines}
       />
     );
   }
@@ -207,13 +209,20 @@ function SucceededView({
   isLive,
   highlightClaimId,
   onClaimClick,
+  envelopes,
+  terminalLines,
 }: {
   scan: ScanRow;
   card: ProfileCard;
   isLive: boolean;
   highlightClaimId?: string | null;
   onClaimClick?: (claimId: string, beat: CardClaim["beat"]) => void;
+  envelopes: ScanEventEnvelope[];
+  terminalLines: string[];
 }) {
+  const [showProgress, setShowProgress] = React.useState(false);
+  const hasProgress = envelopes.length > 0;
+
   return (
     <div className="relative flex h-full flex-col overflow-hidden">
       <Artifact className="flex-1 rounded-none border-0">
@@ -227,7 +236,7 @@ function SucceededView({
             )}
             {isLive && (
               <a
-                href={`/p/${card.handle}`}
+                href={`/${card.handle}`}
                 target="_blank"
                 rel="noreferrer"
                 className="font-mono text-[10px] text-muted-foreground transition-colors hover:text-foreground"
@@ -244,6 +253,38 @@ function SucceededView({
             onClaimClick={onClaimClick}
             highlightClaimId={highlightClaimId}
           />
+          {hasProgress ? (
+            <div className="mt-10 border-t border-border/30 pt-6">
+              <button
+                type="button"
+                onClick={() => setShowProgress((v) => !v)}
+                className="group flex w-full items-center gap-2 text-left"
+                aria-expanded={showProgress}
+              >
+                <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground/80 group-hover:text-foreground transition-colors">
+                  {showProgress ? "Hide" : "Show"} scan history
+                </span>
+                <span className="text-[11px] text-muted-foreground/60">
+                  · {envelopes.length} events
+                </span>
+                <span
+                  className={`ml-auto font-mono text-[11px] text-muted-foreground/60 transition-transform duration-200 ${
+                    showProgress ? "rotate-90" : ""
+                  }`}
+                >
+                  ▸
+                </span>
+              </button>
+              {showProgress ? (
+                <div className="mt-4">
+                  <AgentProgress
+                    envelopes={envelopes}
+                    terminalLines={terminalLines}
+                  />
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </ArtifactContent>
       </Artifact>
     </div>

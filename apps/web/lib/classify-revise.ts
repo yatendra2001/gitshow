@@ -1,69 +1,80 @@
 /**
  * Classify a free-form user revise request into which beat(s) to re-run.
  *
- * No LLM call — a keyword + scope heuristic that covers the common
- * shapes of feedback without the latency. Returns an ordered list of
- * `{claimId, beat, guidance}` dispatches. The same guidance string is
- * passed to every dispatched beat — the per-agent system prompt knows
- * which part to care about based on beat.
+ * Keyword heuristic (no LLM). Returns either a list of dispatches OR
+ * a ClassifiedError that the caller renders as an honest assistant
+ * reply — critically, we NEVER silently default to `hook` when the
+ * message is about something else. Silent misclassification is worse
+ * than asking the user to clarify.
  *
- * Rules of thumb (in order of precedence):
- *   1. Explicit @mention tokens win. "@hook tighten" → hook only.
- *   2. Scope words ("everything", "entire profile", "whole thing",
- *      "all of it") → revise hook + disclosure (the two free-prose
- *      beats we can currently re-run end-to-end).
- *   3. Per-beat keywords fire their own dispatch. Multiple can match.
- *   4. If nothing fires and the profile has a hook, default to hook —
- *      it's the highest-leverage beat.
- *
- * Currently supported beats on the worker side: hook, number,
- * disclosure. Pattern + shipped + radar revises are a v1.1 follow-up
- * (new pattern-reviser agent on the worker). For now, pattern-ish
- * feedback falls through to hook since hook writing also considers
- * pattern claims and a good hook rewrite often cascades.
+ * Currently supported worker beats: hook, number, disclosure.
+ *   pattern + shipped aren't revisable yet — classifier recognizes
+ *   them and returns `{ error: "beat_not_revisable" }` so the UI can
+ *   say "Pattern rewrites are coming — for now try @hook or the
+ *   pattern's in-place editor."
  */
 
 import type { ProfileCard } from "@gitshow/shared/schemas";
 
 export type SupportedBeat = "hook" | "number" | "disclosure";
+export type KnownBeat = SupportedBeat | "pattern" | "shipped" | "disclosure";
 
 export interface ClassifiedDispatch {
   claimId: string;
   beat: SupportedBeat;
-  /** What the user typed — always passed through unchanged. */
   guidance: string;
-  /** Which phrase / heuristic picked this beat, for debug / UX narration. */
   reason: string;
+}
+
+export interface ClassifiedError {
+  kind:
+    | "beat_not_revisable"
+    | "no_match"
+    | "ambiguous";
+  message: string;
+  /** Which beat the user seemed to be pointing at, if we could tell. */
+  detected_beat?: KnownBeat;
+  /** Suggestions the UI can surface as clickable chips. */
+  suggestions: string[];
 }
 
 /** Tokens we treat as @mentions of a beat. */
 const MENTION_RE =
   /@(hook|hero|opening|numbers?|kpis?|stats?|disclosure|flaw|weakness|everything|all|entire)/gi;
 
-/** Per-beat keyword vocabularies. Lowercased, matched against the
- * lowercased user text. */
-const BEAT_KEYWORDS: Record<SupportedBeat, RegExp> = {
-  hook: /\b(hook|hero|opening|first line|one.?liner|tagline|intro|headline)\b/i,
+/**
+ * Per-beat keyword vocabularies. We widened pattern + shipped so they
+ * MATCH — and the classifier tells the user honestly that those beats
+ * aren't regenerable yet — instead of silently rerouting to hook.
+ */
+const BEAT_KEYWORDS: Record<KnownBeat, RegExp> = {
+  hook: /\b(hook|hero|opening|first line|one.?liner|tagline|intro(?:duction)?)\b/i,
   number: /\b(numbers?|kpis?|stats?|metrics?|figures?|competitive selections|shipping numbers|counts?)\b/i,
   disclosure: /\b(disclosure|flaw|weakness|honest|trade[- ]?off|limitation|gap|next chapter|ship.?first)\b/i,
+  pattern:
+    /\b(pattern|patterns|commit log|commits? log|things to know|insights?|headings?|headlines?|stories|bullet|bullets)\b/i,
+  shipped:
+    /\b(shipped|projects?|receipts?|what (i|you)(?:'ve)? shipped|portfolio|ship[ -]?list)\b/i,
 };
 
-/** Scope-expanding phrases: "fix everything", "the whole profile", etc.
- * When one of these fires + a quality word (concise, shorter, bold,
- * formatting, too much text), treat as a blanket revise across all
- * free-prose beats. */
+/** Scope-expanding phrases: "fix everything", "the whole profile", etc. */
 const SCOPE_ALL_RE =
   /\b(everything|entire profile|whole profile|whole thing|all (the|of the) (text|prose|profile)|every part|overall)\b/i;
 
 const QUALITY_RE =
-  /\b(too (long|much text)|concise|shorter|trim|tight(er|en)?|bulky?|bold|formatting|rewrite|redo|better|clean(er)?|crisp(er)?|punchy|boring|bad|weak|verbose)\b/i;
+  /\b(too (long|much text|many)|concise|shorter|trim|tight(er|en)?|bulky?|bold|formatting|rewrite|redo|better|clean(er)?|crisp(er)?|punchy|boring|bad|weak|verbose|fewer|less)\b/i;
+
+export type ClassificationResult =
+  | { ok: true; dispatches: ClassifiedDispatch[] }
+  | { ok: false; error: ClassifiedError };
 
 export function classifyRevise(
   guidance: string,
   card: ProfileCard,
-): ClassifiedDispatch[] {
+): ClassificationResult {
   const out: ClassifiedDispatch[] = [];
   const seen = new Set<SupportedBeat>();
+  const detectedAll: KnownBeat[] = [];
 
   // 1) Explicit @mentions always win.
   const mentions = [...guidance.matchAll(MENTION_RE)].map((m) =>
@@ -72,19 +83,22 @@ export function classifyRevise(
   for (const mention of mentions) {
     const beat = mentionToBeat(mention);
     if (!beat) continue;
-    const dispatches = expand(beat, card, guidance, `@${mention}`);
-    for (const d of dispatches) {
-      if (seen.has(d.beat)) continue;
-      seen.add(d.beat);
-      out.push(d);
+    detectedAll.push(beat);
+    if (isSupported(beat)) {
+      const d = makeDispatch(beat, card, guidance, `@${mention}`);
+      if (d && !seen.has(d.beat)) {
+        seen.add(d.beat);
+        out.push(d);
+      }
     }
   }
-  if (out.length > 0) return out;
+  if (out.length > 0) return { ok: true, dispatches: out };
+  if (detectedAll.length > 0 && !detectedAll.some(isSupported)) {
+    return notRevisable(detectedAll[0]!);
+  }
 
-  // 2) Scope-expanding phrase + quality word → blanket revise.
-  const isScopeAll = SCOPE_ALL_RE.test(guidance);
-  const isQuality = QUALITY_RE.test(guidance);
-  if (isScopeAll && isQuality) {
+  // 2) Scope-all + quality → revise all supported free-prose beats.
+  if (SCOPE_ALL_RE.test(guidance) && QUALITY_RE.test(guidance)) {
     for (const beat of ["hook", "disclosure"] as const) {
       const d = makeDispatch(beat, card, guidance, "across the whole profile");
       if (d && !seen.has(d.beat)) {
@@ -92,61 +106,112 @@ export function classifyRevise(
         out.push(d);
       }
     }
-    if (out.length > 0) return out;
+    if (out.length > 0) return { ok: true, dispatches: out };
   }
 
-  // 3) Per-beat keyword hits.
+  // 3) Per-beat keyword hits across ALL known beats, including unsupported
+  //    ones. If the user's words point at pattern/shipped, tell them
+  //    straight instead of redirecting to hook.
   for (const [beat, re] of Object.entries(BEAT_KEYWORDS) as Array<
-    [SupportedBeat, RegExp]
+    [KnownBeat, RegExp]
   >) {
-    if (re.test(guidance)) {
-      const d = makeDispatch(beat, card, guidance, `mentions ${beat}`);
-      if (d && !seen.has(d.beat)) {
-        seen.add(d.beat);
-        out.push(d);
-      }
+    if (re.test(guidance)) detectedAll.push(beat);
+  }
+
+  const supportedHits = detectedAll.filter(isSupported);
+  const unsupportedHits = detectedAll.filter((b) => !isSupported(b));
+
+  for (const beat of supportedHits) {
+    if (seen.has(beat)) continue;
+    const d = makeDispatch(beat, card, guidance, `mentions ${beat}`);
+    if (d) {
+      seen.add(d.beat);
+      out.push(d);
     }
   }
-  if (out.length > 0) return out;
+  if (out.length > 0) return { ok: true, dispatches: out };
 
-  // 4) Fallback — hook. It's the highest-leverage free-prose beat
-  //    and often cascades to pattern quality too.
-  if (card.hook) {
-    out.push({
-      claimId: card.hook.id,
-      beat: "hook",
-      guidance,
-      reason: "no specific target — starting with the hook",
-    });
+  if (unsupportedHits.length > 0) {
+    return notRevisable(unsupportedHits[0]!);
   }
-  return out;
+
+  // 4) Nothing matched — DO NOT silently default. Ask the user what
+  //    they meant.
+  return {
+    ok: false,
+    error: {
+      kind: "no_match",
+      message:
+        "I can't tell which part you'd like to change. Could you name it? Try @hook, @numbers, or @disclosure — or click a section of the profile.",
+      suggestions: [
+        "@hook tighten the opener",
+        "@numbers pick different KPIs",
+        "@disclosure rewrite the honest paragraph",
+      ],
+    },
+  };
 }
 
-function mentionToBeat(mention: string): SupportedBeat | null {
+function notRevisable(detected: KnownBeat): ClassificationResult {
+  if (detected === "pattern") {
+    return {
+      ok: false,
+      error: {
+        kind: "beat_not_revisable",
+        detected_beat: "pattern",
+        message:
+          "Pattern rewrites aren't automated yet. For now, click a specific pattern on the profile and edit it inline — or ask me to change the hook/numbers/disclosure instead.",
+        suggestions: [
+          "@hook make the opener punchier",
+          "@numbers emphasize different signals",
+        ],
+      },
+    };
+  }
+  if (detected === "shipped") {
+    return {
+      ok: false,
+      error: {
+        kind: "beat_not_revisable",
+        detected_beat: "shipped",
+        message:
+          "Shipped-list rewrites aren't automated yet. You can reorder or remove projects by clicking them on the profile — or ask me to rewrite the hook/numbers/disclosure.",
+        suggestions: [
+          "@hook rewrite the opener",
+          "@numbers pick different numbers",
+        ],
+      },
+    };
+  }
+  return {
+    ok: false,
+    error: {
+      kind: "no_match",
+      message:
+        "I can't tell which part you'd like to change. Try @hook, @numbers, or @disclosure.",
+      suggestions: [],
+    },
+  };
+}
+
+function isSupported(beat: KnownBeat): beat is SupportedBeat {
+  return beat === "hook" || beat === "number" || beat === "disclosure";
+}
+
+function mentionToBeat(mention: string): KnownBeat | null {
   const m = mention.toLowerCase();
   if (m === "hook" || m === "hero" || m === "opening") return "hook";
-  if (m === "numbers" || m === "number" || m === "kpi" || m === "kpis" || m === "stats" || m === "stat") return "number";
+  if (
+    m === "numbers" ||
+    m === "number" ||
+    m === "kpi" ||
+    m === "kpis" ||
+    m === "stats" ||
+    m === "stat"
+  )
+    return "number";
   if (m === "disclosure" || m === "flaw" || m === "weakness") return "disclosure";
   return null;
-}
-
-/**
- * When a @mention is broad ("@everything" / "@all"), expand to multiple
- * supported beats. Narrow mentions pass through as a single dispatch.
- */
-function expand(
-  beat: SupportedBeat | "all",
-  card: ProfileCard,
-  guidance: string,
-  reason: string,
-): ClassifiedDispatch[] {
-  if (beat === "all") {
-    return (["hook", "disclosure"] as const)
-      .map((b) => makeDispatch(b, card, guidance, reason))
-      .filter((d): d is ClassifiedDispatch => d !== null);
-  }
-  const d = makeDispatch(beat, card, guidance, reason);
-  return d ? [d] : [];
 }
 
 function makeDispatch(
@@ -163,10 +228,7 @@ function makeDispatch(
   return { claimId, beat, guidance, reason };
 }
 
-/**
- * Human-readable summary of what we're about to dispatch. Used by the
- * chat pane to narrate "Revising X and Y — 2-6 min each."
- */
+/** Human-readable summary of dispatches. */
 export function describeDispatch(ds: ClassifiedDispatch[]): string {
   if (ds.length === 0) return "Nothing to revise yet.";
   const beatPhrase = (b: SupportedBeat) =>

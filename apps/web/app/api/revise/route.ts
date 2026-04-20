@@ -108,17 +108,21 @@ export async function POST(req: Request) {
         { status: 425 },
       );
     }
-    dispatches = classifyRevise(guidance, card);
-    if (dispatches.length === 0) {
+    const classified = classifyRevise(guidance, card);
+    if (!classified.ok) {
+      // Honest surface-level error rather than silently defaulting to
+      // a beat the user didn't ask about.
       return NextResponse.json(
         {
-          error: "no_match",
-          detail:
-            "Couldn't figure out what to revise from that message. Try mentioning the hook, numbers, or disclosure.",
+          error: classified.error.kind,
+          detail: classified.error.message,
+          detected_beat: classified.error.detected_beat ?? null,
+          suggestions: classified.error.suggestions,
         },
         { status: 422 },
       );
     }
+    dispatches = classified.dispatches;
   }
 
   let fly: FlyClient;

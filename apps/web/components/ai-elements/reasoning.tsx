@@ -2,7 +2,6 @@
 
 import * as React from "react";
 import { Brain, ChevronDown } from "lucide-react";
-import { Streamdown } from "streamdown";
 import { cn } from "@/lib/utils";
 
 /**
@@ -114,20 +113,6 @@ export function Reasoning({
               // goes through Streamdown so **bold**, lists, and code
               // blocks render as you'd expect.
               "font-sans text-[13px] leading-[1.65] text-foreground/85",
-              "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-[1px] [&_code]:text-[12px] [&_code]:font-mono",
-              "[&_pre]:bg-muted/60 [&_pre]:rounded-md [&_pre]:p-2 [&_pre]:text-[12px] [&_pre]:leading-relaxed [&_pre]:overflow-x-auto [&_pre]:my-2",
-              "[&_pre_code]:bg-transparent [&_pre_code]:p-0",
-              "[&_h1]:text-[15px] [&_h1]:font-semibold [&_h1]:mt-3 [&_h1]:mb-1.5",
-              "[&_h2]:text-[14px] [&_h2]:font-semibold [&_h2]:mt-3 [&_h2]:mb-1.5",
-              "[&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:mt-2 [&_h3]:mb-1",
-              "[&_ul]:list-disc [&_ul]:pl-5 [&_ul]:my-1.5 [&_ul]:space-y-0.5",
-              "[&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:my-1.5 [&_ol]:space-y-0.5",
-              "[&_li]:marker:text-muted-foreground/50",
-              "[&_p]:my-1.5 first:[&_p]:mt-0 last:[&_p]:mb-0",
-              "[&_strong]:font-semibold [&_strong]:text-foreground",
-              "[&_em]:italic",
-              "[&_a]:underline [&_a]:underline-offset-2 [&_a]:text-[var(--primary)]",
-              "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_blockquote]:my-2",
             )}
           >
             <ReasoningBody text={text} streaming={streaming} />
@@ -139,16 +124,19 @@ export function Reasoning({
 }
 
 /**
- * Renders the streaming text as markdown via Streamdown. Streamdown is
- * built for append-only streams: it only re-parses the suffix that
- * changed so rendering stays cheap as tokens arrive. Caret appears at
- * the tail while streaming.
+ * Tiny markdown renderer tailored for reasoning blocks. No external
+ * parser (streamdown/react-markdown's dep tree pushed the Worker bundle
+ * over Cloudflare's 3 MiB limit). Handles exactly what the agent emits:
  *
- * Some upstream reasoning payloads come in as soft-wrapped lines (one
- * word per line) when OpenRouter's SDK emits fine-grained chunks. We
- * lightly normalize that before feeding to the parser so bullets and
- * paragraphs stay intact — without swallowing intentional line breaks
- * in code blocks.
+ *   - paragraphs (blank-line separated)
+ *   - ordered lists (`1. `, `2. `) and unordered (`- ` / `* `)
+ *   - headings (`#`, `##`, `###`)
+ *   - `**bold**`, `*italic*`, ``inline code``
+ *   - fenced code blocks (```)
+ *   - inline links [text](url)
+ *
+ * Also normalizes OpenRouter's one-token-per-line streaming into
+ * flowing paragraphs — without that, every token becomes a hard break.
  */
 function ReasoningBody({
   text,
@@ -157,10 +145,10 @@ function ReasoningBody({
   text: string;
   streaming: boolean;
 }) {
-  const normalized = React.useMemo(() => normalizeReasoning(text), [text]);
+  const blocks = React.useMemo(() => parseMarkdown(text), [text]);
   return (
-    <div className="whitespace-pre-wrap">
-      <Streamdown>{normalized}</Streamdown>
+    <div>
+      {blocks.map((b, i) => renderBlock(b, i))}
       {streaming ? (
         <span className="gs-caret ml-[2px] inline-block h-[0.9em] w-[2px] translate-y-[2px] bg-blue-400" />
       ) : null}
@@ -168,20 +156,238 @@ function ReasoningBody({
   );
 }
 
-function normalizeReasoning(raw: string): string {
-  // Skip normalization for anything that looks like it already contains
-  // code/fenced blocks — they're intentionally line-sensitive.
-  if (raw.includes("```")) return raw;
-  // Join runs of single-word lines into flowing paragraphs. OpenRouter's
-  // streaming sometimes emits each token on its own line which the
-  // markdown parser would otherwise render as a hard-break soup.
+type Block =
+  | { kind: "p"; text: string }
+  | { kind: "h"; level: 1 | 2 | 3; text: string }
+  | { kind: "ul"; items: string[] }
+  | { kind: "ol"; items: string[] }
+  | { kind: "pre"; text: string; lang?: string }
+  | { kind: "blockquote"; text: string };
+
+function parseMarkdown(raw: string): Block[] {
+  // Normalize fragmented streaming (one token per line). Skip when fenced
+  // blocks are present so code blocks keep their intentional newlines.
+  const source = raw.includes("```") ? raw : denseifyStreamingLines(raw);
+
+  const out: Block[] = [];
+  const lines = source.split("\n");
+  let i = 0;
+
+  const isULItem = (l: string) => /^\s*[-*]\s+/.test(l);
+  const isOLItem = (l: string) => /^\s*\d+\.\s+/.test(l);
+
+  while (i < lines.length) {
+    const line = lines[i]!;
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      i++;
+      continue;
+    }
+
+    // Fenced code block
+    if (trimmed.startsWith("```")) {
+      const lang = trimmed.slice(3).trim() || undefined;
+      i++;
+      const codeLines: string[] = [];
+      while (i < lines.length && !lines[i]!.trim().startsWith("```")) {
+        codeLines.push(lines[i]!);
+        i++;
+      }
+      if (i < lines.length) i++; // consume closing fence
+      out.push({ kind: "pre", text: codeLines.join("\n"), lang });
+      continue;
+    }
+
+    // Heading
+    const h = /^(#{1,3})\s+(.*)$/.exec(trimmed);
+    if (h) {
+      out.push({
+        kind: "h",
+        level: h[1]!.length as 1 | 2 | 3,
+        text: h[2]!.trim(),
+      });
+      i++;
+      continue;
+    }
+
+    // Blockquote
+    if (trimmed.startsWith(">")) {
+      const quoteLines: string[] = [];
+      while (i < lines.length && lines[i]!.trim().startsWith(">")) {
+        quoteLines.push(lines[i]!.trim().replace(/^>\s?/, ""));
+        i++;
+      }
+      out.push({ kind: "blockquote", text: quoteLines.join(" ") });
+      continue;
+    }
+
+    // Unordered list
+    if (isULItem(line)) {
+      const items: string[] = [];
+      while (i < lines.length && isULItem(lines[i]!)) {
+        items.push(lines[i]!.replace(/^\s*[-*]\s+/, "").trim());
+        i++;
+      }
+      out.push({ kind: "ul", items });
+      continue;
+    }
+
+    // Ordered list
+    if (isOLItem(line)) {
+      const items: string[] = [];
+      while (i < lines.length && isOLItem(lines[i]!)) {
+        items.push(lines[i]!.replace(/^\s*\d+\.\s+/, "").trim());
+        i++;
+      }
+      out.push({ kind: "ol", items });
+      continue;
+    }
+
+    // Paragraph — collect until blank or block change.
+    const paraLines: string[] = [];
+    while (
+      i < lines.length &&
+      lines[i]!.trim() &&
+      !lines[i]!.trim().startsWith("```") &&
+      !/^(#{1,3})\s+/.test(lines[i]!.trim()) &&
+      !lines[i]!.trim().startsWith(">") &&
+      !isULItem(lines[i]!) &&
+      !isOLItem(lines[i]!)
+    ) {
+      paraLines.push(lines[i]!.trim());
+      i++;
+    }
+    out.push({ kind: "p", text: paraLines.join(" ") });
+  }
+  return out;
+}
+
+function denseifyStreamingLines(raw: string): string {
   return raw
     .split(/\n{2,}/)
     .map((para) => {
       const lines = para.split("\n");
       const isFragmented =
-        lines.length > 3 && lines.every((l) => l.trim().split(/\s+/).length <= 2);
-      return isFragmented ? lines.join(" ").replace(/\s+/g, " ").trim() : para;
+        lines.length > 3 &&
+        lines.every((l) => l.trim().split(/\s+/).length <= 2);
+      return isFragmented
+        ? lines.join(" ").replace(/\s+/g, " ").trim()
+        : para;
     })
     .join("\n\n");
+}
+
+function renderBlock(b: Block, key: number): React.ReactNode {
+  switch (b.kind) {
+    case "h":
+      return b.level === 1 ? (
+        <h1 key={key} className="text-[15px] font-semibold mt-3 mb-1.5 first:mt-0">
+          {renderInline(b.text)}
+        </h1>
+      ) : b.level === 2 ? (
+        <h2 key={key} className="text-[14px] font-semibold mt-3 mb-1.5 first:mt-0">
+          {renderInline(b.text)}
+        </h2>
+      ) : (
+        <h3 key={key} className="text-[13px] font-semibold mt-2 mb-1 first:mt-0">
+          {renderInline(b.text)}
+        </h3>
+      );
+    case "p":
+      return (
+        <p key={key} className="my-1.5 first:mt-0 last:mb-0">
+          {renderInline(b.text)}
+        </p>
+      );
+    case "ul":
+      return (
+        <ul key={key} className="list-disc pl-5 my-1.5 space-y-0.5 marker:text-muted-foreground/50">
+          {b.items.map((it, j) => (
+            <li key={j}>{renderInline(it)}</li>
+          ))}
+        </ul>
+      );
+    case "ol":
+      return (
+        <ol key={key} className="list-decimal pl-5 my-1.5 space-y-0.5 marker:text-muted-foreground/50">
+          {b.items.map((it, j) => (
+            <li key={j}>{renderInline(it)}</li>
+          ))}
+        </ol>
+      );
+    case "pre":
+      return (
+        <pre
+          key={key}
+          className="bg-muted/60 rounded-md p-2 my-2 text-[12px] leading-relaxed overflow-x-auto font-mono"
+        >
+          {b.text}
+        </pre>
+      );
+    case "blockquote":
+      return (
+        <blockquote
+          key={key}
+          className="border-l-2 border-border pl-3 text-muted-foreground my-2"
+        >
+          {renderInline(b.text)}
+        </blockquote>
+      );
+  }
+}
+
+/** Inline: `**bold**`, `*italic*`, backtick code, and [link](url). */
+function renderInline(text: string): React.ReactNode {
+  const out: React.ReactNode[] = [];
+  const re = /(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`|\[[^\]]+\]\([^)]+\))/g;
+  let last = 0;
+  let m: RegExpExecArray | null;
+  let key = 0;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    const tok = m[0]!;
+    if (tok.startsWith("**") && tok.endsWith("**")) {
+      out.push(
+        <strong key={key++} className="font-semibold text-foreground">
+          {tok.slice(2, -2)}
+        </strong>,
+      );
+    } else if (tok.startsWith("*") && tok.endsWith("*")) {
+      out.push(
+        <em key={key++} className="italic">
+          {tok.slice(1, -1)}
+        </em>,
+      );
+    } else if (tok.startsWith("`") && tok.endsWith("`")) {
+      out.push(
+        <code
+          key={key++}
+          className="rounded bg-muted px-1 py-[1px] text-[12px] font-mono"
+        >
+          {tok.slice(1, -1)}
+        </code>,
+      );
+    } else if (tok.startsWith("[")) {
+      const linkMatch = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(tok);
+      if (linkMatch) {
+        out.push(
+          <a
+            key={key++}
+            href={linkMatch[2]}
+            target="_blank"
+            rel="noreferrer"
+            className="underline underline-offset-2 text-[var(--primary)]"
+          >
+            {linkMatch[1]}
+          </a>,
+        );
+      } else {
+        out.push(tok);
+      }
+    }
+    last = m.index + tok.length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
 }

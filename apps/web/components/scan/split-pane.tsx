@@ -28,6 +28,15 @@ export function SplitPane({
   });
 
   const [card, setCard] = React.useState<ProfileCard | null>(initialCard);
+  // Effective scan status — starts from the server snapshot, flips to
+  // "succeeded" the moment the WS delivers a `done` frame so the UI
+  // swaps from RunningView → SucceededView without requiring a reload.
+  const [effectiveStatus, setEffectiveStatus] = React.useState<
+    ScanRow["status"]
+  >(scan.status);
+  React.useEffect(() => {
+    setEffectiveStatus(scan.status);
+  }, [scan.status]);
   const [messages, setMessages] = React.useState<ChatMessage[]>([]);
   const [revisePending, setRevisePending] = React.useState<{
     title: string;
@@ -42,17 +51,29 @@ export function SplitPane({
     null,
   );
 
+  // When the WS delivers a done frame mid-session, flip status + fetch
+  // the freshly-emitted card. Covers the case where the server prop
+  // said "running" but the scan finished after this page loaded.
+  React.useEffect(() => {
+    if (!isDone) return;
+    setEffectiveStatus((s) =>
+      s === "succeeded" || s === "failed" || s === "cancelled" ? s : "succeeded",
+    );
+    void refreshCard(scan.id).then((next) => {
+      if (next) setCard(next);
+    });
+  }, [isDone, scan.id]);
+
   // When a scan finishes or a revise completes, refetch the card from R2.
   React.useEffect(() => {
-    if (scan.status !== "succeeded") return;
+    if (effectiveStatus !== "succeeded") return;
     if (card && initialCard && card === initialCard) {
-      // already have it from the server
       return;
     }
     void refreshCard(scan.id).then((next) => {
       if (next) setCard(next);
     });
-  }, [scan.id, scan.status, card, initialCard]);
+  }, [scan.id, effectiveStatus, card, initialCard]);
 
   // If a revise stage-end event arrives, refetch + show it.
   React.useEffect(() => {
@@ -178,7 +199,7 @@ export function SplitPane({
         reviseStartedAt={reviseStartedAt}
       />
       <ProgressPane
-        scan={scan}
+        scan={{ ...scan, status: effectiveStatus }}
         envelopes={envelopes}
         terminalLines={terminalLines}
         partialCard={null}
