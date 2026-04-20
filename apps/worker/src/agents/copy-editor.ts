@@ -27,7 +27,7 @@ import type { SessionUsage } from "../session.js";
 
 const EditedClaimSchema = z.object({
   id: z.string(),
-  text: z.string().max(600),
+  text: z.string().max(1000),
   label: z.string().max(80).optional(),
   sublabel: z.string().max(300).optional(),
 });

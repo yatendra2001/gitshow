@@ -123,6 +123,10 @@ function RunningView({
           envelopes={envelopes}
           terminalLines={terminalLines}
           planStreaming
+          phaseSeed={{
+            currentPhase: scan.current_phase,
+            lastCompletedPhase: scan.last_completed_phase,
+          }}
         />
       </div>
     </div>
