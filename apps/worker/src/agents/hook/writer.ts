@@ -139,10 +139,23 @@ function buildHookInput(input: HookWriterInput): string {
     ``,
     `All 5 candidates must lead with this angle. See the per-angle playbook above.`,
     ``,
+  ];
+  // Intake answers (current employer, positioning intent, things to skip)
+  // are the strongest signal for OPERATOR_DENSITY and CONTRARIAN_POV
+  // angles. Without these, a founding engineer's employer often never
+  // reaches the headline — the hook writer only sees public GitHub.
+  if (input.session.context_notes) {
+    parts.push(
+      `## Context the user gave at intake (use liberally)`,
+      input.session.context_notes,
+      ``,
+    );
+  }
+  parts.push(
     renderDiscoverSummary(input.discover),
     renderWorkerClaims(input.workerOutputs),
     ``,
-  ];
+  );
   if (input.reviseInstruction) {
     parts.push(
       `## Critic asked you to revise`,
