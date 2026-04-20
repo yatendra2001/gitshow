@@ -1,17 +1,16 @@
 "use client";
 
 /**
- * /s/preview — hardcoded-events visual test harness for the split pane.
+ * /s/preview — hardcoded-events visual test harness for the scan page.
  *
- * Useful for iterating on the progress-pane UI without running a scan.
+ * Useful for iterating on the progress UI without running a real scan.
  * Not linked from anywhere in prod; hit it directly when tweaking the
- * chat + agent UI.
+ * running or succeeded views.
  */
 
 import * as React from "react";
 import type { ScanEventEnvelope } from "@gitshow/shared/events";
 import type { ScanRow } from "@/lib/scans";
-import { ChatPane } from "@/components/scan/chat-pane";
 import { ProgressPane } from "@/components/scan/progress-pane";
 
 const NOW = Date.now();
@@ -58,7 +57,7 @@ const SEED_ENVELOPES: ScanEventEnvelope[] = [
       kind: "worker-update",
       worker: "doac-stuff/flightcast-core",
       status: "done",
-      detail: "2,688 commits by you across 20 months — https://github.com/doac-stuff/flightcast-core",
+      detail: "2,688 commits by you across 20 months",
     },
   },
   {
@@ -88,85 +87,13 @@ const SEED_ENVELOPES: ScanEventEnvelope[] = [
       status: "running",
     },
   },
-  {
-    id: 9,
-    scan_id: "preview",
-    at: NOW - 34_000,
-    event: {
-      kind: "worker-update",
-      worker: "temporal",
-      status: "running",
-    },
-  },
-  {
-    id: 10,
-    scan_id: "preview",
-    at: NOW - 33_000,
-    event: {
-      kind: "worker-update",
-      worker: "content",
-      status: "running",
-    },
-  },
-  {
-    id: 11,
-    scan_id: "preview",
-    at: NOW - 20_000,
-    event: {
-      kind: "reasoning",
-      agent: "discover",
-      text: "Yatendra's clearest signal is being the single top committer on doac-stuff/flightcast-core — 2,688 of 9,971 commits across a 27-person team over roughly 20 months.",
-    },
-  },
-  {
-    id: 12,
-    scan_id: "preview",
-    at: NOW - 10_000,
-    event: {
-      kind: "reasoning",
-      agent: "discover",
-      text: "Before that professional engagement solidified, he built a recognizable personal pattern of iterating on AI-powered product ideas in rapid cycles.",
-    },
-  },
-  {
-    id: 13,
-    scan_id: "preview",
-    at: NOW - 5_000,
-    event: {
-      kind: "worker-update",
-      worker: "cross-repo",
-      status: "done",
-      detail: "Found 5 cross-repo patterns",
-    },
-  },
-  {
-    id: 14,
-    scan_id: "preview",
-    at: NOW - 1000,
-    event: {
-      kind: "worker-update",
-      worker: "deep-dive",
-      status: "running",
-    },
-  },
 ];
 
 const SEED_TERMINAL: string[] = [
   "[pipeline] boot — handle=yatendra2001",
   "[pipeline] github-fetch ok (96 repos, 200 PRs)",
   "info  - repo-filter: 25 deep, 71 light",
-  "[pipeline] inventory running (parallel, 3 workers)",
-  "  clone doac-stuff/flightcast-core ok (2.3s)",
-  "  clone AppFlowy-IO/AppFlowy ok (4.1s)",
-  "  clone yatendra2001/catalyst ok (1.2s)",
-  "[pipeline] discover running",
   "[pipeline] workers: 6 parallel agents",
-  "  cross-repo running…",
-  "  temporal running…",
-  "  content running…",
-  "  signal queued",
-  "  deep-dive running",
-  "ok  - cross-repo done (5 patterns)",
 ];
 
 const SEED_SCAN: ScanRow = {
@@ -194,20 +121,8 @@ const SEED_SCAN: ScanRow = {
 };
 
 export default function PreviewPage() {
-  const [messages] = React.useState([]);
   return (
-    <div className="grid h-screen w-full grid-cols-[minmax(280px,25%)_1fr]">
-      <ChatPane
-        scan={SEED_SCAN}
-        card={null}
-        partialCard={null}
-        messages={messages}
-        onSendRevise={async () => {}}
-        revisePending={false}
-        envelopes={SEED_ENVELOPES}
-        terminalLines={SEED_TERMINAL}
-        reviseStartedAt={null}
-      />
+    <div className="h-screen w-full">
       <ProgressPane
         scan={SEED_SCAN}
         envelopes={SEED_ENVELOPES}

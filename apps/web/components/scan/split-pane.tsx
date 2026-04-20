@@ -5,23 +5,15 @@ import type { ScanRow } from "@/lib/scans";
 import type { ProfileCard, CardClaim } from "@gitshow/shared/schemas";
 import { useScanStream } from "@/lib/use-scan-stream";
 import { ProgressPane } from "@/components/scan/progress-pane";
-import { ChatPane, type ChatMessage } from "@/components/scan/chat-pane";
 
 /**
- * Post-M6 layout:
+ * Single-column shell for the scan page. Renders full-width
+ * ProgressPane across all scan states — running, succeeded, failed.
  *
- *  - `running` / `queued` — 25/75 split. Left is the narration pane so
- *    the user has something to read while the pipeline works; right is
- *    the live AgentProgress.
- *  - `succeeded` — full-width, no chat. The profile IS the interface.
- *    Every claim is click-to-edit (see `editable-text.tsx`). A Publish
- *    button at top-right points `/{handle}` at this scan.
- *  - `failed` / `cancelled` — single-panel error card.
- *
- * The revise-via-AI chat was removed on succeeded — direct edits beat
- * AI rewrites for the kind of fact corrections users make ("my employer
- * is X", "that number is wrong"). The running-state narration still
- * uses the ChatPane shell since the AgentProgress lives on the right.
+ * The revise-via-AI chat (previously on the left in a 25/75 split)
+ * has been removed. Users edit the rendered profile directly via
+ * click-to-edit (see `editable-text.tsx`), and the publish/preview
+ * surface IS the editor.
  */
 export function SplitPane({
   scan,
@@ -43,9 +35,6 @@ export function SplitPane({
   React.useEffect(() => {
     setEffectiveStatus(scan.status);
   }, [scan.status]);
-  const [highlightClaimId, setHighlightClaimId] = React.useState<string | null>(
-    null,
-  );
   const [isPublished, setIsPublished] = React.useState(initialIsPublished);
 
   // On `done`, flip status + fetch the freshly-emitted card.
@@ -69,17 +58,9 @@ export function SplitPane({
     });
   }, [scan.id, effectiveStatus, card, initialCard]);
 
-  // Click-to-pin is only meaningful on running-state (for observation);
-  // succeeded-state uses direct inline edits.
-  const onClaimClick = (claimId: string, _beat: CardClaim["beat"]) => {
-    if (effectiveStatus === "succeeded") return;
-    setHighlightClaimId(claimId);
-  };
-
-  // Local, optimistic update when a user inline-edits a claim. The
-  // EditableText already PATCHed /api/claims/:id and returned; here we
-  // just swap the text in local state so the UI reflects without a
-  // round-trip refresh.
+  // Local, optimistic update when a user inline-edits a claim.
+  // EditableText already PATCHed /api/claims/:id; we just swap the
+  // text in local state so the UI reflects without a refresh.
   const onClaimEdited = React.useCallback(
     (claimId: string, nextText: string) => {
       setCard((prev) => {
@@ -99,53 +80,20 @@ export function SplitPane({
     [],
   );
 
-  if (effectiveStatus === "succeeded") {
-    return (
-      <div className="h-screen w-full">
-        <ProgressPane
-          scan={{ ...scan, status: effectiveStatus }}
-          envelopes={envelopes}
-          terminalLines={terminalLines}
-          partialCard={null}
-          card={card}
-          highlightClaimId={highlightClaimId}
-          onClaimClick={onClaimClick}
-          connection={connection}
-          isDone={isDone}
-          editable
-          onClaimEdited={onClaimEdited}
-          isPublished={isPublished}
-          onPublishedChange={setIsPublished}
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className="grid h-screen w-full grid-cols-[minmax(280px,25%)_1fr]">
-      <ChatPane
-        scan={scan}
-        card={card}
-        partialCard={null}
-        messages={[] as ChatMessage[]}
-        onSendRevise={async () => {
-          /* chat-driven revise removed — see docstring */
-        }}
-        revisePending={false}
-        envelopes={envelopes}
-        terminalLines={terminalLines}
-        reviseStartedAt={null}
-      />
+    <div className="h-screen w-full">
       <ProgressPane
         scan={{ ...scan, status: effectiveStatus }}
         envelopes={envelopes}
         terminalLines={terminalLines}
         partialCard={null}
         card={card}
-        highlightClaimId={highlightClaimId}
-        onClaimClick={onClaimClick}
         connection={connection}
         isDone={isDone}
+        editable={effectiveStatus === "succeeded"}
+        onClaimEdited={onClaimEdited}
+        isPublished={isPublished}
+        onPublishedChange={setIsPublished}
       />
     </div>
   );
