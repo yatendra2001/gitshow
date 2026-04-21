@@ -270,11 +270,28 @@ async function runSingleProjectAgent(input: SingleProjectInput): Promise<Project
     description: result.description,
     dates: result.dates || fallbackDates(repo),
     active: result.active,
-    technologies,
+    technologies: sanitizeTechnologies(technologies),
     links,
     href: `https://github.com/${repo.fullName}`,
     sources: result.sources,
   };
+}
+
+/**
+ * Last line of defence before Zod validation in assemble.ts. Upstream
+ * data (GitHub's `languages`, parsed manifests) occasionally contains
+ * null/undefined/empty entries — one bad item here fails the whole scan
+ * with an opaque "expected string, received undefined" error.
+ */
+function sanitizeTechnologies(items: ReadonlyArray<unknown>): string[] {
+  const out: string[] = [];
+  for (const raw of items) {
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) continue;
+    out.push(trimmed);
+  }
+  return Array.from(new Set(out));
 }
 
 function buildInput(args: {
@@ -388,7 +405,7 @@ function buildFallback(repo: RepoRef, technologies: string[]): Project {
       `${repo.primaryLanguage ?? "Open source"} project: ${repo.name}.`,
     dates: fallbackDates(repo),
     active: !repo.isArchived,
-    technologies,
+    technologies: sanitizeTechnologies(technologies),
     links: [
       {
         label: "Source",
