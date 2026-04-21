@@ -180,6 +180,14 @@ function ScanningState({ scan }: { scan: ScanSlim }) {
         <br />
         You can close this tab — we&apos;ll email you when it&apos;s ready.
       </p>
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href={`/app/scan/${scan.id}`}
+          className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-11"
+        >
+          See live progress →
+        </Link>
+      </div>
     </section>
   );
 }

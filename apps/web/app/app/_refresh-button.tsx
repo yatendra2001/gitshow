@@ -40,6 +40,16 @@ export function RefreshButton() {
         setStatus("idle");
         return;
       }
+      if (resp.status === 409) {
+        // Another scan is already running — jump straight to its progress view.
+        const data = (await resp.json().catch(() => ({}))) as {
+          scanId?: string;
+        };
+        if (data.scanId) {
+          router.push(`/app/scan/${data.scanId}`);
+          return;
+        }
+      }
       if (!resp.ok) {
         const err = (await resp.json().catch(() => ({}))) as { error?: string };
         setMessage(err.error ?? "couldn't refresh");
@@ -47,8 +57,14 @@ export function RefreshButton() {
         setTimeout(() => setStatus("idle"), 3000);
         return;
       }
-      const data = (await resp.json()) as { scanId: string };
-      router.push(`/s/${data.scanId}`);
+      const data = (await resp.json().catch(() => ({}))) as {
+        scanId?: string;
+      };
+      if (data.scanId) {
+        router.push(`/app/scan/${data.scanId}`);
+      } else {
+        router.push("/app");
+      }
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "network error");
       setStatus("error");

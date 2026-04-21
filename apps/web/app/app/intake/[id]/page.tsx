@@ -153,8 +153,13 @@ export default function IntakePage({
         setSubmitError(err.error ?? "Something went wrong.");
         return;
       }
-      const data = (await resp.json()) as { scanId: string };
-      router.push(`/s/${data.scanId}`);
+      // Land directly on the live progress view for the new scan.
+      const data = (await resp.json().catch(() => ({}))) as { scanId?: string };
+      if (data.scanId) {
+        router.push(`/app/scan/${data.scanId}`);
+      } else {
+        router.push("/app");
+      }
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Network error");
     } finally {
