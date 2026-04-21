@@ -7,6 +7,7 @@ import { PushEnableButton } from "@/components/notifications/push-enable";
 import { getProfileBySlug } from "@/lib/profiles";
 import { StartFirstScanButton } from "./_start-button";
 import { RefreshButton } from "./_refresh-button";
+import { DeleteProfileButton } from "./_delete-profile-button";
 import { DeleteAccountHandler } from "./_delete-handler";
 
 /**
@@ -322,6 +323,24 @@ function ProfileState({
           </Link>
         ) : null}
         <RefreshButton />
+      </div>
+
+      {/* Secondary actions — destructive lives alongside its sibling
+          helper copy so the user knows what each does. Refresh is a
+          rescan of the same handle; Delete wipes the profile so they
+          can start fresh. */}
+      <div className="mt-6 border-t border-border/30 pt-5">
+        <div className="grid grid-cols-1 gap-4 text-[12px] text-muted-foreground sm:grid-cols-2">
+          <div className="flex flex-col gap-1">
+            <span className="text-foreground font-medium">Refresh</span>
+            <span>Rescans your GitHub and regenerates the profile. Keeps your edits; runs once per 24h.</span>
+          </div>
+          <div className="flex flex-col gap-2">
+            <span className="text-foreground font-medium">Delete profile</span>
+            <span>Wipes scans, edits, and the public page. You&apos;ll start over from intake.</span>
+            <DeleteProfileButton />
+          </div>
+        </div>
       </div>
     </section>
   );
