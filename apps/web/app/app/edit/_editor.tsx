@@ -74,9 +74,11 @@ type SaveStatus = "idle" | "saving" | "saved" | "error";
 export function Editor({
   initialResume,
   handle,
+  initialPublished = false,
 }: {
   initialResume: Resume;
   handle: string;
+  initialPublished?: boolean;
 }) {
   const [resume, setResume] = useState<Resume>(initialResume);
   const [active, setActive] = useState<SectionId>("hero");
@@ -84,6 +86,7 @@ export function Editor({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishMsg, setPublishMsg] = useState<string | null>(null);
+  const [hasPublished, setHasPublished] = useState<boolean>(initialPublished);
   // Queue of patches we haven't flushed yet. Aggregating them means we
   // don't send 5 PATCHes for 5 keystrokes in the same field.
   const pendingPatchRef = useRef<Record<string, unknown>>({});
@@ -106,9 +109,11 @@ export function Editor({
         body: JSON.stringify({ patch }),
       });
       if (!resp.ok) {
-        const err = (await resp.json().catch(() => ({}))) as { error?: string };
+        const err = (await resp.json().catch(() => ({}))) as {
+          error?: string;
+        };
         setStatus("error");
-        setErrorMsg(err.error ?? "Save failed");
+        setErrorMsg(humanizeSaveError(err.error));
         return;
       }
       const data = (await resp.json()) as { resume: Resume };
@@ -180,7 +185,9 @@ export function Editor({
         };
         setPublishMsg(`Publish failed: ${err.error ?? "unknown"}`);
       } else {
-        setPublishMsg(`Published · gitshow.io/${handle}`);
+        setHasPublished(true);
+        setPublishMsg("Published ✓");
+        setTimeout(() => setPublishMsg(null), 4000);
       }
     } catch {
       setPublishMsg("Network error publishing.");
@@ -204,6 +211,7 @@ export function Editor({
         publishing={publishing}
         onPublish={onPublish}
         publishMsg={publishMsg}
+        hasPublished={hasPublished}
       />
 
       <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-5">
@@ -231,6 +239,28 @@ export function Editor({
   );
 }
 
+/**
+ * Collapse raw PATCH error codes from /api/resume/draft into a friendly
+ * one-liner. `invalid_patch` is the most common — it fires when the Zod
+ * schema rejects the merged draft (usually a URL field that got a
+ * relative path before the schema knew to accept one). The title
+ * attribute on the pill still shows the raw code for debugging.
+ */
+function humanizeSaveError(code: string | undefined): string {
+  switch (code) {
+    case "invalid_patch":
+      return "Some fields didn't fit the schema";
+    case "no_draft":
+      return "Draft missing — rerun the scan";
+    case "unauthenticated":
+      return "Signed out";
+    case "r2_not_bound":
+      return "Storage unavailable";
+    default:
+      return code ?? "Save failed";
+  }
+}
+
 function Header({
   handle,
   status,
@@ -239,6 +269,7 @@ function Header({
   publishing,
   onPublish,
   publishMsg,
+  hasPublished,
 }: {
   handle: string;
   status: SaveStatus;
@@ -247,10 +278,14 @@ function Header({
   publishing: boolean;
   onPublish: () => void;
   publishMsg: string | null;
+  hasPublished: boolean;
 }) {
   return (
-    <header className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex items-center gap-3">
+    <header className="flex flex-col gap-3">
+      {/* Row 1 — back link + actions. Intentionally the only full-width
+          row; every other piece of header chrome drops into a subtle
+          meta row below so the action buttons aren't crowded. */}
+      <div className="flex items-center justify-between gap-3">
         <Link
           href="/app"
           className="inline-flex items-center gap-2 text-[12px] text-muted-foreground hover:text-foreground transition-colors border border-border/40 rounded-lg pl-1 pr-2 py-1"
@@ -259,38 +294,56 @@ function Header({
           <LogoMark size={18} />
           <span>← /app</span>
         </Link>
-        <span className="text-[13px] text-muted-foreground">
-          Editing draft for <span className="font-mono text-foreground">@{handle}</span>
-        </span>
-        <SaveStatusDot status={status} errorMsg={errorMsg} onSaveNow={onSaveNow} />
+        <div className="flex items-center gap-2">
+          <Link
+            href="/app/preview"
+            target="_blank"
+            className="inline-flex items-center rounded-xl border border-border/40 bg-card/30 px-3 py-2 text-[13px] text-muted-foreground hover:text-foreground hover:bg-card/50 transition-colors min-h-10"
+          >
+            Preview ↗
+          </Link>
+          <button
+            type="button"
+            onClick={onPublish}
+            disabled={publishing}
+            className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-10 disabled:opacity-60 disabled:cursor-not-allowed"
+          >
+            {publishing ? "Publishing…" : "Publish"}
+          </button>
+        </div>
       </div>
-      <div className="flex items-center gap-2 sm:justify-end">
-        <Link
-          href="/app/preview"
-          target="_blank"
-          className="inline-flex items-center rounded-xl border border-border/40 bg-card/30 px-3 py-2 text-[13px] text-muted-foreground hover:text-foreground hover:bg-card/50 transition-colors min-h-11"
-        >
-          Preview ↗
-        </Link>
-        <button
-          type="button"
-          onClick={onPublish}
-          disabled={publishing}
-          className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-11 disabled:opacity-60 disabled:cursor-not-allowed"
-        >
-          {publishing ? "Publishing…" : "Publish"}
-        </button>
+
+      {/* Row 2 — context title. Clear statement of what the user is editing. */}
+      <div className="flex items-baseline gap-2">
+        <span className="text-[13px] text-muted-foreground">Editing draft for</span>
+        <span className="font-mono text-[14px] text-foreground">@{handle}</span>
       </div>
-      {publishMsg ? (
-        <span className="text-[11px] text-muted-foreground sm:w-full sm:text-right">
-          {publishMsg}
-        </span>
-      ) : null}
+
+      {/* Row 3 — subtle meta row for save state + published URL. No more
+          inline error+retry crowding the action buttons. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted-foreground">
+        <SaveStatusPill status={status} errorMsg={errorMsg} onSaveNow={onSaveNow} />
+        {publishMsg ? (
+          <span className="text-foreground/90">{publishMsg}</span>
+        ) : hasPublished ? (
+          <span>
+            Live at{" "}
+            <Link
+              href={`/${handle}`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono text-foreground hover:underline underline-offset-2"
+            >
+              gitshow.io/{handle}
+            </Link>
+          </span>
+        ) : null}
+      </div>
     </header>
   );
 }
 
-function SaveStatusDot({
+function SaveStatusPill({
   status,
   errorMsg,
   onSaveNow,
@@ -299,14 +352,17 @@ function SaveStatusDot({
   errorMsg: string | null;
   onSaveNow: () => void;
 }) {
+  // Human-readable save state. Raw API error codes like "invalid_patch"
+  // aren't helpful to the user — collapse them into a friendlier line
+  // + a Retry affordance.
   const label =
     status === "saving"
       ? "Saving…"
       : status === "saved"
         ? "Saved"
         : status === "error"
-          ? errorMsg ?? "Save error"
-          : "";
+          ? "Couldn't save"
+          : "Idle";
   const color =
     status === "saving"
       ? "bg-[var(--primary)]"
@@ -314,13 +370,10 @@ function SaveStatusDot({
         ? "bg-emerald-500"
         : status === "error"
           ? "bg-[var(--destructive)]"
-          : "bg-muted-foreground";
+          : "bg-muted-foreground/60";
 
   return (
-    <div
-      className="flex items-center gap-1.5 text-[11px] text-muted-foreground"
-      role="status"
-    >
+    <div className="flex items-center gap-1.5" role="status">
       <span
         className={cn(
           "h-1.5 w-1.5 rounded-full",
@@ -328,15 +381,27 @@ function SaveStatusDot({
           status === "saving" && "gs-pulse",
         )}
       />
-      <span>{label || "Idle"}</span>
+      <span className={status === "error" ? "text-[var(--destructive)]" : ""}>
+        {label}
+      </span>
       {status === "error" ? (
-        <button
-          type="button"
-          onClick={onSaveNow}
-          className="ml-1 underline underline-offset-2 hover:text-foreground"
-        >
-          Retry
-        </button>
+        <>
+          <button
+            type="button"
+            onClick={onSaveNow}
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            Retry
+          </button>
+          {errorMsg ? (
+            <span
+              className="text-muted-foreground/70 truncate max-w-[260px]"
+              title={errorMsg}
+            >
+              · {errorMsg}
+            </span>
+          ) : null}
+        </>
       ) : null}
     </div>
   );

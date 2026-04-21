@@ -25,6 +25,30 @@
 import * as z from "zod/v4";
 
 // ──────────────────────────────────────────────────────────────
+// Shared primitives
+// ──────────────────────────────────────────────────────────────
+
+/**
+ * URL or site-relative path. Media fields (`avatarUrl`, `logoUrl`,
+ * `image`, `video`) accept either an absolute URL (http/https/data) or
+ * a root-relative path beginning with `/` — the latter is what the
+ * upload endpoint returns in dev and in production without a CDN base
+ * URL (`/r2/assets/{id}/{name}.png`). Anything else is rejected.
+ */
+const UrlOrPath = z
+  .string()
+  .refine(
+    (v) =>
+      v === "" ||
+      v.startsWith("/") ||
+      /^(https?:|data:|blob:)/i.test(v),
+    {
+      message:
+        "Expected an absolute URL or a path starting with '/'",
+    },
+  );
+
+// ──────────────────────────────────────────────────────────────
 // Link + icon primitives
 // ──────────────────────────────────────────────────────────────
 
@@ -89,8 +113,8 @@ export const PersonSchema = z.object({
   handle: z.string().max(60),
   /** 2-letter avatar fallback, derived from name but stored so the AI can customise. */
   initials: z.string().max(4),
-  /** Absolute URL to an uploaded R2 asset or external image. */
-  avatarUrl: z.string().url().optional(),
+  /** Absolute URL or site-relative path (`/r2/...`) to the avatar. */
+  avatarUrl: UrlOrPath.optional(),
   location: z.string().max(120).optional(),
   /** One-line bio shown under the name in the hero. */
   description: z.string().max(280),
@@ -155,8 +179,8 @@ export const WorkEntrySchema = z.object({
   /** "Oct 2022" or "Present". */
   end: z.string().max(40),
   location: z.string().max(120).optional(),
-  /** Uploaded or Clearbit-fetched logo URL. Missing → initials fallback. */
-  logoUrl: z.string().url().optional(),
+  /** Uploaded or Clearbit-fetched logo. Missing → initials fallback. */
+  logoUrl: UrlOrPath.optional(),
   /** Markdown, rendered with react-markdown in the accordion body. */
   description: z.string().max(2000),
   href: z.string().url().optional(),
@@ -174,7 +198,7 @@ export const EducationEntrySchema = z.object({
   degree: z.string().max(200),
   start: z.string().max(40),
   end: z.string().max(40),
-  logoUrl: z.string().url().optional(),
+  logoUrl: UrlOrPath.optional(),
   href: z.string().url().optional(),
 });
 export type EducationEntry = z.infer<typeof EducationEntrySchema>;
@@ -197,8 +221,8 @@ export const ProjectSchema = z.object({
    * Featured media — image (png/jpg/gif) OR video (mp4) OR both.
    * Priority at render time: video > image > social-preview fallback.
    */
-  image: z.string().url().optional(),
-  video: z.string().url().optional(),
+  image: UrlOrPath.optional(),
+  video: UrlOrPath.optional(),
   /** Primary canonical link used when the whole card is clickable. */
   href: z.string().url().optional(),
 });
@@ -230,7 +254,7 @@ export const BuildLogEntrySchema = z.object({
   /** Win label — "1st Place Winner", "Best Data Hack". */
   win: z.string().max(80).optional(),
   /** Optional image — only used when an actual hackathon badge exists. */
-  image: z.string().url().optional(),
+  image: UrlOrPath.optional(),
   links: z.array(LinkSchema).max(6).default([]),
 });
 export type BuildLogEntry = z.infer<typeof BuildLogEntrySchema>;
@@ -256,7 +280,7 @@ export const BlogPostSchema = z.object({
   sourceUrl: z.string().url().optional(),
   sourcePlatform: z.string().max(40).optional(),
   /** Cover image URL. */
-  image: z.string().url().optional(),
+  image: UrlOrPath.optional(),
   /** Verbatim markdown body. Rendered with remark-gfm + shiki at build. */
   body: z.string(),
 });
