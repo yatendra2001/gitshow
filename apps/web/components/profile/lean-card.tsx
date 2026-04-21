@@ -47,7 +47,7 @@ import type {
   DailyActivity,
 } from "@gitshow/shared/schemas";
 import { cn } from "@/lib/utils";
-import { InlineMarkdown } from "@/lib/inline-md";
+import { ClampedProse } from "@/lib/inline-md";
 import {
   TimelineChart,
   ActivityChart,
@@ -274,12 +274,28 @@ function PatternCard({
   onEvidence: (c: CardClaim) => void;
   spotlight?: boolean;
 }) {
+  // Using div-as-button here (not a real <button>) because ClampedProse
+  // renders its own "Show more" toggle internally — nesting <button>
+  // inside <button> is invalid HTML. Keyboard + role attrs keep it
+  // accessible. Clicks on the inner Show-more toggle call
+  // stopPropagation so they don't also open the evidence drawer.
+  const open = () => onEvidence(claim);
   return (
-    <button
-      type="button"
-      onClick={() => onEvidence(claim)}
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={(e) => {
+        if ((e.target as HTMLElement).closest("button,a")) return;
+        open();
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          open();
+        }
+      }}
       className={cn(
-        "group flex w-full flex-col items-start gap-3 rounded-2xl border text-left transition-[box-shadow,background-color,border-color] duration-200 focus-visible:outline-none focus-visible:shadow-[var(--shadow-composer-focus)]",
+        "group flex w-full cursor-pointer flex-col items-start gap-3 rounded-2xl border text-left transition-[box-shadow,background-color,border-color] duration-200 focus-visible:outline-none focus-visible:shadow-[var(--shadow-composer-focus)]",
         spotlight
           ? "border-[var(--primary)]/30 bg-[var(--primary)]/[0.04] p-5 sm:p-6 hover:border-[var(--primary)]/50"
           : "border-border/40 bg-card/60 p-5 sm:p-6 hover:border-border hover:bg-card hover:shadow-[var(--shadow-card)]",
@@ -302,14 +318,20 @@ function PatternCard({
           ) : null}
         </div>
       ) : null}
-      <div
+      {/* Clamp the preview to 2-3 lines; ClampedProse handles its own
+          Show more / Show less toggle. Spotlight card gets one extra
+          line so the hero pattern doesn't feel prematurely cut. */}
+      <ClampedProse
+        text={claim.text}
+        lines={spotlight ? 3 : 2}
+        style={{
+          lineHeight: 1.55,
+        }}
         className={cn(
-          "leading-relaxed text-foreground/85",
+          "text-foreground/85",
           spotlight ? "text-[15px] sm:text-[16px]" : "text-[13px] sm:text-[14px]",
         )}
-      >
-        <InlineMarkdown text={claim.text} />
-      </div>
+      />
       <div className="mt-auto flex w-full items-center justify-between gap-3 pt-1">
         <span className="font-mono text-[10px] text-muted-foreground">
           {claim.evidence_count} commit{claim.evidence_count === 1 ? "" : "s"} linked
@@ -318,7 +340,7 @@ function PatternCard({
           See evidence →
         </span>
       </div>
-    </button>
+    </div>
   );
 }
 
