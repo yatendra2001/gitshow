@@ -34,6 +34,7 @@ export function ProgressPane({
   onClaimRemoved,
   isPublished = false,
   onPublishedChange,
+  lastSavedAt,
 }: {
   scan: ScanRow;
   envelopes: ScanEventEnvelope[];
@@ -49,6 +50,7 @@ export function ProgressPane({
   onClaimRemoved?: (claimId: string) => void;
   isPublished?: boolean;
   onPublishedChange?: (next: boolean) => void;
+  lastSavedAt?: number | null;
 }) {
   const finalCard = card ?? partialCard;
 
@@ -78,6 +80,7 @@ export function ProgressPane({
         onClaimRemoved={onClaimRemoved}
         isPublished={isPublished}
         onPublishedChange={onPublishedChange}
+        lastSavedAt={lastSavedAt}
       />
     );
   }
@@ -270,6 +273,7 @@ function SucceededView({
   onClaimRemoved,
   isPublished,
   onPublishedChange,
+  lastSavedAt,
 }: {
   scan: ScanRow;
   card: ProfileCard;
@@ -282,6 +286,7 @@ function SucceededView({
   onClaimRemoved?: (claimId: string) => void;
   isPublished?: boolean;
   onPublishedChange?: (next: boolean) => void;
+  lastSavedAt?: number | null;
 }) {
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-[#FAFAF7]">
@@ -313,12 +318,15 @@ function SucceededView({
               </div>
             </div>
           </div>
-          <PublishControl
-            scanId={scan.id}
-            handle={card.handle}
-            isPublished={isPublished ?? false}
-            onPublishedChange={onPublishedChange}
-          />
+          <div className="flex shrink-0 items-center gap-3">
+            {editable && <SaveChip lastSavedAt={lastSavedAt ?? null} />}
+            <PublishControl
+              scanId={scan.id}
+              handle={card.handle}
+              isPublished={isPublished ?? false}
+              onPublishedChange={onPublishedChange}
+            />
+          </div>
         </div>
       </div>
 
@@ -349,6 +357,34 @@ function SucceededView({
  *   - draft    → primary "Publish" button
  *   - published → "Published · gitshow.io/<handle> ↗" + tiny "Unpublish"
  */
+/**
+ * Tiny "Saved · Xs ago" chip. Every inline edit auto-saves on blur;
+ * this chip is the visual confirmation that the save landed. Ticks
+ * every 5s so the relative time stays fresh. When no edits have
+ * happened this session, renders nothing.
+ */
+function SaveChip({ lastSavedAt }: { lastSavedAt: number | null }) {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (!lastSavedAt) return;
+    const t = setInterval(() => setNow(Date.now()), 5000);
+    return () => clearInterval(t);
+  }, [lastSavedAt]);
+  if (!lastSavedAt) return null;
+  const ago = Math.max(0, Math.floor((now - lastSavedAt) / 1000));
+  const label =
+    ago < 3 ? "Saved just now" :
+    ago < 60 ? `Saved · ${ago}s ago` :
+    ago < 3600 ? `Saved · ${Math.floor(ago / 60)}m ago` :
+    `Saved · ${Math.floor(ago / 3600)}h ago`;
+  return (
+    <span className="inline-flex items-center gap-1.5 font-mono text-[10px] text-slate-500">
+      <Check className="size-3 text-emerald-600" />
+      {label}
+    </span>
+  );
+}
+
 function PublishControl({
   scanId,
   handle,

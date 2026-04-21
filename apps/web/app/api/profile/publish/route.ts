@@ -47,7 +47,12 @@ export async function POST(req: Request) {
 
   const now = Date.now();
   const slug = scan.handle.toLowerCase();
-  const cardKey = `${scanId}/14-card.json`;
+  // R2 uploads go through R2Client.uploadStageFile which prefixes with
+  // `scans/`, so the canonical key is `scans/<scanId>/14-card.json`.
+  // Writing the bare `<scanId>/14-card.json` variant here meant the
+  // /{handle} route couldn't resolve the object and 404'd even after
+  // a successful publish.
+  const cardKey = `scans/${scanId}/14-card.json`;
 
   try {
     await env.DB.prepare(
