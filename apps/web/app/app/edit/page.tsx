@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getSession } from "@/auth";
-import { loadDraftResume } from "@/lib/resume-io";
+import { loadDraftResume, loadPublishedResume } from "@/lib/resume-io";
 import { Editor } from "./_editor";
 
 /**
@@ -22,7 +22,10 @@ export default async function EditPage() {
 
   const handle = session.user.login;
   const { env } = await getCloudflareContext({ async: true });
-  const resume = await loadDraftResume(env.BUCKET, handle);
+  const [resume, published] = await Promise.all([
+    loadDraftResume(env.BUCKET, handle),
+    loadPublishedResume(env.BUCKET, handle),
+  ]);
 
   if (!resume) {
     return (
@@ -34,7 +37,11 @@ export default async function EditPage() {
 
   return (
     <main className="min-h-svh bg-background text-foreground">
-      <Editor initialResume={resume} handle={handle} />
+      <Editor
+        initialResume={resume}
+        handle={handle}
+        initialPublished={Boolean(published)}
+      />
     </main>
   );
 }
