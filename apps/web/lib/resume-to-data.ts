@@ -48,6 +48,81 @@ function iconForSkill(
   return resolveSkillIcon(skill.name) as unknown as IconComp | undefined;
 }
 
+const MONTH_NAMES = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+function monthYear(year: number, month: number): string {
+  const m = MONTH_NAMES[month - 1];
+  return m ? `${m} ${year}` : String(year);
+}
+
+/**
+ * Prettify the `dates` string stored on a BuildLogEntry.
+ *
+ * The worker emits compact `YYYY-MM` or `YYYY-MM → YYYY-MM` strings
+ * because that's what we can faithfully derive from git commit dates.
+ * Users on the timeline want something human-readable — so at render
+ * time we translate:
+ *
+ *   "2024-02"                    → "February 2024"
+ *   "2024-02 → 2024-02"          → "February 2024"
+ *   "2024-02 → 2024-10"          → "February – October 2024"
+ *   "2024-02 → 2025-02"          → "February 2024 – February 2025"
+ *
+ * Any string that doesn't match the expected shape (user-edited custom
+ * copy like "Hackathon weekend, Oct 2017") passes through untouched.
+ */
+function humanizeBuildLogDates(raw: string): string {
+  if (!raw) return raw;
+
+  const single = raw.match(/^(\d{4})-(\d{2})$/);
+  if (single) {
+    const y = Number(single[1]);
+    const m = Number(single[2]);
+    if (Number.isFinite(y) && m >= 1 && m <= 12) return monthYear(y, m);
+    return raw;
+  }
+
+  const range = raw.match(
+    /^(\d{4})-(\d{2})\s*(?:→|->|–|—|-)\s*(\d{4})-(\d{2})$/,
+  );
+  if (range) {
+    const y1 = Number(range[1]);
+    const m1 = Number(range[2]);
+    const y2 = Number(range[3]);
+    const m2 = Number(range[4]);
+    const valid =
+      Number.isFinite(y1) &&
+      Number.isFinite(y2) &&
+      m1 >= 1 &&
+      m1 <= 12 &&
+      m2 >= 1 &&
+      m2 <= 12;
+    if (!valid) return raw;
+    if (y1 === y2 && m1 === m2) return monthYear(y1, m1);
+    if (y1 === y2) {
+      const first = MONTH_NAMES[m1 - 1];
+      const last = MONTH_NAMES[m2 - 1];
+      if (first && last) return `${first} – ${last} ${y1}`;
+    }
+    return `${monthYear(y1, m1)} – ${monthYear(y2, m2)}`;
+  }
+
+  return raw;
+}
+
 /**
  * The person-agent emits hero-section anchor links as bare fragment
  * paths (`/#projects`, `/#work`, etc.) to mirror the reference
@@ -227,7 +302,7 @@ export function resumeToTemplateData(
     })),
     hackathons: resume.buildLog.map((b) => ({
       title: b.title,
-      dates: b.dates,
+      dates: humanizeBuildLogDates(b.dates),
       location: b.location,
       description: b.description,
       image: b.image,
