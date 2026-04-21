@@ -51,19 +51,18 @@ type SectionId =
 interface Tab {
   id: SectionId;
   label: string;
-  regenerable?: boolean;
 }
 
 const TABS: Tab[] = [
-  { id: "hero", label: "Hero", regenerable: true },
-  { id: "about", label: "About", regenerable: true },
-  { id: "work", label: "Work", regenerable: true },
-  { id: "education", label: "Education", regenerable: true },
-  { id: "skills", label: "Skills", regenerable: true },
-  { id: "projects", label: "Projects", regenerable: true },
-  { id: "buildLog", label: "Build log", regenerable: true },
+  { id: "hero", label: "Hero" },
+  { id: "about", label: "About" },
+  { id: "work", label: "Work" },
+  { id: "education", label: "Education" },
+  { id: "skills", label: "Skills" },
+  { id: "projects", label: "Projects" },
+  { id: "buildLog", label: "Build log" },
   { id: "contact", label: "Contact" },
-  { id: "blog", label: "Blog", regenerable: true },
+  { id: "blog", label: "Blog" },
   { id: "theme", label: "Theme" },
   { id: "layout", label: "Layout" },
 ];
@@ -85,8 +84,6 @@ export function Editor({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [publishing, setPublishing] = useState(false);
   const [publishMsg, setPublishMsg] = useState<string | null>(null);
-  const [regenMsg, setRegenMsg] = useState<string | null>(null);
-
   // Queue of patches we haven't flushed yet. Aggregating them means we
   // don't send 5 PATCHes for 5 keystrokes in the same field.
   const pendingPatchRef = useRef<Record<string, unknown>>({});
@@ -192,32 +189,6 @@ export function Editor({
     }
   }, [publishing, flush, handle]);
 
-  const onRegenerate = useCallback(
-    async (section: SectionId) => {
-      setRegenMsg(`Regenerating ${section}…`);
-      try {
-        const resp = await fetch("/api/resume/regenerate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ section }),
-        });
-        if (!resp.ok) {
-          const err = (await resp.json().catch(() => ({}))) as {
-            error?: string;
-          };
-          setRegenMsg(`Failed: ${err.error ?? "unknown"}`);
-        } else {
-          setRegenMsg(
-            `Scan spawned. Come back in ~15 min; email will fire on completion.`,
-          );
-        }
-      } catch {
-        setRegenMsg("Network error kicking off regenerate.");
-      }
-    },
-    [],
-  );
-
   const activeTab = useMemo(
     () => TABS.find((t) => t.id === active) ?? TABS[0],
     [active],
@@ -246,22 +217,7 @@ export function Editor({
               </div>
               <h2 className="text-[18px] font-semibold">{activeTab.label}</h2>
             </div>
-            {activeTab.regenerable ? (
-              <button
-                type="button"
-                onClick={() => onRegenerate(active)}
-                className="rounded-xl border border-border/40 bg-card/30 px-3 py-2 text-[12px] text-muted-foreground hover:text-foreground hover:bg-card/50 transition-colors"
-              >
-                Regenerate with AI
-              </button>
-            ) : null}
           </div>
-
-          {regenMsg ? (
-            <div className="mb-5 rounded-xl border border-border/40 bg-card/30 px-3 py-2 text-[12px] text-muted-foreground">
-              {regenMsg}
-            </div>
-          ) : null}
 
           <SectionView
             id={active}

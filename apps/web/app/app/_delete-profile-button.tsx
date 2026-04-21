@@ -13,9 +13,8 @@ import { useState } from "react";
  * user_profiles row. After success we send the user back to /app
  * where the EmptyState takes over.
  *
- * A two-tap confirm (same pattern as RefreshButton) gives a beat to
- * back out; no modal because the action is locally reversible (they
- * can just run another scan).
+ * A two-tap confirm gives a beat to back out; no modal because the
+ * action is locally reversible (they can just run another scan).
  */
 export function DeleteProfileButton() {
   const [stage, setStage] = useState<"idle" | "confirming" | "deleting">(
