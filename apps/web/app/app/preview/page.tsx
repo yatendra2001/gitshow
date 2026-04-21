@@ -3,7 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import { getSession } from "@/auth";
-import { loadDraftResume } from "@/lib/resume-io";
+import { loadDraftResume, loadPublishedResume } from "@/lib/resume-io";
 import PortfolioPage from "@/components/portfolio-page";
 import { DataProvider } from "@/components/data-provider";
 import { FlickeringGrid } from "@/components/magicui/flickering-grid";
@@ -45,8 +45,12 @@ export default async function PreviewPage() {
 
   const handle = session.user.login;
   const { env } = await getCloudflareContext({ async: true });
-  const draft = await loadDraftResume(env.BUCKET, handle);
+  const [draft, published] = await Promise.all([
+    loadDraftResume(env.BUCKET, handle),
+    loadPublishedResume(env.BUCKET, handle),
+  ]);
   if (!draft) redirect("/app");
+  const isPublished = Boolean(published);
 
   return (
     <div
@@ -57,7 +61,7 @@ export default async function PreviewPage() {
         "font-sans min-h-dvh bg-background text-foreground relative antialiased",
       )}
     >
-      <DraftBanner handle={handle} />
+      <DraftBanner handle={handle} isPublished={isPublished} />
       <DataProvider resume={draft} handle={handle}>
         <div className="absolute inset-x-0 top-[40px] h-[100px] overflow-hidden z-0">
           <FlickeringGrid
@@ -79,7 +83,13 @@ export default async function PreviewPage() {
   );
 }
 
-function DraftBanner({ handle }: { handle: string }) {
+function DraftBanner({
+  handle,
+  isPublished,
+}: {
+  handle: string;
+  isPublished: boolean;
+}) {
   return (
     <div className="sticky top-0 z-30 flex h-10 items-center justify-between gap-3 border-b border-border/40 bg-background/85 px-4 backdrop-blur">
       <div className="flex items-center gap-3 text-[12px] text-muted-foreground">
@@ -92,7 +102,22 @@ function DraftBanner({ handle }: { handle: string }) {
           <span>← /app</span>
         </Link>
         <span>
-          Draft preview · <span className="text-foreground">@{handle}</span> · not public yet
+          Draft preview · <span className="text-foreground">@{handle}</span>
+          {isPublished ? (
+            <>
+              {" · "}
+              <Link
+                href={`/${handle}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-foreground underline-offset-2 hover:underline"
+              >
+                live at gitshow.io/{handle} ↗
+              </Link>
+            </>
+          ) : (
+            <> · not public yet</>
+          )}
         </span>
       </div>
     </div>
