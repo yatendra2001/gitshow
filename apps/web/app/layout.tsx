@@ -21,6 +21,20 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className="dark" suppressHydrationWarning>
+      <head>
+        {/*
+          Pre-hydration theme script. Reads gs-theme from localStorage
+          and sets the <html> class before paint, so a visitor who
+          flipped to light on a previous visit doesn't see a dark →
+          light flash on reload. Inline + string-literal on purpose;
+          must not import anything. Safe no-op on SSR (never runs).
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `try{var t=localStorage.getItem('gs-theme');if(t==='light'){document.documentElement.classList.remove('dark')}else if(t==='dark'){document.documentElement.classList.add('dark')}}catch(e){}`,
+          }}
+        />
+      </head>
       <body
         className={cn(
           sans.variable,

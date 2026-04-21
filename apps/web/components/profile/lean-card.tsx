@@ -52,6 +52,7 @@ import {
   ActivityChart,
   TeamBars,
 } from "@/components/scan/profile-card";
+import { ThemeToggle } from "@/components/profile/theme-toggle";
 
 // ─── Public entry ──────────────────────────────────────────────────
 
@@ -108,7 +109,10 @@ function Header({ card }: { card: ProfileCard }) {
           </span>
         ) : null}
       </div>
-      <ShareButton handle={card.handle} />
+      <div className="flex items-center gap-2">
+        <ThemeToggle />
+        <ShareButton handle={card.handle} />
+      </div>
     </header>
   );
 }
@@ -361,23 +365,41 @@ function ShippedStrip({ shipped }: { shipped: CardClaim[] }) {
 
 function ShippedCard({ claim }: { claim: CardClaim }) {
   const url = claim.evidence_preview[0]?.url;
+  // Evidence count + first-preview title let the user see at a glance
+  // how well-backed the project line is. Wider card + lighter text
+  // clamp so the description has room to breathe — the earlier
+  // 3-line truncation was stripping useful detail.
+  const evidenceCount = claim.evidence_count ?? claim.evidence_preview.length;
   const inner = (
     <div
-      className="flex flex-col gap-2 min-w-[240px] sm:min-w-[260px] rounded-2xl border border-border/40 bg-card/60 p-4 transition-[box-shadow,background-color] duration-200 hover:bg-card hover:shadow-[var(--shadow-card)]"
+      className="group flex w-[320px] shrink-0 flex-col gap-3 rounded-2xl border border-border/50 bg-card/70 p-5 transition-[box-shadow,background-color,transform,border-color] duration-200 hover:-translate-y-0.5 hover:border-border hover:bg-card hover:shadow-[var(--shadow-card)]"
       style={{ scrollSnapAlign: "start" }}
     >
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="h-1.5 w-1.5 rounded-full bg-[var(--chart-3)] shrink-0" />
-        <span className="font-mono text-[11px] text-muted-foreground truncate">
-          {claim.label ?? ""}
-        </span>
-      </div>
-      <div className="text-[14px] leading-snug line-clamp-3">
-        {stripMd(claim.text)}
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="h-2 w-2 rounded-full bg-[var(--chart-3)] shrink-0" />
+          <span className="text-[14px] font-semibold text-foreground truncate">
+            {claim.label ?? "Project"}
+          </span>
+        </div>
+        {url ? (
+          <span className="font-mono text-[10px] text-muted-foreground transition-colors group-hover:text-foreground shrink-0">
+            open ↗
+          </span>
+        ) : null}
       </div>
       {claim.sublabel ? (
-        <div className="text-[11px] text-muted-foreground line-clamp-1 mt-auto pt-1">
+        <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground truncate">
           {claim.sublabel}
+        </div>
+      ) : null}
+      <div className="text-[13px] leading-relaxed text-foreground/85">
+        {stripMd(claim.text)}
+      </div>
+      {evidenceCount > 0 ? (
+        <div className="mt-auto flex items-center gap-1.5 border-t border-border/30 pt-3 font-mono text-[10px] text-muted-foreground">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-[var(--chart-1)]" />
+          {evidenceCount} {evidenceCount === 1 ? "commit" : "commits"} linked
         </div>
       ) : null}
     </div>
