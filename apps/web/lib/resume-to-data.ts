@@ -49,6 +49,27 @@ function iconForSkill(
 }
 
 /**
+ * The person-agent emits hero-section anchor links as bare fragment
+ * paths (`/#projects`, `/#work`, etc.) to mirror the reference
+ * portfolio's prose style. In our app those paths resolve to the
+ * site root, not the user's page — rewrite them to
+ * `/{handle}/#anchor` at transform time so in-page jumps land
+ * correctly.
+ *
+ * Matches both markdown (`](/#foo)`) and raw HTML (`href="/#foo"`)
+ * just in case. External URLs and mailto: links pass through
+ * untouched because the pattern only matches `/` followed by `#`.
+ */
+function rewriteInternalLinks(summary: string, handle: string): string {
+  if (!handle) return summary;
+  return summary.replace(
+    /(\]\(|href=["'])\/#([A-Za-z0-9_-]+)/g,
+    (_match, prefix: string, anchor: string) =>
+      `${prefix}/${handle}/#${anchor}`,
+  );
+}
+
+/**
  * Template's DATA shape — mirrors `portfolio/src/data/resume.tsx`. We only
  * model the fields the template actually renders; any extra surface can be
  * added here as we wire new sections.
@@ -153,7 +174,7 @@ export function resumeToTemplateData(
     url: resume.person.url ?? `https://gitshow.io/${handle}`,
     location: resume.person.location ?? "",
     description: resume.person.description,
-    summary: resume.person.summary,
+    summary: rewriteInternalLinks(resume.person.summary, handle),
     avatarUrl: resume.person.avatarUrl ?? "",
     skills: resume.skills.map((s) => ({
       name: s.name,

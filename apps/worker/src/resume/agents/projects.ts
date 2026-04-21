@@ -44,10 +44,11 @@ export const ProjectAgentOutputSchema = z.object({
   /** Display title. Usually the repo name unless the product brands differently. */
   title: z.string().max(120),
   /**
-   * Markdown description. 2-5 sentences. Every factual claim must be
-   * backed by an entry in sources[].
+   * Markdown description. 1-2 sentences, hard-capped at ~280 chars to
+   * match the reference portfolio's project card density. Every
+   * factual claim must be backed by an entry in sources[].
    */
-  description: z.string().max(2000),
+  description: z.string().max(280),
   /** "Jan 2024 - Present" / "Nov 2023 - Feb 2024" / "2022". */
   dates: z.string().max(80),
   active: z.boolean().default(false),
@@ -112,7 +113,7 @@ You have tools:
 You also have pre-computed context: the repo's GitHub description, README preview, language mix, stargazers, first/last commit dates, and a parsed list of technologies from its manifest files (package.json, go.mod, etc.).
 
 Your output — produced via submit_project — has fields:
-  title, description (markdown, 2-5 sentences), dates, active, extra_links[], sources[]
+  title, description (markdown, 1-2 sentences, ≤280 chars), dates, active, extra_links[], sources[]
 
 Rules that determine quality:
 
@@ -126,7 +127,10 @@ Rules that determine quality:
 
 3. NEVER invent links. Only put URLs in sources[] or extra_links[] that you actually loaded via browse_web (cached is fine).
 
-4. description style: specific, concrete, no marketing filler. Prefer "Built a Next.js + Postgres SaaS that lets users X, crossed 1k GitHub stars after a [Show HN](https://news.ycombinator.com/...) launch" over "Powerful, full-stack application with modern technologies".
+4. description style: short. 1-2 sentences, ≤280 chars total. Lead with WHAT it is, then the single strongest signal (launch, traction, context). Skip build-log trivia ("implemented X, added Y") — that belongs in the build-log section, not the featured card. Reference-portfolio examples of the right density:
+   - "Designed, developed and sold animated UI components for developers." (65 chars, 1 sentence)
+   - "Developed an open-source logging and analytics platform for OpenAI: log your ChatGPT API requests, analyze costs, and improve your prompts." (137 chars, 1 sentence)
+   - "With the release of the OpenAI GPT Store, I built a SaaS that collects email addresses from GPT users — a way to build an audience and monetize your GPT API usage." (2 sentences, ~260 chars)
 
 5. dates: pull from the commit date range in the input. Format like "Jan 2024 - Feb 2024" or "June 2023 - Present" if active=true.
 
