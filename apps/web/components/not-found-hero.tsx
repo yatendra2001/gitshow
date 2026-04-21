@@ -31,16 +31,16 @@ export interface NotFoundHeroProps {
 }
 
 export function NotFoundHero({ kind, handle }: NotFoundHeroProps) {
-  // Next.js doesn't pipe the request URL into `not-found.tsx`, so the
-  // path we echo in the fake git output is read client-side. Good
-  // enough — the page is a fallback, not a primary surface.
-  const [path, setPath] = useState<string>("/");
+  // We only derive the handle client-side for the handle variant —
+  // Next doesn't pipe `params` into `not-found.tsx`, so we read it
+  // from the pathname. The raw URL is no longer surfaced; a previous
+  // version echoed it in a git-output card but that read as
+  // confusing noise.
   const [derivedHandle, setDerivedHandle] = useState<string | undefined>(
     handle,
   );
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setPath(window.location.pathname + window.location.search);
     if (kind === "handle" && !handle) {
       const first = window.location.pathname.split("/").filter(Boolean)[0];
       if (first) setDerivedHandle(first);
@@ -58,17 +58,8 @@ export function NotFoundHero({ kind, handle }: NotFoundHeroProps) {
       : `That page didn't land.`;
   const subtitle =
     kind === "handle"
-      ? `gitshow.io pages appear once someone has run a scan. Want to stake your own?`
-      : `We couldn't find whatever you were after. Maybe spin up a portfolio while you're here?`;
-
-  const gitCmd =
-    kind === "handle" && resolvedHandle
-      ? `git show @${resolvedHandle}`
-      : `git show ${path}`;
-  const gitErr =
-    kind === "handle" && resolvedHandle
-      ? `fatal: no portfolio named '${resolvedHandle}'`
-      : `fatal: ambiguous argument '${path}': unknown revision`;
+      ? `gitshow.io pages appear once someone has run a scan. Want to claim yours?`
+      : `We couldn't find whatever you were after — make your own portfolio instead?`;
 
   return (
     <main className="relative min-h-svh bg-background text-foreground overflow-hidden">
@@ -126,28 +117,6 @@ export function NotFoundHero({ kind, handle }: NotFoundHeroProps) {
             <p className="max-w-xl text-[14px] leading-relaxed text-muted-foreground">
               {subtitle}
             </p>
-          </div>
-
-          {/* Git-output card — the visual hook. Echoes the failed path
-              as a fake git invocation and then the `+` line is the CTA
-              to flip the failure into a creation. */}
-          <div className="rounded-2xl border border-border/40 bg-card/50 backdrop-blur-sm p-4 sm:p-5 font-mono text-[12.5px] leading-relaxed">
-            <div className="text-muted-foreground/80">
-              <span className="text-emerald-500">$</span> {gitCmd}
-            </div>
-            <div className="text-[var(--destructive)]/90 mt-1">{gitErr}</div>
-            <div className="mt-3 flex flex-col gap-0.5 border-t border-border/30 pt-3">
-              <span className="text-[var(--destructive)]/80">
-                <span className="select-none opacity-70">- </span>
-                {kind === "handle" && resolvedHandle
-                  ? `gitshow.io/${resolvedHandle}`
-                  : `gitshow.io${path}`}
-              </span>
-              <span className="text-emerald-500">
-                <span className="select-none opacity-80">+ </span>
-                gitshow.io/<span className="text-foreground">{`{your-handle}`}</span>
-              </span>
-            </div>
           </div>
 
           <div className="flex flex-wrap gap-2">
