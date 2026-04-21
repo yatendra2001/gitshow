@@ -135,13 +135,29 @@ export default async function OgImage({
             color: "#737373",
           }}
         >
-          <span>gitshow</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            {/* Inline icon. Satori needs an absolute URL, not a path. */}
+            <img
+              src={`${publicBase()}/icon-dark.png`}
+              width={28}
+              height={28}
+              alt=""
+              style={{ borderRadius: 4 }}
+            />
+            <span>gitshow</span>
+          </div>
           {resume.person.location ? <span>{resume.person.location}</span> : null}
         </div>
       </div>
     ),
     size,
   );
+}
+
+function publicBase(): string {
+  return (
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://gitshow.io"
+  ).replace(/\/+$/, "");
 }
 
 function fallbackImage(title: string, subtitle: string) {

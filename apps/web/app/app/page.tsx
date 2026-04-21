@@ -4,6 +4,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getSession } from "@/auth";
 import { NotificationBell } from "@/components/notifications/bell";
 import { PushEnableButton } from "@/components/notifications/push-enable";
+import { Logo } from "@/components/logo";
 import {
   loadDraftResume,
   loadPublishedResume,
@@ -98,9 +99,7 @@ export default async function AppHomePage() {
     <main className="min-h-svh bg-background text-foreground">
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border/30 bg-background/80 px-4 backdrop-blur sm:px-6">
         <div className="flex items-center gap-3">
-          <span className="font-[var(--font-serif)] text-[18px] leading-none">
-            gitshow
-          </span>
+          <Logo href="/" size={24} />
           <span className="hidden sm:inline font-mono text-[11px] text-muted-foreground">
             @{githubHandle || "you"}
           </span>

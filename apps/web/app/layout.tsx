@@ -35,6 +35,26 @@ export const metadata: Metadata = {
     description: "Portfolios from your git history.",
     type: "website",
   },
+  icons: {
+    // Browsers pick by media query: light-mode tabs get icon-light,
+    // dark-mode tabs get icon-dark. The unsuffixed `icon` is the
+    // fallback for clients that ignore media (older Safari, etc.) —
+    // icon-dark renders fine on both backgrounds.
+    icon: [
+      { url: "/icon-dark.png", type: "image/png" },
+      {
+        url: "/icon-light.png",
+        type: "image/png",
+        media: "(prefers-color-scheme: light)",
+      },
+      {
+        url: "/icon-dark.png",
+        type: "image/png",
+        media: "(prefers-color-scheme: dark)",
+      },
+    ],
+    apple: "/icon-dark.png",
+  },
 };
 
 export default function RootLayout({

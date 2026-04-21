@@ -21,25 +21,19 @@ import { NextResponse, type NextRequest } from "next/server";
  * runtime won't eval the D1 binding at middleware time, and direct
  * server-side invocation from middleware on OpenNext is known-flaky.
  *
+
  * Protected paths:
- *   /app and /app/** — the authenticated dashboard
- *   /dashboard/**    — legacy alias (still redirects through here)
- *   /s/** except /s/demo — scan progress views
+ *   /app and /app/** — the authenticated dashboard + editor
  *
- * Everything else (/, /signin, /p/[handle], /[handle], /api/**) stays
- * open. Per-route `getSession()` still runs in server components for
- * the belt-and-braces layer.
+ * Everything else (/, /signin, /{handle}, /api/**) stays open.
+ * Per-route `getSession()` still runs in server components for the
+ * belt-and-braces layer.
  */
 
-const PROTECTED_PREFIXES = ["/app", "/dashboard", "/s/"] as const;
-const PROTECTED_ALLOWLIST = ["/s/demo"] as const;
+const PROTECTED_PREFIXES = ["/app"] as const;
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-
-  if (PROTECTED_ALLOWLIST.includes(pathname as (typeof PROTECTED_ALLOWLIST)[number])) {
-    return NextResponse.next();
-  }
 
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
   if (!isProtected) return NextResponse.next();
@@ -88,5 +82,5 @@ function redirectToSignin(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/dashboard/:path*", "/s/:path*"],
+  matcher: ["/app/:path*"],
 };
