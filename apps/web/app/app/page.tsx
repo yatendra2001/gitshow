@@ -11,7 +11,6 @@ import {
 } from "@/lib/resume-io";
 import { StartFirstScanButton } from "./_start-button";
 import { DeleteProfileButton } from "./_delete-profile-button";
-import { DeleteAccountHandler } from "./_delete-handler";
 import { SignOutButton } from "./_signout-button";
 import { PublishDraftButton } from "./_publish-draft-button";
 
@@ -127,8 +126,7 @@ export default async function AppHomePage() {
         <EmptyState handle={githubHandle} />
       )}
 
-      <footer className="mx-auto w-full max-w-3xl px-4 sm:px-6 pb-12 flex items-center justify-between gap-3 text-[11px] text-muted-foreground">
-        <DeleteAccountHandler />
+      <footer className="mx-auto w-full max-w-3xl px-4 sm:px-6 pb-12 flex items-center justify-end gap-3 text-[11px] text-muted-foreground">
         <span className="font-mono">gitshow.io</span>
       </footer>
     </main>
