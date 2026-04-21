@@ -10,7 +10,6 @@ import {
   loadPublishedResume,
 } from "@/lib/resume-io";
 import { StartFirstScanButton } from "./_start-button";
-import { RefreshButton } from "./_refresh-button";
 import { DeleteProfileButton } from "./_delete-profile-button";
 import { DeleteAccountHandler } from "./_delete-handler";
 import { SignOutButton } from "./_signout-button";
@@ -220,7 +219,6 @@ function DraftState({ handle }: { handle: string }) {
           Edit
         </Link>
         <PublishDraftButton />
-        <RefreshButton />
       </div>
     </section>
   );
@@ -317,26 +315,16 @@ function PublishedState({
         >
           Edit
         </Link>
-        <RefreshButton />
       </div>
 
       <div className="mt-6 border-t border-border/30 pt-5">
-        <div className="grid grid-cols-1 gap-4 text-[12px] text-muted-foreground sm:grid-cols-2">
-          <div className="flex flex-col gap-1">
-            <span className="text-foreground font-medium">Refresh</span>
-            <span>
-              Rescans your GitHub and regenerates the draft. Review and
-              publish to update the live page.
-            </span>
-          </div>
-          <div className="flex flex-col gap-2">
-            <span className="text-foreground font-medium">Delete profile</span>
-            <span>
-              Wipes scans and the public page. You&apos;ll start over from
-              intake.
-            </span>
-            <DeleteProfileButton />
-          </div>
+        <div className="flex flex-col gap-2 text-[12px] text-muted-foreground">
+          <span className="text-foreground font-medium">Delete profile</span>
+          <span>
+            Wipes scans and the public page. You&apos;ll start over from
+            intake.
+          </span>
+          <DeleteProfileButton />
         </div>
       </div>
     </section>

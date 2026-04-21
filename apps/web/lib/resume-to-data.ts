@@ -13,6 +13,7 @@
 import { createElement, type HTMLAttributes, type ComponentType } from "react";
 import { HomeIcon, NotebookIcon } from "lucide-react";
 import { Icons } from "@/components/icons";
+import { resolveSkillIcon } from "@/components/skill-icons";
 import type { Resume, IconKey, BlogPost } from "@gitshow/shared/resume";
 
 type IconComp = ComponentType<HTMLAttributes<SVGElement>>;
@@ -30,6 +31,21 @@ function iconForKey(key: IconKey | string | undefined): IconComp {
     website: Icons.globe as IconComp,
   };
   return map[key] ?? (Icons.globe as IconComp);
+}
+
+/**
+ * Skill pills get their own resolver with a much broader registry
+ * (`@icons-pack/react-simple-icons` backed). We also try the skill's
+ * display name as a fallback so the renderer still finds the right mark
+ * when the pipeline didn't set an iconKey (older drafts, user-added
+ * skills in the editor, etc.).
+ */
+function iconForSkill(
+  skill: Resume["skills"][number],
+): IconComp | undefined {
+  const byKey = resolveSkillIcon(skill.iconKey);
+  if (byKey) return byKey as unknown as IconComp;
+  return resolveSkillIcon(skill.name) as unknown as IconComp | undefined;
 }
 
 /**
@@ -141,7 +157,7 @@ export function resumeToTemplateData(
     avatarUrl: resume.person.avatarUrl ?? "",
     skills: resume.skills.map((s) => ({
       name: s.name,
-      icon: s.iconKey ? iconForKey(s.iconKey as IconKey) : undefined,
+      icon: iconForSkill(s),
     })),
     navbar: [
       { href: `/${handle}`, icon: HomeIcon, label: "Home" },

@@ -8,13 +8,15 @@
  * 10-12 item ordered list — the items the developer is most credibly
  * known for, in skill-weight order.
  *
- * `iconKey` is a free-form string; the renderer resolves it against the
- * portfolio template's SVG registry (React, Next.js, Python, Go, Postgres,
- * Docker, Kubernetes, Java, C#, TypeScript). Keys that don't resolve just
- * render as plain text pills — no failure mode.
+ * `iconKey` is a normalised slug the web resolver maps to a brand SVG.
+ * The agent is shown the canonical slug list, but after it submits we
+ * also run a deterministic name→slug pass (`backfillIconKeys`) to catch
+ * anything it omitted — the bar for pulling up a glyph is "we already
+ * ship an icon for it", never invention.
  */
 
 import * as z from "zod/v4";
+import { guessSkillIconKey } from "@gitshow/shared/skill-icon-slugs";
 import { runAgentWithSubmit } from "../../agents/base.js";
 import type { ScanSession, Artifact } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
@@ -27,9 +29,21 @@ export const SkillSchema = z.object({
     .max(40)
     .optional()
     .describe(
-      "Icon registry key. Known keys: react, nextjs, typescript, nodejs, python, " +
-      "go, postgres, docker, kubernetes, java, csharp. Omit for skills without " +
-      "a canonical icon — the pill still renders with just the name.",
+      "Icon registry slug. Use a lowercase, alphanumeric slug without spaces or " +
+      "dots: 'react', 'nextjs', 'typescript', 'javascript', 'nodejs', 'bun', " +
+      "'python', 'django', 'flask', 'fastapi', 'pytorch', 'tensorflow', 'go', " +
+      "'rust', 'ruby', 'rails', 'php', 'laravel', 'elixir', 'swift', 'kotlin', " +
+      "'flutter', 'dart', 'cpp', 'csharp', 'dotnet', 'html', 'css', 'sass', " +
+      "'tailwindcss', 'bootstrap', 'vue', 'nuxt', 'svelte', 'angular', 'astro', " +
+      "'remix', 'gatsby', 'vite', 'webpack', 'jest', 'cypress', 'graphql', " +
+      "'trpc', 'prisma', 'supabase', 'firebase', 'mongodb', 'mysql', 'postgres', " +
+      "'sqlite', 'redis', 'elasticsearch', 'docker', 'kubernetes', 'helm', " +
+      "'terraform', 'ansible', 'nginx', 'gcp', 'cloudflare', 'vercel', 'netlify', " +
+      "'railway', 'flyio', 'git', 'github', 'githubactions', 'gitlab', 'linux', " +
+      "'notion', 'figma', 'stripe', 'shopify', 'anthropic', 'huggingface', " +
+      "'langchain', 'zod', 'redux', 'expo', 'springboot', 'spotify'. Omit when " +
+      "no canonical mark fits — we run a deterministic name→slug pass after you " +
+      "submit, so an omitted iconKey on 'Tailwind CSS' still comes out correctly.",
     ),
 });
 export type Skill = z.infer<typeof SkillSchema>;
@@ -65,9 +79,7 @@ Guidelines:
 - Don't invent skills. Only pick from what the input data actually shows.
 - 10 is a good target. Going below 6 or above 12 is rare.
 
-iconKey — set one of these when the skill has a canonical mark:
-  react, nextjs, typescript, nodejs, python, go, postgres, docker, kubernetes, java, csharp
-Omit iconKey for skills without a canonical icon (Tailwind, Anthropic SDK, GraphQL, etc.) — the pill still renders with just the name.
+iconKey — set the slug from the SkillSchema description when there's a canonical mark. We also run a deterministic name→slug backfill after you submit, so 'Tailwind CSS' without iconKey still comes out with iconKey='tailwindcss'. You don't need to fight the system: pick iconKey freely when you know it, omit confidently when you don't.
 
 Call submit_skills exactly once.`;
 
@@ -91,7 +103,12 @@ export async function runSkillsAgent(
     onProgress: input.onProgress,
   });
 
-  return result;
+  return {
+    skills: result.skills.map((s) => ({
+      name: s.name,
+      iconKey: guessSkillIconKey(s.name, s.iconKey),
+    })),
+  };
 }
 
 function buildInput(input: SkillsAgentInput): string {
