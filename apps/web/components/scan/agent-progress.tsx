@@ -651,7 +651,7 @@ function humanizeAgent(agent: string): string {
     case "copy-editor":
       return "Copy-editing for voice";
     case "profile-critic":
-      return "Double-checking every claim";
+      return "Double-checking the details";
     case "hiring-manager":
       return "Reviewer reading your profile";
     case "timeline":

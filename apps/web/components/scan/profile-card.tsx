@@ -90,7 +90,7 @@ function firstEvidenceUrl(claim: CardClaim): string | null {
 
 // ─── Timeline chart (custom SVG-less, inline-styled) ────────────────
 
-function TimelineChart({ data }: { data: TimelineChartEntry[] }) {
+export function TimelineChart({ data }: { data: TimelineChartEntry[] }) {
   const [hover, setHover] = useState<{
     i: number;
     item: TimelineChartEntry;
@@ -373,7 +373,7 @@ function TimelineChart({ data }: { data: TimelineChartEntry[] }) {
 
 // ─── Weekly activity area chart ─────────────────────────────────────
 
-function ActivityChart({ data }: { data: DailyActivity | null }) {
+export function ActivityChart({ data }: { data: DailyActivity | null }) {
   const series = useMemo(() => {
     if (!data) return [] as Array<{ date: string; v: number }>;
     // Roll daily → weekly sums for a readable saw-tooth line.
@@ -472,7 +472,7 @@ function ActivityChart({ data }: { data: DailyActivity | null }) {
 
 // ─── Team bars ──────────────────────────────────────────────────────
 
-function TeamBars({ data }: { data: TeamHistogram }) {
+export function TeamBars({ data }: { data: TeamHistogram }) {
   const max = Math.max(...data.contributors.map((d) => d.commits), 1);
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
@@ -767,7 +767,7 @@ export function ProfileCardView({
         {/* CAREER ARC */}
         {card.charts.timeline.length > 0 && (
           <section style={{ marginBottom: 40 }}>
-            <SectionLabel counter="01">career arc</SectionLabel>
+            <SectionLabel counter="01">timeline</SectionLabel>
             <div
               style={{
                 padding: "20px 22px 14px",
@@ -833,9 +833,7 @@ export function ProfileCardView({
         {/* ACTIVITY */}
         {card.charts.primary_repo_daily_activity && (
           <section style={{ marginBottom: 40 }}>
-            <SectionLabel counter="02">
-              {card.charts.primary_repo_daily_activity.repo} output over time
-            </SectionLabel>
+            <SectionLabel counter="02">activity</SectionLabel>
             <div
               style={{
                 padding: "22px 24px 12px",
@@ -884,7 +882,7 @@ export function ProfileCardView({
         {card.charts.primary_repo_team &&
           card.charts.primary_repo_team.contributors.length > 0 && (
             <section style={{ marginBottom: 40 }}>
-              <SectionLabel counter="03">who writes it</SectionLabel>
+              <SectionLabel counter="03">team</SectionLabel>
               <div
                 style={{
                   padding: "22px 24px",
@@ -921,7 +919,7 @@ export function ProfileCardView({
         {/* PATTERNS */}
         {card.patterns.length > 0 && (
           <section style={{ marginBottom: 40 }}>
-            <SectionLabel counter="04">patterns from the commit log</SectionLabel>
+            <SectionLabel counter="04">what stands out</SectionLabel>
             <div
               style={{
                 display: "grid",
@@ -982,7 +980,7 @@ export function ProfileCardView({
             gap: 8,
           }}
         >
-          <span>Every claim links to a commit. Click the receipts.</span>
+          <span>Every line links back to the commit it came from.</span>
           <a
             href={`https://github.com/${card.handle}`}
             target="_blank"
@@ -1501,7 +1499,7 @@ function ShippedSection({
 
   return (
     <section style={{ marginBottom: 40 }}>
-      <SectionLabel counter="05">shipped</SectionLabel>
+      <SectionLabel counter="05">what I've shipped</SectionLabel>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {visible.map((s) => (
           <ShippedRow
@@ -1557,7 +1555,7 @@ function DisclosureSection({
 }) {
   return (
     <section style={{ marginBottom: 36 }}>
-      <SectionLabel counter="06">next chapter</SectionLabel>
+      <SectionLabel counter="06">working on</SectionLabel>
       <div
         onClick={() =>
           !editable && onClaimClick?.(disclosure.id, disclosure.beat)
