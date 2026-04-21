@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { z } from "zod";
-import { auth } from "@/auth";
+import { getSession } from "@/auth";
 import { getScanByIdForUser } from "@/lib/scans";
 
 /**
@@ -22,7 +22,7 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
@@ -91,7 +91,7 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE() {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
@@ -115,7 +115,7 @@ export async function DELETE() {
  * "Publish" button state without leaking other user-level fields.
  */
 export async function GET(req: Request) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }

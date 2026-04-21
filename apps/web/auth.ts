@@ -1,204 +1,173 @@
-import NextAuth from "next-auth";
-import GitHub from "next-auth/providers/github";
-import { D1Adapter } from "@auth/d1-adapter";
+import { betterAuth } from "better-auth";
+import { withCloudflare } from "better-auth-cloudflare";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import authConfig from "./auth.config";
+import { headers } from "next/headers";
 
 /**
- * Full Auth.js setup. Wrapped in a factory because `getCloudflareContext()`
- * isn't available at module load time during SSG — it needs the per-request
- * async context that OpenNext establishes in its worker.
+ * Better Auth wired up for OpenNext + Cloudflare D1.
  *
- * Session strategy: database — sessions live in D1's `sessions` table via
- * @auth/d1-adapter. Keep the schema matching its expectations exactly
- * (migration 0003 rebuilt accounts + sessions; any future change there
- * should be another migration).
+ * Why a factory: Cloudflare bindings (`env.DB`, secrets) are only
+ * available inside the request async-local-storage context that
+ * OpenNext establishes. Constructing `betterAuth()` at module load
+ * would fail in SSG and at cold-start. We build it lazily on first
+ * use per request and memoize it after — `getCloudflareContext()` is
+ * request-scoped, but the returned `env` reference is stable for the
+ * life of the isolate, so one instance per isolate is fine.
  *
- * Adapter wrapper logs method enter/exit so auth bugs are visible in
- * `wrangler tail`, but redacts OAuth tokens + any other secret-looking
- * fields so we never leak bearer tokens into Cloudflare observability.
+ * Path: `d1Native` in `better-auth-cloudflare` hands the D1 binding
+ * directly to Better Auth's built-in Kysely adapter. No Drizzle, no
+ * schema files — just the SQL in `migrations/0006_better_auth_schema.sql`.
+ *
+ * Model mapping: we keep the existing `users` table (FK'd by
+ * scans/user_profiles/messages/notifications/push_subscriptions) and
+ * tell Better Auth to read/write it under that plural name. The three
+ * other tables (`account`, `session`, `verification`) are singular
+ * Better Auth defaults — created fresh in migration 0006.
  */
-export const { handlers, auth, signIn, signOut } = NextAuth(async () => {
-  const { env } = await getCloudflareContext({ async: true });
-  const baseAdapter = D1Adapter(env.DB);
 
-  return {
-    ...authConfig,
-    adapter: wrapAdapterWithLogging(
-      baseAdapter as unknown as Record<string, unknown>,
-    ) as typeof baseAdapter,
-    session: { strategy: "database" },
-    secret: env.AUTH_SECRET,
-    providers: [
-      GitHub({
-        clientId: env.AUTH_GITHUB_ID,
-        clientSecret: env.AUTH_GITHUB_SECRET,
-        authorization: {
-          params: {
-            scope: "read:user user:email repo",
-          },
-        },
-      }),
-    ],
-    trustHost: true,
-    callbacks: {
-      /**
-       * Runs on every sign-in. The D1 adapter has already upserted the
-       * users row at this point (default columns: id, name, email,
-       * emailVerified, image). We fold in the GitHub login — which
-       * lives on the raw provider profile — and stash it in the new
-       * users.login column so the rest of the app can display
-       * @yatendra2001 instead of the display name.
-       */
-      async signIn({ user, account, profile }) {
-        try {
-          const login = (profile as { login?: unknown })?.login;
-          if (
-            user?.id &&
-            account?.provider === "github" &&
-            typeof login === "string" &&
-            login.length > 0
-          ) {
-            await env.DB.prepare(
-              `UPDATE users SET login = ? WHERE id = ?`,
-            )
-              .bind(login, user.id)
-              .run();
-          }
-        } catch (err) {
-          console.error("[auth.signIn.updateLogin]", err);
-          // Don't block sign-in on a login-persist failure — the user
-          // still gets in; next sign-in will retry the UPDATE.
-        }
-        return true;
-      },
-      /**
-       * Project the users.login column onto session.user so server
-       * components can read `session.user.login` with proper typing.
-       */
-      async session({ session, user }) {
-        if (session.user && user?.id) {
-          try {
-            const row = await env.DB.prepare(
-              `SELECT login FROM users WHERE id = ? LIMIT 1`,
-            )
-              .bind(user.id)
-              .first<{ login: string | null }>();
-            if (row?.login) {
-              (session.user as { login?: string }).login = row.login;
-            }
-          } catch (err) {
-            console.error("[auth.session.fetchLogin]", err);
-          }
-        }
-        return session;
-      },
-    },
-    // NextAuth's own `debug` writes full payloads including tokens.
-    // Keep off unless actively debugging — events below cover what we
-    // usually care about (without the secrets).
-    debug: false,
-    logger: {
-      error(err: unknown) {
-        console.error("[auth.error]", err);
-      },
-      warn(code: string) {
-        console.warn("[auth.warn]", code);
-      },
-      // no-op debug; the adapter wrapper provides the useful calls.
-      debug() {},
-    },
-    events: {
-      createUser({ user }) {
-        console.log("[auth.createUser]", { id: user.id, email: user.email });
-      },
-      linkAccount({ user, account }) {
-        console.log("[auth.linkAccount]", {
-          userId: user.id,
-          provider: account.provider,
-          providerAccountId: account.providerAccountId,
-        });
-      },
-      signIn({ user, isNewUser }) {
-        console.log("[auth.signIn]", { id: user.id, isNewUser });
-      },
-    },
-  };
-});
+type BetterAuthInstance = Awaited<ReturnType<typeof buildAuth>>;
 
-/**
- * Proxy every adapter method with enter/ok/threw logging. Sensitive
- * fields are redacted before JSON serialization — the adapter's
- * linkAccount input carries `access_token` + `id_token` + `refresh_token`
- * which we must NEVER write to logs.
- */
-function wrapAdapterWithLogging<T extends Record<string, unknown>>(
-  adapter: T,
-): T {
-  if (!adapter) return adapter;
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(adapter)) {
-    if (typeof value !== "function") {
-      out[key] = value;
-      continue;
-    }
-    out[key] = async (...args: unknown[]) => {
-      const tag = `[adapter.${key}]`;
-      try {
-        console.log(tag, "enter", safeJson(args));
-        const result = await (value as (...a: unknown[]) => unknown)(...args);
-        console.log(tag, "ok", safeJson(result));
-        return result;
-      } catch (err) {
-        console.error(tag, "THREW", {
-          message: err instanceof Error ? err.message : String(err),
-          stack: err instanceof Error ? err.stack : undefined,
-          cause:
-            err instanceof Error
-              ? (err as { cause?: unknown }).cause
-              : undefined,
-        });
-        throw err;
-      }
-    };
-  }
-  return out as T;
+let cached: BetterAuthInstance | null = null;
+
+export async function initAuth(): Promise<BetterAuthInstance> {
+  if (cached) return cached;
+  cached = await buildAuth();
+  return cached;
 }
 
-/** Fields that must never leave the worker in plaintext. */
-const REDACT_KEYS = new Set([
-  "access_token",
-  "refresh_token",
-  "id_token",
-  "oauth_token",
-  "oauth_token_secret",
-  "session_state",
-  "code_verifier",
-  "AUTH_SECRET",
-  "AUTH_GITHUB_SECRET",
-  "CF_API_TOKEN",
-  "FLY_API_TOKEN",
-  "OPENROUTER_API_KEY",
-  "GH_TOKEN",
-  "R2_SECRET_ACCESS_KEY",
-  "PIPELINE_SHARED_SECRET",
-]);
+async function buildAuth() {
+  const { env } = await getCloudflareContext({ async: true });
 
-function safeJson(v: unknown): string {
-  try {
-    return JSON.stringify(
-      v,
-      (key, val) => {
-        if (REDACT_KEYS.has(key) && typeof val === "string" && val.length > 0) {
-          return `<redacted:${val.length}>`;
-        }
-        if (typeof val === "string" && val.length > 200) {
-          return val.slice(0, 200) + "…";
-        }
-        return val;
-      },
-    ).slice(0, 800);
-  } catch {
-    return "<unserializable>";
+  if (!env.AUTH_SECRET) {
+    // Missing secret = unusable. Fail loudly so we notice in logs,
+    // rather than issuing unsigned cookies.
+    throw new Error("AUTH_SECRET is not set. Run `wrangler secret put AUTH_SECRET`.");
   }
+  if (!env.AUTH_GITHUB_ID || !env.AUTH_GITHUB_SECRET) {
+    throw new Error(
+      "AUTH_GITHUB_ID / AUTH_GITHUB_SECRET are not set. See LOCAL_DEV.md.",
+    );
+  }
+
+  return betterAuth(
+    withCloudflare(
+      {
+        // Turn both off: we don't render per-request geolocation and
+        // Cloudflare's `cf` object requires plumbing that doesn't
+        // currently exist on the OpenNext request path. Keeping them
+        // enabled would add columns + require the `cf` context.
+        autoDetectIpAddress: false,
+        geolocationTracking: false,
+        // `cf` is required to be defined even if unused; empty is fine
+        // with both features off (withCloudflare only validates it
+        // when at least one of the two above is on).
+        cf: {},
+        d1Native: env.DB,
+      },
+      {
+        baseURL: env.NEXT_PUBLIC_APP_URL ?? "http://localhost:8787",
+        secret: env.AUTH_SECRET,
+        // Accept sign-ins from localhost during `preview` AND prod.
+        // Production host is added explicitly so the deployed worker
+        // URL (gitshow-web.*.workers.dev) isn't silently refused.
+        trustedOrigins: [
+          "http://localhost:8787",
+          "http://localhost:3000",
+          env.NEXT_PUBLIC_APP_URL ?? "https://gitshow.io",
+          "https://gitshow-web.yatendra2001kumar.workers.dev",
+        ].filter(Boolean) as string[],
+        socialProviders: {
+          github: {
+            clientId: env.AUTH_GITHUB_ID,
+            clientSecret: env.AUTH_GITHUB_SECRET,
+            // `repo` lets the worker read private repos via the
+            // user's own token (see lib/user-token.ts). Dropping it
+            // would force every scan to bot-only / public reads.
+            scope: ["read:user", "user:email", "repo"],
+            mapProfileToUser(profile) {
+              return {
+                login: typeof profile.login === "string" ? profile.login : null,
+              };
+            },
+          },
+        },
+        account: {
+          // Auto-link GitHub re-signs-in to the existing `users` row
+          // by matching verified email. Keeps scans + profiles tied
+          // to the same user_id across the auth rewrite.
+          accountLinking: {
+            enabled: true,
+            trustedProviders: ["github"],
+          },
+        },
+        user: {
+          modelName: "users",
+          additionalFields: {
+            // GitHub username (e.g. "yatendra2001"). Backfilled from
+            // the OAuth profile via `mapProfileToUser` above; read in
+            // the /app header + used as the default profile handle.
+            login: {
+              type: "string",
+              required: false,
+              input: false,
+            },
+          },
+        },
+        session: {
+          expiresIn: 60 * 60 * 24 * 30, // 30 days
+          updateAge: 60 * 60 * 24, // refresh the row at most daily
+          cookieCache: {
+            enabled: true,
+            maxAge: 60 * 5, // 5 min in-memory cache on the server
+          },
+        },
+        advanced: {
+          // Prefix every auth cookie with "gitshow." so we can't
+          // collide with any future first-party cookies.
+          cookiePrefix: "gitshow",
+        },
+      },
+    ),
+  );
+}
+
+/**
+ * Shape of the server-side session. Better Auth's `auth.api.getSession`
+ * typing doesn't propagate `additionalFields.login` (the GithubProfile
+ * mapping happens at runtime, not in the inferred types), so we widen
+ * the user here. Keep in sync with `additionalFields` in buildAuth()
+ * and `types/better-auth.d.ts`.
+ */
+export interface AppSession {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    emailVerified: boolean;
+    image?: string | null;
+    login?: string | null;
+    createdAt: Date;
+    updatedAt: Date;
+  };
+  session: {
+    id: string;
+    userId: string;
+    token: string;
+    expiresAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
+    ipAddress?: string | null;
+    userAgent?: string | null;
+  };
+}
+
+/**
+ * Convenience: read the current session on the server. Returns
+ * `{ user, session } | null`. All authenticated API routes go
+ * through this — no cookie parsing sprinkled around the codebase.
+ */
+export async function getSession(): Promise<AppSession | null> {
+  const auth = await initAuth();
+  const raw = await auth.api.getSession({ headers: await headers() });
+  return (raw as AppSession | null) ?? null;
 }

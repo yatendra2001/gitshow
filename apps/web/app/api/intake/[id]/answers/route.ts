@@ -3,7 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { FlyClient } from "@gitshow/shared/cloud/fly";
-import { auth } from "@/auth";
+import { getSession } from "@/auth";
 import {
   getIntakeForUser,
   saveIntakeAnswers,
@@ -30,7 +30,7 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }

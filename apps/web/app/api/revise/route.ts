@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { z } from "zod";
 import { FlyClient } from "@gitshow/shared/cloud/fly";
-import { auth } from "@/auth";
+import { getSession } from "@/auth";
 import { getScanByIdForUser } from "@/lib/scans";
 import { getScanCard } from "@/lib/cards";
 import {
@@ -44,7 +44,7 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }

@@ -1,5 +1,5 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { auth } from "@/auth";
+import { getSession } from "@/auth";
 import { getScanByIdForUser } from "@/lib/scans";
 
 /**
@@ -21,7 +21,7 @@ export async function GET(
     return new Response("expected websocket upgrade", { status: 426 });
   }
 
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) {
     return new Response("unauthenticated", { status: 401 });
   }

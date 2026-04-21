@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { auth } from "@/auth";
+import { getSession } from "@/auth";
 
 /**
  * POST /api/profile/delete
@@ -19,7 +19,7 @@ import { auth } from "@/auth";
  * this endpoint stays fast. D1 cascades handle the relational mess.
  */
 export async function POST() {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
