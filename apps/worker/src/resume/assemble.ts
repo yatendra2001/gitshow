@@ -65,7 +65,7 @@ export function assembleResume(input: AssembleInput): Resume {
       logoUrl: w.logoUrl,
       description: w.description,
       href: w.href,
-      badges: w.badges,
+      badges: cleanStrings(w.badges ?? []),
     })),
     education: education.map((e) => ({
       id: e.id,
@@ -82,7 +82,7 @@ export function assembleResume(input: AssembleInput): Resume {
       description: p.description,
       dates: p.dates,
       active: p.active,
-      technologies: p.technologies,
+      technologies: cleanStrings(p.technologies),
       links: p.links,
       image: p.image,
       video: p.video,
@@ -113,4 +113,21 @@ export function assembleResume(input: AssembleInput): Resume {
   };
 
   return ResumeSchema.parse(draft);
+}
+
+/**
+ * Guardrail against upstream arrays containing null / undefined / empty
+ * strings — a single bad entry otherwise fails the entire ResumeSchema
+ * parse with an opaque "expected string, received undefined" error and
+ * tanks the whole scan.
+ */
+function cleanStrings(items: ReadonlyArray<unknown>): string[] {
+  const out: string[] = [];
+  for (const raw of items) {
+    if (typeof raw !== "string") continue;
+    const trimmed = raw.trim();
+    if (trimmed.length === 0) continue;
+    out.push(trimmed);
+  }
+  return out;
 }

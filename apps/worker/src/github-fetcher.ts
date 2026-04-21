@@ -142,14 +142,23 @@ async function fetchRepos(handle: string): Promise<RepoRef[]> {
     isArchived: r.isArchived ?? false,
     description: r.description ?? null,
     primaryLanguage: r.primaryLanguage?.name ?? null,
-    languages: Array.isArray(r.languages)
-      ? r.languages.map((l) => l.name)
-      : [],
+    languages: Array.isArray(r.languages) ? cleanLanguageNames(r.languages) : [],
     stargazerCount: r.stargazerCount ?? 0,
     forkCount: r.forkCount ?? 0,
     pushedAt: r.pushedAt ?? null,
     createdAt: r.createdAt ?? null,
   }));
+}
+
+function cleanLanguageNames(
+  items: ReadonlyArray<{ name?: string | null } | null | undefined>,
+): string[] {
+  const out: string[] = [];
+  for (const it of items) {
+    const name = it?.name;
+    if (typeof name === "string" && name.length > 0) out.push(name);
+  }
+  return out;
 }
 
 interface RawPR {
@@ -416,7 +425,7 @@ async function fetchOrgContributedRepos(
         description: raw.description ?? null,
         primaryLanguage: raw.primaryLanguage?.name ?? null,
         languages: Array.isArray(raw.languages?.nodes)
-          ? raw.languages.nodes.map((l) => l.name)
+          ? cleanLanguageNames(raw.languages.nodes)
           : [],
         stargazerCount: raw.stargazerCount ?? 0,
         forkCount: raw.forkCount ?? 0,
