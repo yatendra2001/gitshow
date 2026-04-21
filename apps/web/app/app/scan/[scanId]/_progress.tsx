@@ -44,11 +44,12 @@ interface EventRow {
 const POLL_MS = 2000;
 
 const PHASE_COPY: Record<string, string> = {
-  "github-fetch": "Fetching your GitHub",
+  "github-fetch": "Reading your GitHub",
   "repo-filter": "Picking which repos matter",
-  inventory: "Cloning + git-archaeology on your top repos",
-  normalize: "Building the artifact table",
+  inventory: "Studying your top repos",
+  normalize: "Organising the pieces",
   discover: "Spotting what's distinctive",
+  "section-agents": "Crafting your portfolio sections",
   "resume:person": "Writing your hero + about",
   "resume:skills": "Curating your skills",
   "resume:build-log": "Summarising every repo",
@@ -56,8 +57,27 @@ const PHASE_COPY: Record<string, string> = {
   "resume:education": "Reconstructing education",
   "resume:blog-import": "Importing your blog posts",
   "resume:projects": "Deep-researching featured projects",
+  assemble: "Putting it all together",
+  persist: "Saving your draft",
   resume: "Finalising the resume",
 };
+
+/**
+ * Ordered phase progression — used to compute a rough % complete for the
+ * progress bar. Parallel sub-phases live under "section-agents" and don't
+ * need their own bucket here.
+ */
+const PHASE_ORDER = [
+  "github-fetch",
+  "repo-filter",
+  "inventory",
+  "normalize",
+  "discover",
+  "section-agents",
+  "resume:person",
+  "assemble",
+  "persist",
+];
 
 function phaseLabel(phase: string | null | undefined): string {
   if (!phase) return "Getting set up";
@@ -65,6 +85,17 @@ function phaseLabel(phase: string | null | undefined): string {
   // Fall back to turning resume:project:flightcast → "flightcast"
   const parts = phase.split(":");
   return parts[parts.length - 1]!.replace(/[-_]/g, " ");
+}
+
+function progressPercent(scan: ScanState): number {
+  if (scan.status === "succeeded") return 100;
+  if (scan.status === "failed" || scan.status === "cancelled") return 0;
+  const current = scan.current_phase ?? scan.last_completed_phase;
+  const idx = current ? PHASE_ORDER.indexOf(current) : -1;
+  if (idx < 0) return 4; // show a sliver so the bar isn't empty at "queued"
+  // +1 if this phase is mid-flight, halfway between steps
+  const step = scan.current_phase ? idx + 0.5 : idx + 1;
+  return Math.min(99, Math.round((step / PHASE_ORDER.length) * 100));
 }
 
 export function ScanProgress({
@@ -150,22 +181,19 @@ export function ScanProgress({
                 : "Cancelled"}
         </div>
         <h1 className="font-[var(--font-serif)] text-[32px] leading-tight">
-          {phaseLabel(scan.current_phase ?? scan.last_completed_phase)}
+          {titleForStatus(scan)}
         </h1>
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-muted-foreground">
           <span>
-            Handle <span className="font-mono text-foreground">@{scan.handle}</span>
+            <span className="font-mono text-foreground">@{scan.handle}</span>
           </span>
           <span>
             Elapsed <span className="text-foreground font-mono">{elapsed}</span>
           </span>
-          <span>
-            LLM calls <span className="text-foreground tabular-nums">{scan.llm_calls}</span>
-          </span>
-          <span>
-            Cost <span className="text-foreground tabular-nums">${scan.cost_usd.toFixed(2)}</span>
-          </span>
         </div>
+        {scan.status === "running" || scan.status === "queued" ? (
+          <ProgressBar percent={progressPercent(scan)} />
+        ) : null}
       </section>
 
       {scan.status === "succeeded" ? (
@@ -181,6 +209,30 @@ export function ScanProgress({
       ) : null}
 
       <EventLog events={events} />
+    </div>
+  );
+}
+
+function titleForStatus(scan: ScanState): string {
+  if (scan.status === "succeeded") return "Your portfolio is ready";
+  if (scan.status === "failed") return "The pipeline hit a snag";
+  if (scan.status === "cancelled") return "Scan cancelled";
+  return phaseLabel(scan.current_phase ?? scan.last_completed_phase);
+}
+
+function ProgressBar({ percent }: { percent: number }) {
+  return (
+    <div
+      className="mt-2 h-1 w-full overflow-hidden rounded-full bg-border/40"
+      role="progressbar"
+      aria-valuenow={percent}
+      aria-valuemin={0}
+      aria-valuemax={100}
+    >
+      <div
+        className="h-full bg-[var(--primary)] transition-[width] duration-700 ease-out"
+        style={{ width: `${percent}%` }}
+      />
     </div>
   );
 }
