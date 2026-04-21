@@ -24,9 +24,10 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 
 import { runPipeline } from "../src/pipeline.js";
+import { runResumePipeline } from "../src/resume/pipeline.js";
 import { ControlPoller, ScanStoppedError } from "../src/control.js";
 import { ScanCheckpoint } from "../src/checkpoint.js";
-import { sanitizeHandle } from "../src/session.js";
+import { sanitizeHandle, SessionUsage } from "../src/session.js";
 import { R2Client } from "../src/cloud/r2.js";
 import { D1Client } from "../src/cloud/d1.js";
 import { DOPublishClient } from "@gitshow/shared/cloud/do-client";
@@ -79,10 +80,19 @@ async function main() {
   if (process.env.LINKEDIN) socials.linkedin = process.env.LINKEDIN;
   if (process.env.WEBSITE) socials.website = process.env.WEBSITE;
 
+  // Up to 5 user-provided blog URLs — comma-separated via BLOG_URLS env.
+  // Consumed by the blog-import agent in the resume pipeline.
+  const blogUrls: string[] = (process.env.BLOG_URLS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
   const session: ScanSession = {
     id: scanId,
     handle,
     socials,
+    blog_urls: blogUrls.length > 0 ? blogUrls : undefined,
     context_notes: process.env.CONTEXT_NOTES || undefined,
     started_at: new Date().toISOString(),
     dashboard_url: `https://openrouter.ai/sessions/${scanId}`,
@@ -196,8 +206,48 @@ async function main() {
     });
     control.start();
 
+    // PIPELINE=resume swaps the classic claim pipeline for the new
+    // Resume-producing one that writes `resumes/{handle}/draft.json`
+    // to R2 for the template-based /{handle} renderer. Default remains
+    // the claim pipeline so existing deploys don't flip behavior.
+    const pipelineKind = (process.env.PIPELINE || "claim").toLowerCase();
     let profile;
     try {
+      if (pipelineKind === "resume") {
+        const usage = new SessionUsage();
+        await runResumePipeline({
+          session,
+          usage,
+          profileDir: localDir,
+          writeToR2: true,
+          onProgress: (text) => {
+            if (process.env.GITSHOW_DEBUG) process.stderr.write(text);
+          },
+        });
+        // Resume pipeline doesn't produce claims — short-circuit the
+        // rest of the claim-specific bookkeeping and mark succeeded.
+        await d1.updateScanStatus(scanId, {
+          status: "succeeded",
+          last_completed_phase: "resume",
+        });
+        await d1.updateScanCompletion(scanId, {
+          cost_cents: Math.round(usage.estimatedCostUsd * 100),
+          llm_calls: usage.llmCalls,
+          hook_similarity: null,
+          hiring_verdict: null,
+          hiring_score: null,
+        });
+        clearInterval(heartbeat);
+        scanLog.info(
+          {
+            pipeline: "resume",
+            cost_usd: usage.estimatedCostUsd,
+            llm_calls: usage.llmCalls,
+          },
+          "done",
+        );
+        process.exit(0);
+      }
       profile = await runPipeline({
         session,
         checkpoint: ckpt,

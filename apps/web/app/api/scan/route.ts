@@ -41,6 +41,18 @@ const BodySchema = z.object({
     .optional(),
   context_notes: z.string().max(2000).optional(),
   model: z.string().optional(),
+  /**
+   * Up to 5 blog URLs imported verbatim into the Resume's `blog[]`
+   * section. Any source Jina Reader can render works — Medium, dev.to,
+   * Hashnode, Substack, Ghost, personal sites.
+   */
+  blog_urls: z.array(z.string().url()).max(5).optional(),
+  /**
+   * Which worker pipeline to invoke. "resume" produces the new Resume
+   * JSON rendered by /{handle}; "claim" produces the legacy ProfileCard.
+   * Defaults to "resume" now that the new pipeline is wired end-to-end.
+   */
+  pipeline: z.enum(["resume", "claim"]).optional(),
 });
 
 export async function POST(req: Request) {
@@ -63,6 +75,7 @@ export async function POST(req: Request) {
   const scanId = `scan-${nanoid(10)}`;
   const sessionId = `or-${nanoid(14)}`;
   const model = body.model ?? "anthropic/claude-sonnet-4.6";
+  const pipeline = body.pipeline ?? "resume";
   const now = Date.now();
 
   try {
@@ -110,10 +123,12 @@ export async function POST(req: Request) {
         scanId,
         handle: body.handle,
         model,
+        pipeline,
         twitter: body.socials?.twitter,
         linkedin: body.socials?.linkedin,
         website: body.socials?.website,
         contextNotes: body.context_notes,
+        blogUrls: body.blog_urls,
         userGhToken,
       }),
     });
@@ -144,10 +159,12 @@ function buildMachineEnv(
     scanId: string;
     handle: string;
     model: string;
+    pipeline: "resume" | "claim";
     twitter?: string;
     linkedin?: string;
     website?: string;
     contextNotes?: string;
+    blogUrls?: string[];
     userGhToken: string;
   },
 ): Record<string, string> {
@@ -155,6 +172,7 @@ function buildMachineEnv(
     SCAN_ID: s.scanId,
     HANDLE: s.handle,
     MODEL: s.model,
+    PIPELINE: s.pipeline,
     GITSHOW_CLOUD_MODE: "1",
     CF_ACCOUNT_ID: requireVar(env, "CF_ACCOUNT_ID"),
     CF_API_TOKEN: requireVar(env, "CF_API_TOKEN"),
@@ -169,6 +187,7 @@ function buildMachineEnv(
   if (s.linkedin) out.LINKEDIN = s.linkedin;
   if (s.website) out.WEBSITE = s.website;
   if (s.contextNotes) out.CONTEXT_NOTES = s.contextNotes;
+  if (s.blogUrls && s.blogUrls.length > 0) out.BLOG_URLS = s.blogUrls.join(",");
   if (env.REALTIME_ENDPOINT) out.REALTIME_ENDPOINT = env.REALTIME_ENDPOINT;
   if (env.PIPELINE_SHARED_SECRET)
     out.PIPELINE_SHARED_SECRET = env.PIPELINE_SHARED_SECRET;

@@ -377,6 +377,16 @@ export const ScanSessionSchema = z.object({
   handle: z.string(),
   socials: ScanSocialsSchema,
   context_notes: z.string().optional().describe("User-provided freeform context"),
+  /**
+   * Up to 5 blog/article URLs the user wants imported into the Resume's
+   * `blog[]` section. Supports Medium / dev.to / Hashnode / Substack /
+   * Ghost / personal sites — anything Jina Reader can render to markdown.
+   */
+  blog_urls: z
+    .array(z.string())
+    .max(5)
+    .optional()
+    .describe("User-provided blog URLs to import verbatim into Resume.blog"),
   started_at: z.string(),
   dashboard_url: z.string().describe("OpenRouter session dashboard URL"),
   model: z.string().describe("Default model, e.g. 'anthropic/claude-sonnet-4.6'"),

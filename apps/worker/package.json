@@ -6,6 +6,7 @@
   "description": "GitShow — AI-generated engineering portfolios from git history (worker pipeline)",
   "scripts": {
     "profile": "bun src/scan.ts",
+    "resume": "bun src/resume/cli.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
