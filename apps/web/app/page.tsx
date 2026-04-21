@@ -1,12 +1,26 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
+import { getSession } from "@/auth";
 
 /**
  * Marketing landing page. Intentionally minimal — the product is the
  * Claude-style builder at /s/[scanId]. First-time visitors hit /s/demo
  * to see a real profile rendered from session-4's R2 data with no login.
+ *
+ * Signed-in visitors see "Open dashboard" instead of "Sign in with
+ * GitHub" / "Generate your profile" — bouncing back through the sign-in
+ * flow when you already have a session is confusing.
  */
-export default function Home() {
+
+// Reading cookies via getSession forces this per-request anyway, but
+// set it explicitly so the build output doesn't ever prerender a
+// stale signed-out version.
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const session = await getSession();
+  const isSignedIn = !!session?.user?.id;
+
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col px-6 py-16">
       <nav className="mb-24 flex items-center justify-between">
@@ -25,12 +39,21 @@ export default function Home() {
           >
             View the demo
           </Link>
-          <Link
-            href="/signin"
-            className="rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
-          >
-            Sign in with GitHub
-          </Link>
+          {isSignedIn ? (
+            <Link
+              href="/app"
+              className="rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
+            >
+              Open dashboard
+            </Link>
+          ) : (
+            <Link
+              href="/signin"
+              className="rounded-md bg-foreground px-3 py-1.5 text-xs font-semibold text-background"
+            >
+              Sign in with GitHub
+            </Link>
+          )}
         </div>
       </nav>
 
@@ -50,10 +73,10 @@ export default function Home() {
         </p>
         <div className="flex flex-wrap items-center gap-3 pt-4">
           <Link
-            href="/signin"
+            href={isSignedIn ? "/app" : "/signin"}
             className="inline-flex items-center gap-2 rounded-md bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition hover:opacity-90"
           >
-            Generate your profile
+            {isSignedIn ? "Open your dashboard" : "Generate your profile"}
             <ArrowUpRight className="size-4" />
           </Link>
           <Link

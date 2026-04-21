@@ -1,7 +1,19 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { getSession } from "@/auth";
 import { SignInButton } from "./signin-button";
 
-export default function SignInPage() {
+/**
+ * /signin is only useful when you're signed out. If a session cookie
+ * is already live, bounce straight to the dashboard — stopping on a
+ * page asking you to sign in again is always a bug.
+ */
+export const dynamic = "force-dynamic";
+
+export default async function SignInPage() {
+  const session = await getSession();
+  if (session?.user?.id) redirect("/app");
+
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center px-6 py-16">
       <div className="mb-12 flex items-center gap-2">
