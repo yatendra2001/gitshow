@@ -50,6 +50,7 @@ import { runContactAgent } from "./agents/contact.js";
 import { runBlogImportAgent } from "./agents/blog-import.js";
 import { assembleResume } from "./assemble.js";
 import { writeDraftResume } from "./persist.js";
+import { noopPhases, type PhaseReporter } from "./phases.js";
 import type { Resume } from "@gitshow/shared/resume";
 
 /**
@@ -76,6 +77,12 @@ export interface RunResumePipelineOptions {
    */
   writeToR2?: boolean;
   onProgress?: (text: string) => void;
+  /**
+   * Reports per-stage progress to D1 so the progress page can render
+   * a live phase headline + event log. Defaults to a no-op for local /
+   * dev runs that don't have a cloud D1 wired up.
+   */
+  phases?: PhaseReporter;
 }
 
 export async function runResumePipeline(
@@ -83,123 +90,159 @@ export async function runResumePipeline(
 ): Promise<Resume> {
   const { session, usage, onProgress } = opts;
   const log = onProgress ?? ((t: string) => process.stdout.write(t));
+  const phases = opts.phases ?? noopPhases;
   const profileDir = opts.profileDir ?? `profiles/${session.handle}`;
   await mkdir(profileDir, { recursive: true });
 
   // 1. Collect GitHub data
-  log(`\n[pipeline] stage 1: github fetch\n`);
-  const github = await fetchGitHubData(session.handle);
+  const github = await phases.phase("github-fetch", async () => {
+    log(`\n[pipeline] stage 1: github fetch\n`);
+    return fetchGitHubData(session.handle);
+  });
 
   // 2. Tier repos for inventory depth
-  log(`[pipeline] stage 2: repo filter\n`);
-  const filtered = filterRepos(github);
-  log(
-    `[pipeline]   deep=${filtered.deep.length}  light=${filtered.light.length}  metadata=${filtered.metadata.length}  external=${filtered.external.length}\n`,
-  );
+  const filtered = await phases.phase("repo-filter", async () => {
+    log(`[pipeline] stage 2: repo filter\n`);
+    const f = filterRepos(github);
+    log(
+      `[pipeline]   deep=${f.deep.length}  light=${f.light.length}  metadata=${f.metadata.length}  external=${f.external.length}\n`,
+    );
+    return f;
+  });
 
   // 3. Inventory deep repos in parallel — bounded concurrency, capped
   //    overall so we don't die on a yatendra2001 with 500 repos.
-  log(`[pipeline] stage 3: inventory (cap ${INVENTORY_CAP}, concurrency ${INVENTORY_CONCURRENCY})\n`);
-  const toInventory = filtered.deep.slice(0, INVENTORY_CAP);
-  const inventoryLimit = pLimit(INVENTORY_CONCURRENCY);
-  const inventories: Record<string, StructuredInventory> = {};
-  await Promise.all(
-    toInventory.map((repo) =>
-      inventoryLimit(async () => {
-        try {
-          const inv = await cloneAndInventory({
-            fullName: repo.fullName,
-            handle: session.handle,
-            profileDir,
-            log,
-          });
-          inventories[repo.fullName] = inv;
-        } catch (err) {
-          log(`[inv] ${repo.fullName} failed: ${(err as Error).message.slice(0, 80)}\n`);
-        }
-      }),
-    ),
-  );
+  const inventories = await phases.phase("inventory", async () => {
+    log(`[pipeline] stage 3: inventory (cap ${INVENTORY_CAP}, concurrency ${INVENTORY_CONCURRENCY})\n`);
+    const toInventory = filtered.deep.slice(0, INVENTORY_CAP);
+    const inventoryLimit = pLimit(INVENTORY_CONCURRENCY);
+    const out: Record<string, StructuredInventory> = {};
+    await Promise.all(
+      toInventory.map((repo) =>
+        inventoryLimit(async () => {
+          try {
+            const inv = await cloneAndInventory({
+              fullName: repo.fullName,
+              handle: session.handle,
+              profileDir,
+              log,
+            });
+            out[repo.fullName] = inv;
+          } catch (err) {
+            log(`[inv] ${repo.fullName} failed: ${(err as Error).message.slice(0, 80)}\n`);
+          }
+        }),
+      ),
+    );
+    return out;
+  });
 
   // 4. Normalize — artifact table w/ inventory enrichment
-  log(`[pipeline] stage 4: normalize\n`);
-  const { artifacts, indexes } = normalize({ github, inventories });
+  const { artifacts, indexes } = await phases.phase("normalize", async () => {
+    log(`[pipeline] stage 4: normalize\n`);
+    return normalize({ github, inventories });
+  });
 
   // 5. Discover — frames downstream person-agent with investigation
   //    angles + primary_shape.
-  log(`[pipeline] stage 5: discover\n`);
-  const discover = await runDiscover({
-    session,
-    usage,
-    github,
-    artifacts,
-    indexes,
-    onProgress,
+  const discover = await phases.phase("discover", async () => {
+    log(`[pipeline] stage 5: discover\n`);
+    return runDiscover({
+      session,
+      usage,
+      github,
+      artifacts,
+      indexes,
+      onProgress,
+    });
   });
 
   // 6. Pick featured set for deep per-project research
   const featured = pickFeatured(github, artifacts);
   log(`[pipeline] picked ${featured.length} featured repos\n`);
 
-  // 7. Parallel section agents.
-  log(`[pipeline] stage 7: section agents (parallel)\n`);
-  const [buildLog, skills, projects, work, education, blog] = await Promise.all([
-    runBuildLogAgent({ session, usage, github, artifacts, onProgress }),
-    runSkillsAgent({ session, usage, github, artifacts, onProgress }),
-    runProjectsAgent({
-      session,
-      usage,
-      github,
-      artifacts,
-      featuredFullNames: featured,
-      profileDir,
-      onProgress,
-    }),
-    runWorkAgent({ session, usage, github, artifacts, onProgress }),
-    runEducationAgent({ session, usage, github, artifacts, onProgress }),
-    runBlogImportAgent({
-      session,
-      usage,
-      urls: session.blog_urls ?? [],
-      onProgress,
-    }),
-  ]);
+  // 7. Parallel section agents. current_phase stays at "section-agents"
+  //    for the whole block; per-agent sub-events fan out in the log.
+  const [buildLog, skills, projects, work, education, blog] = await phases.phase(
+    "section-agents",
+    () => {
+      log(`[pipeline] stage 7: section agents (parallel)\n`);
+      return Promise.all([
+        phases.subPhase("resume:build-log", () =>
+          runBuildLogAgent({ session, usage, github, artifacts, onProgress }),
+        ),
+        phases.subPhase("resume:skills", () =>
+          runSkillsAgent({ session, usage, github, artifacts, onProgress }),
+        ),
+        phases.subPhase("resume:projects", () =>
+          runProjectsAgent({
+            session,
+            usage,
+            github,
+            artifacts,
+            featuredFullNames: featured,
+            profileDir,
+            onProgress,
+          }),
+        ),
+        phases.subPhase("resume:work", () =>
+          runWorkAgent({ session, usage, github, artifacts, onProgress }),
+        ),
+        phases.subPhase("resume:education", () =>
+          runEducationAgent({ session, usage, github, artifacts, onProgress }),
+        ),
+        phases.subPhase("resume:blog-import", () =>
+          runBlogImportAgent({
+            session,
+            usage,
+            urls: session.blog_urls ?? [],
+            onProgress,
+          }),
+        ),
+      ]);
+    },
+  );
 
   // 8. Person — post-synthesis so the summary can reference
   //    project titles, work companies, education schools.
-  log(`[pipeline] stage 8: person (post-synthesis)\n`);
-  const person = await runPersonAgent({
-    session,
-    usage,
-    github,
-    discover,
-    artifacts,
-    featuredProjects: projects.slice(0, 6).map((p) => ({
-      title: p.title,
-      summary: p.description.slice(0, 160),
-    })),
-    workCompanies: work.map((w) => w.company),
-    educationSchools: education.map((e) => e.school),
-    onProgress,
+  const person = await phases.phase("resume:person", async () => {
+    log(`[pipeline] stage 8: person (post-synthesis)\n`);
+    return runPersonAgent({
+      session,
+      usage,
+      github,
+      discover,
+      artifacts,
+      featuredProjects: projects.slice(0, 6).map((p) => ({
+        title: p.title,
+        summary: p.description.slice(0, 160),
+      })),
+      workCompanies: work.map((w) => w.company),
+      educationSchools: education.map((e) => e.school),
+      onProgress,
+    });
   });
 
-  // 9. Contact — rules only.
+  // 9. Contact — rules only, deterministic. Intentionally outside the
+  //    phase reporter: sub-second, zero LLM, noise in the log.
   log(`[pipeline] stage 9: contact\n`);
   const contact = runContactAgent({ session, github });
 
   // 10. Assemble
-  log(`[pipeline] stage 10: assemble\n`);
-  const resume = assembleResume({
-    session,
-    github,
-    person,
-    skills,
-    projects,
-    buildLog,
-    work,
-    education,
-    contact,
-    blog,
+  const resume = await phases.phase("assemble", async () => {
+    log(`[pipeline] stage 10: assemble\n`);
+    return assembleResume({
+      session,
+      github,
+      person,
+      skills,
+      projects,
+      buildLog,
+      work,
+      education,
+      contact,
+      blog,
+    });
   });
 
   log(
@@ -209,14 +252,16 @@ export async function runResumePipeline(
   // 11. Persist to R2 when requested (cloud mode) or when
   //     R2_BUCKET_NAME is present (dev-with-real-R2 flag).
   if (opts.writeToR2 || process.env.R2_BUCKET_NAME) {
-    log(`[pipeline] stage 11: write draft.json to R2\n`);
-    try {
-      await writeDraftResume({ handle: session.handle, resume, log });
-    } catch (err) {
-      log(
-        `[pipeline] R2 write failed: ${(err as Error).message.slice(0, 160)}\n`,
-      );
-    }
+    await phases.phase("persist", async () => {
+      log(`[pipeline] stage 11: write draft.json to R2\n`);
+      try {
+        await writeDraftResume({ handle: session.handle, resume, log });
+      } catch (err) {
+        log(
+          `[pipeline] R2 write failed: ${(err as Error).message.slice(0, 160)}\n`,
+        );
+      }
+    });
   }
 
   return resume;
