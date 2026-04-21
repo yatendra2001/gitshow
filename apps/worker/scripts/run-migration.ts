@@ -83,6 +83,18 @@ async function main() {
       await d1.query(stmt);
       migrateLog.info({ n: i + 1, of: statements.length, preview }, "ok");
     } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (isAlreadyAppliedDdl(msg)) {
+        // The effect of this statement is already in the schema. Treat
+        // it as applied so the migration can be marked complete — this
+        // is how we recover from tracking-table-backfill gaps (a
+        // migration ran before schema_migrations existed).
+        migrateLog.warn(
+          { n: i + 1, of: statements.length, preview, reason: summarise(msg) },
+          "statement already applied — continuing",
+        );
+        continue;
+      }
       migrateLog.error({ err, n: i + 1, of: statements.length, preview }, "statement failed");
       process.exit(1);
     }
@@ -90,6 +102,24 @@ async function main() {
 
   await markApplied(d1, version);
   migrateLog.info({ file, version }, "migration done");
+}
+
+/**
+ * SQLite/D1 error signatures that mean "the schema change in this
+ * statement is already in place." Safe to skip — the end state of the
+ * migration is still what we want.
+ */
+function isAlreadyAppliedDdl(msg: string): boolean {
+  const lower = msg.toLowerCase();
+  return (
+    lower.includes("duplicate column name") ||
+    lower.includes("already exists")
+  );
+}
+
+function summarise(msg: string): string {
+  const m = /message":"([^"]+)"/.exec(msg);
+  return (m?.[1] ?? msg).slice(0, 140);
 }
 
 function splitStatements(sql: string): string[] {
