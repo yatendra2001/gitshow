@@ -3,17 +3,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Check, AlertTriangle, Circle } from "lucide-react";
 import { LogoMark } from "@/components/logo";
+import { Shimmer } from "@/components/ai-elements/shimmer";
 import { cn } from "@/lib/utils";
 
 /**
  * Live scan progress viewer.
  *
- * Polls `/api/scan/status/{scanId}` every 2s while the scan is
- * running. Server-rendered initial state keeps the first paint
- * informative (no "loading…" spinner). When the scan hits a terminal
- * state (succeeded/failed/cancelled) we stop polling and show the
- * appropriate CTA.
+ * Polls `/api/scan/status/{scanId}` every 2s while the scan is running.
+ * The body is a vertical phase timeline: each phase is a row with its
+ * own status dot + copy. The running phase shimmers; done phases tick
+ * with a duration; pending phases sit muted with an empty circle.
+ * `section-agents` expands to the 6 parallel sub-agents nested
+ * underneath.
  */
 
 interface ScanState {
@@ -63,9 +66,9 @@ const PHASE_COPY: Record<string, string> = {
 };
 
 /**
- * Ordered phase progression — used to compute a rough % complete for the
- * progress bar. Parallel sub-phases live under "section-agents" and don't
- * need their own bucket here.
+ * Ordered top-level phases. `section-agents` is a bucket for the 6
+ * parallel sub-agents which we render as children rather than as
+ * their own rows in the outer timeline.
  */
 const PHASE_ORDER = [
   "github-fetch",
@@ -79,10 +82,30 @@ const PHASE_ORDER = [
   "persist",
 ];
 
+const SECTION_AGENT_CHILDREN = [
+  "resume:build-log",
+  "resume:skills",
+  "resume:projects",
+  "resume:work",
+  "resume:education",
+  "resume:blog-import",
+];
+
+type NodeStatus = "pending" | "running" | "done" | "failed";
+
+interface PhaseNode {
+  id: string;
+  title: string;
+  status: NodeStatus;
+  startedAt: number | null;
+  durationMs: number | null;
+  errorMessage: string | null;
+  children?: PhaseNode[];
+}
+
 function phaseLabel(phase: string | null | undefined): string {
   if (!phase) return "Getting set up";
   if (PHASE_COPY[phase]) return PHASE_COPY[phase]!;
-  // Fall back to turning resume:project:flightcast → "flightcast"
   const parts = phase.split(":");
   return parts[parts.length - 1]!.replace(/[-_]/g, " ");
 }
@@ -92,8 +115,16 @@ function progressPercent(scan: ScanState): number {
   if (scan.status === "failed" || scan.status === "cancelled") return 0;
   const current = scan.current_phase ?? scan.last_completed_phase;
   const idx = current ? PHASE_ORDER.indexOf(current) : -1;
-  if (idx < 0) return 4; // show a sliver so the bar isn't empty at "queued"
-  // +1 if this phase is mid-flight, halfway between steps
+  if (idx < 0) {
+    // section-agents in flight reports its child as current_phase; credit
+    // the parent row too so the bar isn't pinned at 55% during the long
+    // parallel block.
+    if (SECTION_AGENT_CHILDREN.includes(current ?? "")) {
+      const parentIdx = PHASE_ORDER.indexOf("section-agents");
+      return Math.min(99, Math.round(((parentIdx + 0.5) / PHASE_ORDER.length) * 100));
+    }
+    return 4;
+  }
   const step = scan.current_phase ? idx + 0.5 : idx + 1;
   return Math.min(99, Math.round((step / PHASE_ORDER.length) * 100));
 }
@@ -136,8 +167,6 @@ export function ScanProgress({
 
   useEffect(() => {
     void poll();
-    // Drive the "elapsed" counter every second without needing to
-    // re-poll the API for that alone.
     const tickClock = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(tickClock);
   }, [poll]);
@@ -181,12 +210,14 @@ export function ScanProgress({
                 : "Cancelled"}
         </div>
         <h1 className="font-[var(--font-serif)] text-[32px] leading-tight">
-          {titleForStatus(scan)}
+          {scan.status === "running" || scan.status === "queued" ? (
+            <Shimmer>{titleForStatus(scan)}</Shimmer>
+          ) : (
+            titleForStatus(scan)
+          )}
         </h1>
         <div className="flex flex-wrap gap-x-5 gap-y-1 text-[12px] text-muted-foreground">
-          <span>
-            <span className="font-mono text-foreground">@{scan.handle}</span>
-          </span>
+          <span className="font-mono text-foreground">@{scan.handle}</span>
           <span>
             Elapsed <span className="text-foreground font-mono">{elapsed}</span>
           </span>
@@ -197,21 +228,339 @@ export function ScanProgress({
       </section>
 
       {scan.status === "succeeded" ? (
-        <CompletedCta scanId={scanId} onRefresh={() => router.refresh()} />
+        <CompletedCta onRefresh={() => router.refresh()} />
       ) : null}
 
-      {scan.status === "failed" ? (
-        <FailedCard error={scan.error} />
-      ) : null}
+      {scan.status === "failed" ? <FailedCard error={scan.error} /> : null}
 
-      {scan.status === "cancelled" ? (
-        <CancelledCard />
-      ) : null}
+      {scan.status === "cancelled" ? <CancelledCard /> : null}
 
-      <EventLog events={events} />
+      <PhaseTimeline scan={scan} events={events} now={now} />
     </div>
   );
 }
+
+// ─── Phase timeline ─────────────────────────────────────────────────
+
+function PhaseTimeline({
+  scan,
+  events,
+  now,
+}: {
+  scan: ScanState;
+  events: EventRow[];
+  now: number;
+}) {
+  const nodes = useMemo(
+    () => buildPhaseTree(scan, events, now),
+    [scan, events, now],
+  );
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h2 className="text-[14px] font-semibold">Timeline</h2>
+      </div>
+      <ol className="relative flex flex-col gap-2">
+        {nodes.map((n, i) => (
+          <PhaseRow
+            key={n.id}
+            node={n}
+            isLast={i === nodes.length - 1}
+            now={now}
+          />
+        ))}
+      </ol>
+    </section>
+  );
+}
+
+function buildPhaseTree(
+  scan: ScanState,
+  events: EventRow[],
+  now: number,
+): PhaseNode[] {
+  const byStage = new Map<
+    string,
+    { start?: EventRow; end?: EventRow; error?: EventRow }
+  >();
+  for (const ev of events) {
+    const key = ev.stage;
+    if (!key) continue;
+    const entry = byStage.get(key) ?? {};
+    if (ev.kind === "stage-start") entry.start = ev;
+    else if (ev.kind === "stage-end") entry.end = ev;
+    else if (ev.kind === "error") entry.error = ev;
+    byStage.set(key, entry);
+  }
+
+  const resolve = (id: string, considerCurrent: boolean): PhaseNode => {
+    const bucket = byStage.get(id);
+    const isCurrent = considerCurrent && scan.current_phase === id;
+    const isCompletedInScanRow = scan.last_completed_phase === id;
+
+    let status: NodeStatus;
+    if (bucket?.error) status = "failed";
+    else if (bucket?.end) status = "done";
+    else if (bucket?.start || isCurrent) status = "running";
+    else if (isCompletedInScanRow) status = "done";
+    else status = "pending";
+
+    // Once the whole scan is succeeded, any phase that didn't emit its own
+    // stage-end (early runs before the reporter was wired, or events
+    // trimmed by the 50-row limit) should still display as done.
+    if (scan.status === "succeeded") status = "done";
+
+    // Failed at the top of the whole scan — bubble the error onto whichever
+    // phase owns it.
+    if (
+      scan.status === "failed" &&
+      scan.current_phase === id &&
+      !bucket?.error
+    ) {
+      status = "failed";
+    }
+
+    const startedAt = bucket?.start?.at ?? null;
+    let durationMs: number | null = null;
+    if (bucket?.end?.duration_ms) durationMs = bucket.end.duration_ms;
+    else if (status === "running" && startedAt) durationMs = now - startedAt;
+
+    return {
+      id,
+      title: phaseLabel(id),
+      status,
+      startedAt,
+      durationMs,
+      errorMessage: bucket?.error?.message ?? null,
+      children: undefined,
+    };
+  };
+
+  return PHASE_ORDER.map((id) => {
+    if (id !== "section-agents") return resolve(id, true);
+
+    const children = SECTION_AGENT_CHILDREN.map((cid) => resolve(cid, true));
+    const anyChildRunning = children.some((c) => c.status === "running");
+    const allChildrenDone =
+      children.length > 0 && children.every((c) => c.status === "done");
+    const anyChildFailed = children.some((c) => c.status === "failed");
+
+    const bucket = byStage.get("section-agents");
+    let status: NodeStatus;
+    if (anyChildFailed || bucket?.error) status = "failed";
+    else if (bucket?.end || allChildrenDone) status = "done";
+    else if (bucket?.start || anyChildRunning || scan.current_phase === "section-agents")
+      status = "running";
+    else status = "pending";
+
+    const startedAt = bucket?.start?.at ?? null;
+    let durationMs: number | null = null;
+    if (bucket?.end?.duration_ms) durationMs = bucket.end.duration_ms;
+    else if (status === "running" && startedAt) durationMs = now - startedAt;
+
+    return {
+      id,
+      title: phaseLabel(id),
+      status,
+      startedAt,
+      durationMs,
+      errorMessage: bucket?.error?.message ?? null,
+      children,
+    };
+  });
+}
+
+function PhaseRow({
+  node,
+  isLast,
+  now,
+}: {
+  node: PhaseNode;
+  isLast: boolean;
+  now: number;
+}) {
+  const hasChildren = node.children && node.children.length > 0;
+  const showChildren =
+    hasChildren && (node.status === "running" || node.status === "done" || node.status === "failed");
+
+  return (
+    <li className="gs-enter relative flex gap-3">
+      {!isLast ? (
+        <span
+          aria-hidden
+          className={cn(
+            "absolute left-[11px] top-7 bottom-0 w-px",
+            node.status === "done"
+              ? "bg-emerald-500/30"
+              : node.status === "running"
+                ? "bg-[var(--primary)]/30"
+                : "bg-border/40",
+          )}
+        />
+      ) : null}
+      <PhaseDot status={node.status} />
+      <div className="flex-1 min-w-0 pb-1">
+        <PhaseHeader node={node} now={now} />
+        {node.errorMessage ? (
+          <p className="mt-2 text-[12px] leading-relaxed text-[var(--destructive)]/90 font-mono bg-[var(--destructive)]/5 border border-[var(--destructive)]/20 rounded-lg p-3 whitespace-pre-wrap break-words">
+            {node.errorMessage.slice(0, 800)}
+          </p>
+        ) : null}
+        {showChildren && node.children ? (
+          <ol className="mt-3 flex flex-col gap-1.5">
+            {node.children.map((c) => (
+              <SubPhaseRow key={c.id} node={c} />
+            ))}
+          </ol>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+function PhaseHeader({ node, now }: { node: PhaseNode; now: number }) {
+  // Keep the running elapsed lively without re-triggering memo.
+  const live =
+    node.status === "running" && node.startedAt
+      ? now - node.startedAt
+      : node.durationMs;
+
+  return (
+    <div className="flex items-baseline gap-2">
+      <span
+        className={cn(
+          "text-[14px] font-medium leading-snug",
+          node.status === "pending" && "text-muted-foreground/60",
+          node.status === "failed" && "text-[var(--destructive)]",
+        )}
+      >
+        {node.status === "running" ? (
+          <Shimmer>{node.title}</Shimmer>
+        ) : (
+          node.title
+        )}
+      </span>
+      {live && live > 100 ? (
+        <span
+          className={cn(
+            "font-mono tabular-nums text-[11px]",
+            node.status === "done"
+              ? "text-emerald-500/80"
+              : node.status === "running"
+                ? "text-[var(--primary)]/80"
+                : "text-muted-foreground/70",
+          )}
+        >
+          {formatDuration(live)}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function PhaseDot({ status }: { status: NodeStatus }) {
+  if (status === "running") {
+    return (
+      <span className="relative flex size-[22px] shrink-0 items-center justify-center rounded-full bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/40">
+        <span className="absolute inline-flex size-2 animate-ping rounded-full bg-[var(--primary)] opacity-70" />
+        <span className="relative inline-flex size-2 rounded-full bg-[var(--primary)]" />
+      </span>
+    );
+  }
+  if (status === "done") {
+    return (
+      <span className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-emerald-500/90 text-white">
+        <Check className="size-3" strokeWidth={3} />
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span className="flex size-[22px] shrink-0 items-center justify-center rounded-full bg-[var(--destructive)]/90 text-white">
+        <AlertTriangle className="size-3" strokeWidth={2.5} />
+      </span>
+    );
+  }
+  return (
+    <span className="flex size-[22px] shrink-0 items-center justify-center">
+      <Circle
+        className="size-[14px] text-muted-foreground/30"
+        strokeWidth={1.5}
+      />
+    </span>
+  );
+}
+
+function SubPhaseRow({ node }: { node: PhaseNode }) {
+  return (
+    <li className="flex items-baseline gap-2.5 pl-1">
+      <SubDot status={node.status} />
+      <span
+        className={cn(
+          "text-[12.5px] leading-snug",
+          node.status === "pending" && "text-muted-foreground/60",
+          node.status === "done" && "text-muted-foreground",
+          node.status === "running" && "text-foreground",
+          node.status === "failed" && "text-[var(--destructive)]",
+        )}
+      >
+        {node.status === "running" ? (
+          <Shimmer>{node.title}</Shimmer>
+        ) : (
+          node.title
+        )}
+      </span>
+      {node.durationMs && node.durationMs > 100 ? (
+        <span
+          className={cn(
+            "font-mono tabular-nums text-[10.5px]",
+            node.status === "done"
+              ? "text-muted-foreground/60"
+              : "text-[var(--primary)]/70",
+          )}
+        >
+          {formatDuration(node.durationMs)}
+        </span>
+      ) : null}
+    </li>
+  );
+}
+
+function SubDot({ status }: { status: NodeStatus }) {
+  if (status === "running") {
+    return (
+      <span className="relative flex size-3 shrink-0 items-center justify-center">
+        <span className="absolute inline-flex size-1.5 animate-ping rounded-full bg-[var(--primary)] opacity-70" />
+        <span className="relative inline-flex size-1.5 rounded-full bg-[var(--primary)]" />
+      </span>
+    );
+  }
+  if (status === "done") {
+    return (
+      <span className="flex size-3 shrink-0 items-center justify-center rounded-full bg-emerald-500/90">
+        <Check className="size-2 text-white" strokeWidth={3.5} />
+      </span>
+    );
+  }
+  if (status === "failed") {
+    return (
+      <span className="flex size-3 shrink-0 items-center justify-center rounded-full bg-[var(--destructive)]/90">
+        <AlertTriangle className="size-2 text-white" strokeWidth={2.5} />
+      </span>
+    );
+  }
+  return (
+    <span className="flex size-3 shrink-0 items-center justify-center">
+      <Circle
+        className="size-2 text-muted-foreground/30"
+        strokeWidth={1.5}
+      />
+    </span>
+  );
+}
+
+// ─── Header bits ────────────────────────────────────────────────────
 
 function titleForStatus(scan: ScanState): string {
   if (scan.status === "succeeded") return "Your portfolio is ready";
@@ -265,15 +614,11 @@ function StatusPill({ status }: { status: ScanState["status"] }) {
   );
 }
 
-function CompletedCta({
-  scanId,
-  onRefresh,
-}: {
-  scanId: string;
-  onRefresh: () => void;
-}) {
+// ─── Terminal-state cards ───────────────────────────────────────────
+
+function CompletedCta({ onRefresh }: { onRefresh: () => void }) {
   return (
-    <div className="rounded-2xl border border-border/40 bg-card/40 p-5 flex flex-col gap-3">
+    <div className="gs-enter rounded-2xl border border-border/40 bg-card/40 p-5 flex flex-col gap-3">
       <div className="text-[13px]">
         Draft ready. Review it, tune anything in the editor, then publish.
       </div>
@@ -298,19 +643,14 @@ function CompletedCta({
           Refresh state
         </button>
       </div>
-      <span className="text-[11px] text-muted-foreground font-mono">
-        scan id: {scanId}
-      </span>
     </div>
   );
 }
 
 function FailedCard({ error }: { error: string | null }) {
   return (
-    <div className="rounded-2xl border border-[var(--destructive)]/30 bg-[var(--destructive)]/[0.04] p-5 flex flex-col gap-3">
-      <div className="text-[13px] font-medium">
-        The pipeline hit a snag.
-      </div>
+    <div className="gs-enter rounded-2xl border border-[var(--destructive)]/30 bg-[var(--destructive)]/[0.04] p-5 flex flex-col gap-3">
+      <div className="text-[13px] font-medium">The pipeline hit a snag.</div>
       {error ? (
         <p className="text-[12px] leading-relaxed text-muted-foreground font-mono bg-card/60 rounded-lg p-3 whitespace-pre-wrap break-words">
           {error.slice(0, 1200)}
@@ -328,80 +668,10 @@ function FailedCard({ error }: { error: string | null }) {
 
 function CancelledCard() {
   return (
-    <div className="rounded-2xl border border-border/40 bg-card/30 p-5 text-[13px] text-muted-foreground">
+    <div className="gs-enter rounded-2xl border border-border/40 bg-card/30 p-5 text-[13px] text-muted-foreground">
       Scan was cancelled.
     </div>
   );
-}
-
-function EventLog({ events }: { events: EventRow[] }) {
-  // Events arrive newest-last from the server; render bottom-up so the
-  // latest sits at the top.
-  const ordered = useMemo(() => [...events].reverse(), [events]);
-  return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <h2 className="text-[14px] font-semibold">Log</h2>
-        <span className="text-[11px] text-muted-foreground">
-          {events.length} event{events.length === 1 ? "" : "s"}
-        </span>
-      </div>
-      {ordered.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border/40 p-4 text-[12px] text-muted-foreground text-center">
-          Waiting for the first event…
-        </div>
-      ) : (
-        <ol className="flex flex-col gap-1.5 max-h-[60vh] overflow-auto pr-1">
-          {ordered.map((ev) => (
-            <EventRowView key={ev.id} ev={ev} />
-          ))}
-        </ol>
-      )}
-    </section>
-  );
-}
-
-function EventRowView({ ev }: { ev: EventRow }) {
-  const tone =
-    ev.kind === "error"
-      ? "text-[var(--destructive)]"
-      : ev.kind === "stage-warn"
-        ? "text-amber-500"
-        : ev.kind === "stage-end"
-          ? "text-emerald-500"
-          : "text-muted-foreground";
-  const label =
-    ev.stage ||
-    ev.worker ||
-    ev.kind;
-  return (
-    <li className="flex items-start gap-3 rounded-lg border border-border/30 bg-card/20 px-3 py-2 text-[12px]">
-      <span className="font-mono tabular-nums text-muted-foreground/70 w-14 shrink-0">
-        {formatClock(ev.at)}
-      </span>
-      <span className={cn("font-mono uppercase text-[10px] tracking-wide w-20 shrink-0", tone)}>
-        {ev.kind}
-      </span>
-      <span className="flex-1 min-w-0">
-        <span className="text-foreground font-medium">{label}</span>
-        {ev.message ? (
-          <span className="text-muted-foreground"> — {ev.message}</span>
-        ) : null}
-        {ev.duration_ms ? (
-          <span className="ml-2 text-muted-foreground/70 tabular-nums">
-            {formatDuration(ev.duration_ms)}
-          </span>
-        ) : null}
-      </span>
-    </li>
-  );
-}
-
-function formatClock(ms: number): string {
-  const d = new Date(ms);
-  return `${String(d.getHours()).padStart(2, "0")}:${String(
-    d.getMinutes(),
-  ).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
 }
 
 function formatElapsed(ms: number): string {
