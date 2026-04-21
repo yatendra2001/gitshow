@@ -1,23 +1,29 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 /**
- * Next.js 16 proxy (renamed from "middleware.ts") — runs in the Edge/
- * Workers runtime before every request that matches `config.matcher`.
- * This is the file that was MISSING under Auth.js and is why signing
- * out "didn't stick" even when /api/auth/signout succeeded: no proxy
- * meant no route-level session enforcement, so stale page HTML would
- * render off a cached RSC payload.
+ * Session-gated middleware. Runs in the Edge/Workers runtime before
+ * every request that matches `config.matcher`. This file was MISSING
+ * under Auth.js and is why signing out "didn't stick" even when
+ * /api/auth/signout succeeded: no middleware meant no route-level
+ * session enforcement, so stale RSC payloads would still render.
+ *
+ * Why not proxy.ts: Next 16 renamed middleware → proxy, but the
+ * OpenNext Cloudflare adapter doesn't support the proxy convention
+ * yet (opennextjs-cloudflare#962) and Next itself refuses to accept
+ * runtime: "edge" on a proxy export. Sticking with middleware.ts
+ * keeps both sides happy. When OpenNext ships proxy support we can
+ * rename back.
  *
  * Strategy: for each protected path, make an internal fetch to
  * `/api/auth/get-session` forwarding the request's cookies. Better
  * Auth tells us whether the session is still live. If not, bounce to
  * /signin. We avoid importing `initAuth()` directly here — the Edge
- * runtime won't eval the D1 binding at proxy time, and direct
- * server-side invocation from a proxy on OpenNext is known-flaky.
+ * runtime won't eval the D1 binding at middleware time, and direct
+ * server-side invocation from middleware on OpenNext is known-flaky.
  *
  * Protected paths:
  *   /app and /app/** — the authenticated dashboard
- *   /dashboard/**    — legacy alias (still redirects through proxy)
+ *   /dashboard/**    — legacy alias (still redirects through here)
  *   /s/** except /s/demo — scan progress views
  *
  * Everything else (/, /signin, /p/[handle], /[handle], /api/**) stays
@@ -28,7 +34,7 @@ import { NextResponse, type NextRequest } from "next/server";
 const PROTECTED_PREFIXES = ["/app", "/dashboard", "/s/"] as const;
 const PROTECTED_ALLOWLIST = ["/s/demo"] as const;
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (PROTECTED_ALLOWLIST.includes(pathname as (typeof PROTECTED_ALLOWLIST)[number])) {
