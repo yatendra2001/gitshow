@@ -6,7 +6,7 @@
  * loudly rather than quietly truncating.
  */
 
-import { ResumeSchema, type Resume } from "@gitshow/shared/resume";
+import { ResumeSchema, type Resume, type BlogPost } from "@gitshow/shared/resume";
 import type { ScanSession } from "../schemas.js";
 import type { GitHubData } from "../types.js";
 import type { PersonAgentOutput } from "./agents/person.js";
@@ -27,13 +27,14 @@ export interface AssembleInput {
   work: WorkEntry[];
   education: EducationEntry[];
   contact: ContactOutput;
+  blog: BlogPost[];
 }
 
 /**
  * Produce a validated Resume from agent outputs. Throws on schema mismatch.
  */
 export function assembleResume(input: AssembleInput): Resume {
-  const { session, github, person, skills, projects, buildLog, work, education, contact } = input;
+  const { session, github, person, skills, projects, buildLog, work, education, contact, blog } = input;
   const now = new Date().toISOString();
 
   const draft = {
@@ -96,7 +97,7 @@ export function assembleResume(input: AssembleInput): Resume {
       languageColor: b.languageColor,
       links: b.links,
     })),
-    blog: [],
+    blog,
     theme: { mode: "dark" as const },
     sections: {
       order: ["hero", "about", "work", "education", "skills", "projects", "buildLog", "contact"] as const,

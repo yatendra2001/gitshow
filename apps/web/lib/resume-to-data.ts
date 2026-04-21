@@ -13,7 +13,7 @@
 import { createElement, type HTMLAttributes, type ComponentType } from "react";
 import { HomeIcon, NotebookIcon } from "lucide-react";
 import { Icons } from "@/components/icons";
-import type { Resume, IconKey } from "@gitshow/shared/resume";
+import type { Resume, IconKey, BlogPost } from "@gitshow/shared/resume";
 
 type IconComp = ComponentType<HTMLAttributes<SVGElement>>;
 
@@ -95,6 +95,8 @@ export interface TemplateData {
     win?: string;
     links: { title: string; icon: React.ReactNode; href: string }[];
   }[];
+  /** Imported blog posts; body is markdown, rendered at /{handle}/blog/{slug}. */
+  blog: BlogPost[];
 }
 
 /**
@@ -199,5 +201,6 @@ export function resumeToTemplateData(
         icon: createElement(iconForKey(l.iconKey), { className: "h-4 w-4" }),
       })),
     })),
+    blog: resume.blog,
   };
 }

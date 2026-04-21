@@ -47,6 +47,7 @@ import { runProjectsAgent } from "./agents/projects.js";
 import { runWorkAgent } from "./agents/work.js";
 import { runEducationAgent } from "./agents/education.js";
 import { runContactAgent } from "./agents/contact.js";
+import { runBlogImportAgent } from "./agents/blog-import.js";
 import { assembleResume } from "./assemble.js";
 import { writeDraftResume } from "./persist.js";
 import type { Resume } from "@gitshow/shared/resume";
@@ -142,7 +143,7 @@ export async function runResumePipeline(
 
   // 7. Parallel section agents.
   log(`[pipeline] stage 7: section agents (parallel)\n`);
-  const [buildLog, skills, projects, work, education] = await Promise.all([
+  const [buildLog, skills, projects, work, education, blog] = await Promise.all([
     runBuildLogAgent({ session, usage, github, artifacts, onProgress }),
     runSkillsAgent({ session, usage, github, artifacts, onProgress }),
     runProjectsAgent({
@@ -156,6 +157,12 @@ export async function runResumePipeline(
     }),
     runWorkAgent({ session, usage, github, artifacts, onProgress }),
     runEducationAgent({ session, usage, github, artifacts, onProgress }),
+    runBlogImportAgent({
+      session,
+      usage,
+      urls: session.blog_urls ?? [],
+      onProgress,
+    }),
   ]);
 
   // 8. Person — post-synthesis so the summary can reference
@@ -192,10 +199,11 @@ export async function runResumePipeline(
     work,
     education,
     contact,
+    blog,
   });
 
   log(
-    `[pipeline] done. ${projects.length} projects, ${buildLog.length} build-log entries, ${skills.skills.length} skills.\n`,
+    `[pipeline] done. ${projects.length} projects, ${buildLog.length} build-log entries, ${skills.skills.length} skills, ${blog.length} blog posts.\n`,
   );
 
   // 11. Persist to R2 when requested (cloud mode) or when

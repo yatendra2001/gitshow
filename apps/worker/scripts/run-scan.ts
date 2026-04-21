@@ -80,10 +80,19 @@ async function main() {
   if (process.env.LINKEDIN) socials.linkedin = process.env.LINKEDIN;
   if (process.env.WEBSITE) socials.website = process.env.WEBSITE;
 
+  // Up to 5 user-provided blog URLs — comma-separated via BLOG_URLS env.
+  // Consumed by the blog-import agent in the resume pipeline.
+  const blogUrls: string[] = (process.env.BLOG_URLS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 5);
+
   const session: ScanSession = {
     id: scanId,
     handle,
     socials,
+    blog_urls: blogUrls.length > 0 ? blogUrls : undefined,
     context_notes: process.env.CONTEXT_NOTES || undefined,
     started_at: new Date().toISOString(),
     dashboard_url: `https://openrouter.ai/sessions/${scanId}`,

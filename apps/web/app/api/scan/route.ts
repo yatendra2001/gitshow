@@ -42,6 +42,12 @@ const BodySchema = z.object({
   context_notes: z.string().max(2000).optional(),
   model: z.string().optional(),
   /**
+   * Up to 5 blog URLs imported verbatim into the Resume's `blog[]`
+   * section. Any source Jina Reader can render works — Medium, dev.to,
+   * Hashnode, Substack, Ghost, personal sites.
+   */
+  blog_urls: z.array(z.string().url()).max(5).optional(),
+  /**
    * Which worker pipeline to invoke. "resume" produces the new Resume
    * JSON rendered by /{handle}; "claim" produces the legacy ProfileCard.
    * Defaults to "resume" now that the new pipeline is wired end-to-end.
@@ -122,6 +128,7 @@ export async function POST(req: Request) {
         linkedin: body.socials?.linkedin,
         website: body.socials?.website,
         contextNotes: body.context_notes,
+        blogUrls: body.blog_urls,
         userGhToken,
       }),
     });
@@ -157,6 +164,7 @@ function buildMachineEnv(
     linkedin?: string;
     website?: string;
     contextNotes?: string;
+    blogUrls?: string[];
     userGhToken: string;
   },
 ): Record<string, string> {
@@ -179,6 +187,7 @@ function buildMachineEnv(
   if (s.linkedin) out.LINKEDIN = s.linkedin;
   if (s.website) out.WEBSITE = s.website;
   if (s.contextNotes) out.CONTEXT_NOTES = s.contextNotes;
+  if (s.blogUrls && s.blogUrls.length > 0) out.BLOG_URLS = s.blogUrls.join(",");
   if (env.REALTIME_ENDPOINT) out.REALTIME_ENDPOINT = env.REALTIME_ENDPOINT;
   if (env.PIPELINE_SHARED_SECRET)
     out.PIPELINE_SHARED_SECRET = env.PIPELINE_SHARED_SECRET;
