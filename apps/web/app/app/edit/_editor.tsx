@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import type { Resume } from "@gitshow/shared/resume";
 import { cn } from "@/lib/utils";
+import { LogoMark } from "@/components/logo";
 import {
   AboutSectionForm,
   BlogSectionForm,
@@ -296,9 +297,11 @@ function Header({
       <div className="flex items-center gap-3">
         <Link
           href="/app"
-          className="text-[12px] text-muted-foreground hover:text-foreground transition-colors border border-border/40 rounded-lg px-2 py-1"
+          className="inline-flex items-center gap-2 text-[12px] text-muted-foreground hover:text-foreground transition-colors border border-border/40 rounded-lg pl-1 pr-2 py-1"
+          aria-label="Back to dashboard"
         >
-          ← /app
+          <LogoMark size={18} />
+          <span>← /app</span>
         </Link>
         <span className="text-[13px] text-muted-foreground">
           Editing draft for <span className="font-mono text-foreground">@{handle}</span>

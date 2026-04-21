@@ -8,6 +8,7 @@ import PortfolioPage from "@/components/portfolio-page";
 import { DataProvider } from "@/components/data-provider";
 import { FlickeringGrid } from "@/components/magicui/flickering-grid";
 import Navbar from "@/components/navbar";
+import { LogoMark } from "@/components/logo";
 import { cn } from "@/lib/utils";
 
 /**
@@ -84,9 +85,11 @@ function DraftBanner({ handle }: { handle: string }) {
       <div className="flex items-center gap-3 text-[12px] text-muted-foreground">
         <Link
           href="/app"
-          className="font-mono text-foreground underline-offset-2 hover:underline"
+          className="inline-flex items-center gap-1.5 font-mono text-foreground underline-offset-2 hover:underline"
+          aria-label="Back to dashboard"
         >
-          ← /app
+          <LogoMark size={18} />
+          <span>← /app</span>
         </Link>
         <span>
           Draft preview · <span className="text-foreground">@{handle}</span> · not public yet
