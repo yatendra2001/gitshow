@@ -1,0 +1,64 @@
+import { redirect } from "next/navigation";
+import Link from "next/link";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { getSession } from "@/auth";
+import { loadDraftResume } from "@/lib/resume-io";
+import { Editor } from "./_editor";
+
+/**
+ * /app/edit — full per-section editor over the authenticated user's
+ * draft Resume.
+ *
+ * Server-side boot: loads the draft once so we can show a useful
+ * empty/error state if one doesn't exist. All mutations flow through
+ * the client Editor via PATCH /api/resume/draft.
+ */
+
+export const dynamic = "force-dynamic";
+
+export default async function EditPage() {
+  const session = await getSession();
+  if (!session?.user?.id || !session.user.login) redirect("/signin");
+
+  const handle = session.user.login;
+  const { env } = await getCloudflareContext({ async: true });
+  const resume = await loadDraftResume(env.BUCKET, handle);
+
+  if (!resume) {
+    return (
+      <main className="min-h-svh bg-background text-foreground">
+        <EmptyState />
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-svh bg-background text-foreground">
+      <Editor initialResume={resume} handle={handle} />
+    </main>
+  );
+}
+
+function EmptyState() {
+  return (
+    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
+      <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
+        Nothing to edit yet
+      </div>
+      <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
+        No draft found
+      </h1>
+      <p className="text-[14px] leading-relaxed text-muted-foreground mb-6">
+        Run a scan first — the editor lives on top of a generated draft.
+        Once the AI pipeline finishes, this page will show your full
+        portfolio ready to tune.
+      </p>
+      <Link
+        href="/app"
+        className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-11"
+      >
+        Back to dashboard
+      </Link>
+    </section>
+  );
+}
