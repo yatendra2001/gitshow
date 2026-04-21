@@ -1,68 +1,13 @@
 /**
- * Public profile lookup.
+ * Reserved-handle guard for the public `/{handle}` route.
  *
- * Reads (user_profiles row) + (the current_profile_r2_key from R2) and
- * returns a ready-to-render ProfileCard plus the public slug. Cached at
- * the edge via CDN headers on the /{handle} route — not here.
+ * Next.js resolves static routes before dynamic ones, so `/app` / `/api`
+ * / `/signin` / etc. won't accidentally match the `[handle]` segment.
+ * This list is defence-in-depth: if a bad deploy removes a static
+ * route, we still refuse to render the claim-catch-all page for a
+ * reserved word.
  */
 
-import type { ProfileCard } from "@gitshow/shared/schemas";
-import { mergeUserEdits } from "./cards";
-
-export interface UserProfileRow {
-  user_id: string;
-  handle: string;
-  public_slug: string;
-  current_scan_id: string | null;
-  current_profile_r2_key: string | null;
-  first_scan_at: number | null;
-  last_scan_at: number | null;
-  revision_count: number;
-  created_at: number;
-  updated_at: number;
-}
-
-export async function getProfileBySlug(
-  db: D1Database,
-  bucket: R2Bucket | undefined,
-  slugRaw: string,
-): Promise<{ row: UserProfileRow; card: ProfileCard } | null> {
-  const slug = slugRaw.toLowerCase();
-  const row = await db
-    .prepare(
-      `SELECT * FROM user_profiles WHERE public_slug = ? OR LOWER(handle) = ? LIMIT 1`,
-    )
-    .bind(slug, slug)
-    .first<UserProfileRow>();
-  if (!row) return null;
-  if (!row.current_profile_r2_key || !bucket) return null;
-  try {
-    const obj = await bucket.get(row.current_profile_r2_key);
-    if (!obj) return null;
-    const text = await obj.text();
-    const raw = JSON.parse(text) as ProfileCard;
-    // Overlay any post-scan user edits from D1. The R2 card is the
-    // frozen snapshot; D1 is the live source of truth for claim text.
-    const card = row.current_scan_id
-      ? await mergeUserEdits(raw, row.current_scan_id, db)
-      : raw;
-    return { row, card };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Reserved-word list. Anything in this set must not be routable as a
- * public profile. The /{handle} catch-all page checks this before
- * attempting a D1 lookup, so we never fall through to "profile not
- * found" on a real internal route.
- *
- * Kept deliberately short — Next.js's route-resolution already gives
- * static routes priority over dynamic ones, but we defend in depth so
- * a bad deploy (e.g. a missing static page) can't match a random user
- * handle.
- */
 export const RESERVED_PATHS = new Set([
   "api",
   "app",

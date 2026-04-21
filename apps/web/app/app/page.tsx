@@ -4,37 +4,30 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getSession } from "@/auth";
 import { NotificationBell } from "@/components/notifications/bell";
 import { PushEnableButton } from "@/components/notifications/push-enable";
-import { getProfileBySlug } from "@/lib/profiles";
+import {
+  loadDraftResume,
+  loadPublishedResume,
+} from "@/lib/resume-io";
 import { StartFirstScanButton } from "./_start-button";
 import { RefreshButton } from "./_refresh-button";
 import { DeleteProfileButton } from "./_delete-profile-button";
 import { DeleteAccountHandler } from "./_delete-handler";
 import { SignOutButton } from "./_signout-button";
+import { PublishDraftButton } from "./_publish-draft-button";
 
 /**
- * /app — the authenticated home. Single-person model:
- *   - No scan → CTA to start the intake flow.
- *   - Scan running → link into the live /s/[id] progress view.
- *   - Scan succeeded + published → render the lean profile in place
- *     + Refresh / Delete affordances.
- *   - Scan succeeded but NOT published yet (draft) → show a preview
- *     of the draft card + "Review and publish" / "Refresh" actions.
- *     This covers the gap introduced by dropping auto-publish: a
- *     finished scan should always surface here instead of the raw
- *     "Let's build your profile" empty state.
- *   - Scan failed → show the last reason + "Try again".
+ * /app — the authenticated home. Single-person model.
+ *
+ * States (resume pipeline era):
+ *   - No scan ever → "Get started" CTA → /api/intake flow
+ *   - Scan running/queued → "Working on it" + email-when-ready copy
+ *   - Scan succeeded, draft exists, nothing published → "Review draft" +
+ *     "Publish" action (calls /api/profile/publish-resume)
+ *   - Published → "Live at /{handle}" + Refresh / Delete
+ *   - Scan failed → "Try again" with the error
  */
 
 export const dynamic = "force-dynamic";
-
-interface UserProfileRow {
-  user_id: string;
-  handle: string;
-  public_slug: string;
-  current_scan_id: string | null;
-  current_profile_r2_key: string | null;
-  last_scan_at: number | null;
-}
 
 interface ScanSlim {
   id: string;
@@ -46,24 +39,27 @@ interface ScanSlim {
   completed_at: number | null;
 }
 
+interface ProfileRow {
+  handle: string;
+  public_slug: string;
+  last_scan_at: number | null;
+}
+
 export default async function AppHomePage() {
   const session = await getSession();
   if (!session?.user?.id) redirect("/signin");
   const userId = session.user.id;
-  // Prefer the GitHub login (username) captured by mapProfileToUser
-  // on sign-in. Fall back to the display name only if login never
-  // populated (legacy row from before the Better Auth migration).
   const githubHandle = (session.user.login ?? session.user.name ?? "").trim();
 
   const { env } = await getCloudflareContext({ async: true });
 
   const [profileRow, latestScan, activeScan] = await Promise.all([
     env.DB.prepare(
-      `SELECT user_id, handle, public_slug, current_scan_id, current_profile_r2_key, last_scan_at
+      `SELECT handle, public_slug, last_scan_at
          FROM user_profiles WHERE user_id = ? LIMIT 1`,
     )
       .bind(userId)
-      .first<UserProfileRow>(),
+      .first<ProfileRow>(),
     env.DB.prepare(
       `SELECT id, status, handle, current_phase, error, created_at, completed_at
          FROM scans WHERE user_id = ?
@@ -81,23 +77,21 @@ export default async function AppHomePage() {
       .first<ScanSlim>(),
   ]);
 
-  // Render data for the lean card if the user has a succeeded profile.
-  let cardData:
-    | { row: UserProfileRow; card: import("@gitshow/shared/schemas").ProfileCard }
-    | null = null;
-  if (profileRow?.current_profile_r2_key) {
-    cardData = await getProfileBySlug(env.DB, env.BUCKET, profileRow.public_slug);
-  }
+  // Ground truth lives in R2. Checking D1 isn't enough — the
+  // user_profiles row is optimistic; R2 can have a published.json even
+  // if we haven't back-filled the row.
+  const [publishedResume, draftResume] = await Promise.all([
+    githubHandle ? loadPublishedResume(env.BUCKET, githubHandle) : null,
+    githubHandle ? loadDraftResume(env.BUCKET, githubHandle) : null,
+  ]);
 
-  const hasProfile = Boolean(cardData);
+  const hasPublished = Boolean(publishedResume);
+  const hasDraft = Boolean(draftResume);
   const isScanning = Boolean(activeScan);
-  // A "draft" is a succeeded scan the user hasn't published yet.
-  // Post-PR#40 scan completion no longer auto-publishes, so /app must
-  // land returning users on their draft — not on the fresh intake CTA.
-  const draftScan =
-    latestScan?.status === "succeeded" && !hasProfile ? latestScan : null;
+
+  const draftReady = hasDraft && !hasPublished && !isScanning;
   const lastFailed =
-    latestScan?.status === "failed" && !activeScan && !hasProfile && !draftScan;
+    latestScan?.status === "failed" && !activeScan && !hasPublished && !draftReady;
 
   return (
     <main className="min-h-svh bg-background text-foreground">
@@ -119,15 +113,14 @@ export default async function AppHomePage() {
 
       {isScanning ? (
         <ScanningState scan={activeScan!} />
-      ) : hasProfile ? (
-        <ProfileState
-          handle={cardData!.row.handle}
-          publicSlug={cardData!.row.public_slug}
-          lastScanAt={cardData!.row.last_scan_at}
-          currentScanId={cardData!.row.current_scan_id}
+      ) : hasPublished ? (
+        <PublishedState
+          handle={githubHandle}
+          slug={profileRow?.public_slug ?? githubHandle.toLowerCase()}
+          lastScanAt={profileRow?.last_scan_at ?? null}
         />
-      ) : draftScan ? (
-        <DraftState scan={draftScan} />
+      ) : draftReady ? (
+        <DraftState handle={githubHandle} />
       ) : lastFailed ? (
         <FailedState scan={latestScan!} />
       ) : (
@@ -151,7 +144,7 @@ function EmptyState({ handle }: { handle: string }) {
         Welcome
       </div>
       <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
-        Build your profile
+        Build your portfolio
       </h1>
       <p className="text-[14px] leading-relaxed text-muted-foreground mb-6">
         We&apos;ll read your GitHub, ask a few quick questions, then run a full
@@ -186,40 +179,32 @@ function ScanningState({ scan }: { scan: ScanSlim }) {
         <br />
         You can close this tab — we&apos;ll email you when it&apos;s ready.
       </p>
-      <div className="flex flex-wrap gap-2">
-        <Link
-          href={`/s/${scan.id}`}
-          className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-11"
-        >
-          See progress →
-        </Link>
-      </div>
     </section>
   );
 }
 
-function DraftState({ scan }: { scan: ScanSlim }) {
+function DraftState({ handle }: { handle: string }) {
   return (
     <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
       <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
         Draft ready
       </div>
       <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
-        Your profile is ready to review
+        Your portfolio is ready to review
       </h1>
       <p className="text-[14px] leading-relaxed text-muted-foreground mb-6">
-        The scan for @{scan.handle} finished. Review the draft, edit anything
-        that needs fixing, and publish when it&apos;s right —{" "}
-        <span className="font-mono">gitshow.io/{scan.handle}</span> goes live
-        the moment you do.
+        The scan for @{handle} finished. Preview it, and publish when it looks
+        right — <span className="font-mono">gitshow.io/{handle}</span> goes
+        live the moment you do.
       </p>
       <div className="flex flex-wrap gap-2">
         <Link
-          href={`/s/${scan.id}`}
+          href="/app/preview"
           className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-11"
         >
-          Review and publish →
+          Preview draft →
         </Link>
+        <PublishDraftButton />
         <RefreshButton />
       </div>
     </section>
@@ -247,22 +232,14 @@ function FailedState({ scan }: { scan: ScanSlim }) {
   );
 }
 
-/**
- * Dashboard-only view. We used to render the full LeanProfileCard
- * inline here, but that duplicated the public /{handle} render and
- * turned /app into two copies of the same page. /app is the control
- * room: link out to the live profile, plus Edit / Refresh / Delete.
- */
-function ProfileState({
+function PublishedState({
   handle,
-  publicSlug,
+  slug,
   lastScanAt,
-  currentScanId,
 }: {
   handle: string;
-  publicSlug: string;
+  slug: string;
   lastScanAt: number | null;
-  currentScanId: string | null;
 }) {
   const daysSinceScan = lastScanAt
     ? Math.floor((Date.now() - lastScanAt) / (1000 * 60 * 60 * 24))
@@ -282,12 +259,12 @@ function ProfileState({
         Live
       </div>
       <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
-        Your profile is live
+        Your portfolio is live
       </h1>
       <p className="text-[14px] leading-relaxed text-muted-foreground mb-7">
         Published at{" "}
         <Link
-          href={`/${publicSlug}`}
+          href={`/${slug}`}
           target="_blank"
           rel="noreferrer"
           className="font-mono text-foreground underline-offset-2 hover:underline"
@@ -301,37 +278,31 @@ function ProfileState({
       </p>
       <div className="flex flex-wrap gap-2">
         <Link
-          href={`/${publicSlug}`}
+          href={`/${slug}`}
           target="_blank"
           rel="noreferrer"
           className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-11"
         >
-          View public profile ↗
+          View public portfolio ↗
         </Link>
-        {currentScanId ? (
-          <Link
-            href={`/s/${currentScanId}`}
-            className="inline-flex items-center rounded-xl border border-border/60 px-4 py-2 text-[13px] font-medium text-foreground hover:bg-card transition-colors min-h-11"
-          >
-            Edit
-          </Link>
-        ) : null}
         <RefreshButton />
       </div>
 
-      {/* Secondary actions — destructive lives alongside its sibling
-          helper copy so the user knows what each does. Refresh is a
-          rescan of the same handle; Delete wipes the profile so they
-          can start fresh. */}
       <div className="mt-6 border-t border-border/30 pt-5">
         <div className="grid grid-cols-1 gap-4 text-[12px] text-muted-foreground sm:grid-cols-2">
           <div className="flex flex-col gap-1">
             <span className="text-foreground font-medium">Refresh</span>
-            <span>Rescans your GitHub and regenerates the profile. Keeps your edits; runs once per 24h.</span>
+            <span>
+              Rescans your GitHub and regenerates the draft. Review and
+              publish to update the live page.
+            </span>
           </div>
           <div className="flex flex-col gap-2">
             <span className="text-foreground font-medium">Delete profile</span>
-            <span>Wipes scans, edits, and the public page. You&apos;ll start over from intake.</span>
+            <span>
+              Wipes scans and the public page. You&apos;ll start over from
+              intake.
+            </span>
             <DeleteProfileButton />
           </div>
         </div>
@@ -339,4 +310,3 @@ function ProfileState({
     </section>
   );
 }
-
