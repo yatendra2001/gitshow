@@ -47,8 +47,11 @@ export function RefreshButton() {
         setTimeout(() => setStatus("idle"), 3000);
         return;
       }
-      const data = (await resp.json()) as { scanId: string };
-      router.push(`/s/${data.scanId}`);
+      // /s/{scanId} was the claim-era live progress view; it was
+      // removed with the rest of the claim UI. Bounce back to /app
+      // which renders the "Reading your code" state while the new
+      // scan is running.
+      router.push("/app");
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "network error");
       setStatus("error");

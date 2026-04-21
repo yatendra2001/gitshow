@@ -153,8 +153,12 @@ export default function IntakePage({
         setSubmitError(err.error ?? "Something went wrong.");
         return;
       }
-      const data = (await resp.json()) as { scanId: string };
-      router.push(`/s/${data.scanId}`);
+      // Scan is spawned server-side; we just bounce back to the
+      // dashboard. /app renders the "Reading your code" view while
+      // the scan is active and swaps to the draft-ready state when it
+      // finishes. The old `/s/{scanId}` live progress route was
+      // claim-era only and was deleted in the purge.
+      router.push("/app");
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Network error");
     } finally {
