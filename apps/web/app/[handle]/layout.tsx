@@ -3,6 +3,8 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { FlickeringGrid } from "@/components/magicui/flickering-grid";
 import Navbar from "@/components/navbar";
 import { DataProvider } from "@/components/data-provider";
+import { TrackView } from "@/components/track-view";
+import { ShareButton } from "@/components/share-button";
 import { loadPublishedResume } from "@/lib/resume-io";
 import { isReservedHandle } from "@/lib/profiles";
 
@@ -32,6 +34,8 @@ export default async function PortfolioLayout({
 
   return (
     <DataProvider resume={resume} handle={handle}>
+      <TrackView handle={handle} />
+      <ShareButton handle={handle} name={resume.person.name} />
       <div className="absolute inset-0 top-0 left-0 right-0 h-[100px] overflow-hidden z-0">
         <FlickeringGrid
           className="h-full w-full"
