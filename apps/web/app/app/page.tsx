@@ -204,6 +204,12 @@ function DraftState({ handle }: { handle: string }) {
         >
           Preview draft →
         </Link>
+        <Link
+          href="/app/edit"
+          className="inline-flex items-center rounded-xl border border-border/60 bg-card/30 px-4 py-2 text-[13px] font-medium hover:bg-card/50 transition-colors min-h-11"
+        >
+          Edit
+        </Link>
         <PublishDraftButton />
         <RefreshButton />
       </div>
@@ -284,6 +290,12 @@ function PublishedState({
           className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-11"
         >
           View public portfolio ↗
+        </Link>
+        <Link
+          href="/app/edit"
+          className="inline-flex items-center rounded-xl border border-border/60 bg-card/30 px-4 py-2 text-[13px] font-medium hover:bg-card/50 transition-colors min-h-11"
+        >
+          Edit
         </Link>
         <RefreshButton />
       </div>
