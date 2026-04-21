@@ -9,6 +9,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./schemas": "./src/schemas.ts",
+    "./resume": "./src/resume.ts",
     "./events": "./src/events.ts",
     "./phase-copy": "./src/phase-copy.ts",
     "./eta": "./src/eta.ts",

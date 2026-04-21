@@ -21,3 +21,4 @@ export * from "./schemas";
 export * from "./events";
 export * from "./eta";
 export * from "./util";
+export * from "./resume";

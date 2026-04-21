@@ -1,49 +1,59 @@
 import type { Metadata } from "next";
-import { sans, serif, mono } from "@/lib/fonts";
+import { Geist, Geist_Mono } from "next/font/google";
 import { cn } from "@/lib/utils";
+import { ThemeProvider } from "@/components/theme-provider";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import "./globals.css";
+
+/**
+ * Root layout — verbatim parity with the reference portfolio template's
+ * `layout.tsx`, but stripped of template-specific metadata. Typography and
+ * theme tokens cascade from here into every route (dashboard, signin,
+ * `/{handle}`). Portfolio-specific chrome (FlickeringGrid header, Navbar)
+ * lives in `app/[handle]/layout.tsx` so it doesn't bleed into the app
+ * chrome routes.
+ */
+
+const geist = Geist({
+  subsets: ["latin"],
+  variable: "--font-sans",
+  weight: ["400", "500", "600", "700"],
+});
+
+const geistMono = Geist_Mono({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-mono",
+});
 
 export const metadata: Metadata = {
   title: "GitShow — portfolios from your git history",
   description:
-    "GitShow reads your public git history and writes a hiring-manager-ready portfolio. Every claim links to a commit.",
+    "GitShow turns a developer's public git history into a polished, editable portfolio.",
   openGraph: {
     title: "GitShow",
-    description: "Engineering portfolios, backed by every commit.",
+    description: "Portfolios from your git history.",
     type: "website",
   },
 };
 
 export default function RootLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   return (
-    <html lang="en" className="dark" suppressHydrationWarning>
-      <head>
-        {/*
-          Pre-hydration theme script. Reads gs-theme from localStorage
-          and sets the <html> class before paint, so a visitor who
-          flipped to light on a previous visit doesn't see a dark →
-          light flash on reload. Inline + string-literal on purpose;
-          must not import anything. Safe no-op on SSR (never runs).
-        */}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem('gs-theme');if(t==='light'){document.documentElement.classList.remove('dark')}else if(t==='dark'){document.documentElement.classList.add('dark')}}catch(e){}`,
-          }}
-        />
-      </head>
+    <html lang="en" suppressHydrationWarning>
       <body
         className={cn(
-          sans.variable,
-          serif.variable,
-          mono.variable,
-          "font-sans bg-background text-foreground min-h-screen antialiased selection:bg-blue-500/30",
+          "min-h-screen bg-background font-sans antialiased relative",
+          geist.variable,
+          geistMono.variable,
         )}
       >
-        {children}
+        <ThemeProvider attribute="class" defaultTheme="dark">
+          <TooltipProvider delayDuration={0}>{children}</TooltipProvider>
+        </ThemeProvider>
       </body>
     </html>
   );
