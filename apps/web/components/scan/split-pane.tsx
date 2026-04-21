@@ -36,6 +36,10 @@ export function SplitPane({
     setEffectiveStatus(scan.status);
   }, [scan.status]);
   const [isPublished, setIsPublished] = React.useState(initialIsPublished);
+  // Timestamp of the last successful edit/delete — drives the
+  // "Saved · Xs ago" chip in the header so the user has visible
+  // confidence their inline edits actually landed.
+  const [lastSavedAt, setLastSavedAt] = React.useState<number | null>(null);
 
   // On `done`, flip status + fetch the freshly-emitted card.
   React.useEffect(() => {
@@ -76,6 +80,7 @@ export function SplitPane({
           disclosure: swap(prev.disclosure),
         };
       });
+      setLastSavedAt(Date.now());
     },
     [],
   );
@@ -98,6 +103,7 @@ export function SplitPane({
             : prev.disclosure,
       };
     });
+    setLastSavedAt(Date.now());
   }, []);
 
   return (
@@ -115,6 +121,7 @@ export function SplitPane({
         onClaimRemoved={onClaimRemoved}
         isPublished={isPublished}
         onPublishedChange={setIsPublished}
+        lastSavedAt={lastSavedAt}
       />
     </div>
   );

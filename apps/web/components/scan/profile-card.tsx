@@ -1362,9 +1362,9 @@ function PatternCard({
   onClaimRemoved?: (id: string) => void;
 }) {
   const url = firstEvidenceUrl(claim);
-  const [expanded, setExpanded] = useState(false);
+  // Clamp/expand is handled inside ClampedProse so we don't also
+  // render a separate "Read more" button alongside "Show more".
   const CLAMP_LINES = 2;
-  const isLong = claim.text.length > 140;
 
   return (
     <div
@@ -1434,7 +1434,7 @@ function PatternCard({
         >
           <ClampedProse
             text={claim.text}
-            lines={expanded ? 999 : CLAMP_LINES}
+            lines={CLAMP_LINES}
             style={{
               margin: 0,
               fontSize: 12.5,
@@ -1453,7 +1453,7 @@ function PatternCard({
         >
           <ClampedProse
             text={claim.text}
-            lines={expanded ? 999 : CLAMP_LINES}
+            lines={CLAMP_LINES}
             style={{
               margin: 0,
               fontSize: 12.5,
@@ -1462,28 +1462,6 @@ function PatternCard({
             }}
           />
         </div>
-      )}
-      {isLong && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            setExpanded((v) => !v);
-          }}
-          style={{
-            marginTop: 6,
-            background: "transparent",
-            border: "none",
-            padding: 0,
-            fontSize: 10,
-            fontFamily: mono,
-            color: C[1],
-            cursor: "pointer",
-            letterSpacing: "0.04em",
-          }}
-        >
-          {expanded ? "Show less" : "Read more"}
-        </button>
       )}
       {url && claim.evidence_preview[0] && (
         <Receipt
