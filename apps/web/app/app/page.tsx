@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { auth } from "@/auth";
-import { LeanProfileCard } from "@/components/profile/lean-card";
 import { NotificationBell } from "@/components/notifications/bell";
 import { PushEnableButton } from "@/components/notifications/push-enable";
 import { getProfileBySlug } from "@/lib/profiles";
@@ -127,10 +126,10 @@ export default async function AppHomePage() {
         <ScanningState scan={activeScan!} />
       ) : hasProfile ? (
         <ProfileState
-          card={cardData!.card}
           handle={cardData!.row.handle}
           publicSlug={cardData!.row.public_slug}
           lastScanAt={cardData!.row.last_scan_at}
+          currentScanId={cardData!.row.current_scan_id}
         />
       ) : draftScan ? (
         <DraftState scan={draftScan} />
@@ -253,46 +252,78 @@ function FailedState({ scan }: { scan: ScanSlim }) {
   );
 }
 
+/**
+ * Dashboard-only view. We used to render the full LeanProfileCard
+ * inline here, but that duplicated the public /{handle} render and
+ * turned /app into two copies of the same page. /app is the control
+ * room: link out to the live profile, plus Edit / Refresh / Delete.
+ */
 function ProfileState({
-  card,
   handle,
   publicSlug,
   lastScanAt,
+  currentScanId,
 }: {
-  card: import("@gitshow/shared/schemas").ProfileCard;
   handle: string;
   publicSlug: string;
   lastScanAt: number | null;
+  currentScanId: string | null;
 }) {
   const daysSinceScan = lastScanAt
     ? Math.floor((Date.now() - lastScanAt) / (1000 * 60 * 60 * 24))
     : null;
+  const refreshedLabel =
+    daysSinceScan === null
+      ? null
+      : daysSinceScan === 0
+        ? "today"
+        : daysSinceScan === 1
+          ? "yesterday"
+          : `${daysSinceScan} days ago`;
 
   return (
-    <>
-      <section className="mx-auto w-full max-w-3xl px-4 sm:px-6 pt-8 pb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-1">
-            Your public profile
-          </div>
+    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
+      <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
+        Live
+      </div>
+      <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
+        Your profile is live
+      </h1>
+      <p className="text-[14px] leading-relaxed text-muted-foreground mb-7">
+        Published at{" "}
+        <Link
+          href={`/${publicSlug}`}
+          target="_blank"
+          rel="noreferrer"
+          className="font-mono text-foreground underline-offset-2 hover:underline"
+        >
+          gitshow.io/{handle}
+        </Link>
+        {refreshedLabel ? (
+          <span className="text-muted-foreground/80"> · last refreshed {refreshedLabel}</span>
+        ) : null}
+        .
+      </p>
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href={`/${publicSlug}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-11"
+        >
+          View public profile ↗
+        </Link>
+        {currentScanId ? (
           <Link
-            href={`/${publicSlug}`}
-            className="font-mono text-[14px] hover:underline underline-offset-2"
+            href={`/s/${currentScanId}`}
+            className="inline-flex items-center rounded-xl border border-border/60 px-4 py-2 text-[13px] font-medium text-foreground hover:bg-card transition-colors min-h-11"
           >
-            gitshow.io/{handle}
+            Edit
           </Link>
-          {daysSinceScan !== null ? (
-            <span className="ml-2 text-[11px] text-muted-foreground/70">
-              · refreshed {daysSinceScan === 0 ? "today" : `${daysSinceScan}d ago`}
-            </span>
-          ) : null}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <RefreshButton />
-        </div>
-      </section>
-      <LeanProfileCard card={card} />
-    </>
+        ) : null}
+        <RefreshButton />
+      </div>
+    </section>
   );
 }
 
