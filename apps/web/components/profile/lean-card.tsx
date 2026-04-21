@@ -47,6 +47,7 @@ import type {
   DailyActivity,
 } from "@gitshow/shared/schemas";
 import { cn } from "@/lib/utils";
+import { InlineMarkdown } from "@/lib/inline-md";
 import {
   TimelineChart,
   ActivityChart,
@@ -59,12 +60,22 @@ import { ThemeToggle } from "@/components/profile/theme-toggle";
 export function LeanProfileCard({ card }: { card: ProfileCard }) {
   const [evidence, setEvidence] = useState<CardClaim | null>(null);
 
-  const topInsights = useMemo(
-    () => pickTopInsights(card.patterns, 3),
+  // Score patterns so the strongest lands first but ALL patterns show.
+  // (Earlier versions capped at top-3; users said they were losing
+  // signal to a hard trim. Now we rank, surface the top one as an
+  // Aha callout, and render the rest in a dense grid below.)
+  const rankedPatterns = useMemo(
+    () => pickTopInsights(card.patterns, card.patterns.length),
     [card.patterns],
   );
-
-  const aha = useMemo(() => pickAhaMoment(topInsights), [topInsights]);
+  const aha = useMemo(
+    () => pickAhaMoment(rankedPatterns),
+    [rankedPatterns],
+  );
+  const restPatterns = useMemo(
+    () => rankedPatterns.filter((p) => p.id !== aha?.id),
+    [rankedPatterns, aha],
+  );
 
   return (
     <article className="relative mx-auto w-full max-w-3xl px-4 sm:px-6 py-10 sm:py-16">
@@ -76,10 +87,9 @@ export function LeanProfileCard({ card }: { card: ProfileCard }) {
 
       <Visuals card={card} />
 
-      {aha ? <AhaMoment claim={aha} /> : null}
-
-      <Insights
-        insights={topInsights.filter((i) => i.id !== aha?.id).slice(0, 3)}
+      <PatternsSection
+        aha={aha}
+        rest={restPatterns}
         onEvidence={setEvidence}
       />
 
@@ -91,6 +101,31 @@ export function LeanProfileCard({ card }: { card: ProfileCard }) {
 
       <Footer card={card} />
     </article>
+  );
+}
+
+/**
+ * Section-label counter used across the lean card. Keeps the cadence
+ * of "01 timeline · 02 activity · 03 team · 04 what stands out · 05
+ * what I've shipped · 06 working on" so readers can see the shape of
+ * the profile at a glance, the same structure the /s/:id preview has.
+ */
+function SectionLabel({
+  counter,
+  children,
+}: {
+  counter: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="mb-3 flex items-baseline gap-2">
+      <span className="font-mono text-[11px] text-muted-foreground/60">
+        {counter}
+      </span>
+      <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+        {children}
+      </span>
+    </div>
   );
 }
 
@@ -191,76 +226,95 @@ function KpiTile({
   );
 }
 
-// ─── Aha moment ─────────────────────────────────────────────────────
+// ─── Patterns ───────────────────────────────────────────────────────
 
-function AhaMoment({ claim }: { claim: CardClaim }) {
-  return (
-    <div className="mb-8 rounded-2xl border border-[var(--primary)]/20 bg-[var(--primary)]/[0.04] p-5 sm:p-6">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="h-1.5 w-1.5 rounded-full bg-[var(--primary)]" />
-        <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
-          The most interesting thing
-        </span>
-      </div>
-      <p className="text-[15px] sm:text-[17px] leading-relaxed">
-        {stripMd(claim.text)}
-      </p>
-    </div>
-  );
-}
-
-// ─── Insights ───────────────────────────────────────────────────────
-
-function Insights({
-  insights,
+/**
+ * "What stands out" section. Shows every pattern the pipeline kept —
+ * no 3-item cap — so the reader sees the full story, not a summary.
+ * The top-ranked pattern gets an accented "spotlight" treatment; the
+ * rest render in a dense grid. Clicking any card opens the side-sheet
+ * evidence drawer (the interaction users liked about the old lean
+ * card layout).
+ */
+function PatternsSection({
+  aha,
+  rest,
   onEvidence,
 }: {
-  insights: CardClaim[];
+  aha: CardClaim | null;
+  rest: CardClaim[];
   onEvidence: (c: CardClaim) => void;
 }) {
-  if (insights.length === 0) return null;
+  if (!aha && rest.length === 0) return null;
   return (
-    <>
-      <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground mb-3">
-        {insights.length === 1
-          ? "One more thing to know"
-          : `${numberWord(insights.length)} more things to know`}
-      </h2>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4 mb-10">
-        {insights.map((c) => (
-          <InsightCard key={c.id} claim={c} onEvidence={onEvidence} />
-        ))}
+    <section className="mb-10">
+      <SectionLabel counter="04">what stands out</SectionLabel>
+      <div className="flex flex-col gap-3 sm:gap-4">
+        {aha ? (
+          <PatternCard claim={aha} onEvidence={onEvidence} spotlight />
+        ) : null}
+        {rest.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            {rest.map((c) => (
+              <PatternCard key={c.id} claim={c} onEvidence={onEvidence} />
+            ))}
+          </div>
+        ) : null}
       </div>
-    </>
+    </section>
   );
 }
 
-function InsightCard({
+function PatternCard({
   claim,
   onEvidence,
+  spotlight = false,
 }: {
   claim: CardClaim;
   onEvidence: (c: CardClaim) => void;
+  spotlight?: boolean;
 }) {
   return (
     <button
       type="button"
       onClick={() => onEvidence(claim)}
-      className="group flex flex-col items-start gap-3 rounded-2xl border border-border/40 bg-card/60 p-4 sm:p-5 text-left transition-[box-shadow,background-color] duration-200 hover:bg-card hover:shadow-[var(--shadow-card)] focus-visible:outline-none focus-visible:shadow-[var(--shadow-composer-focus)]"
+      className={cn(
+        "group flex w-full flex-col items-start gap-3 rounded-2xl border text-left transition-[box-shadow,background-color,border-color] duration-200 focus-visible:outline-none focus-visible:shadow-[var(--shadow-composer-focus)]",
+        spotlight
+          ? "border-[var(--primary)]/30 bg-[var(--primary)]/[0.04] p-5 sm:p-6 hover:border-[var(--primary)]/50"
+          : "border-border/40 bg-card/60 p-5 sm:p-6 hover:border-border hover:bg-card hover:shadow-[var(--shadow-card)]",
+      )}
     >
       {claim.label ? (
-        <div className="font-[var(--font-serif)] text-[26px] sm:text-[28px] leading-none tracking-tight">
-          {claim.label}
+        <div className="flex w-full items-baseline justify-between gap-3">
+          <div
+            className={cn(
+              "font-[var(--font-serif)] leading-none tracking-tight text-[var(--chart-1)]",
+              spotlight ? "text-[34px] sm:text-[44px]" : "text-[28px] sm:text-[36px]",
+            )}
+          >
+            {claim.label}
+          </div>
+          {claim.sublabel ? (
+            <div className="font-mono text-[10px] uppercase tracking-wide text-muted-foreground text-right max-w-[55%] truncate">
+              {claim.sublabel}
+            </div>
+          ) : null}
         </div>
       ) : null}
-      <p className="text-[13px] sm:text-[14px] text-foreground/85 leading-relaxed line-clamp-3">
-        {truncateWords(stripMd(claim.text), 22)}
-      </p>
-      <div className="mt-auto flex items-center justify-between w-full pt-1">
-        <span className="text-[11px] text-muted-foreground">
-          {claim.evidence_count} receipt{claim.evidence_count === 1 ? "" : "s"}
+      <div
+        className={cn(
+          "leading-relaxed text-foreground/85",
+          spotlight ? "text-[15px] sm:text-[16px]" : "text-[13px] sm:text-[14px]",
+        )}
+      >
+        <InlineMarkdown text={claim.text} />
+      </div>
+      <div className="mt-auto flex w-full items-center justify-between gap-3 pt-1">
+        <span className="font-mono text-[10px] text-muted-foreground">
+          {claim.evidence_count} commit{claim.evidence_count === 1 ? "" : "s"} linked
         </span>
-        <span className="text-[11px] text-muted-foreground/70 opacity-0 group-hover:opacity-100 transition-opacity">
+        <span className="font-mono text-[10px] text-muted-foreground/70 transition-colors group-hover:text-foreground shrink-0">
           See evidence →
         </span>
       </div>
@@ -287,47 +341,49 @@ function Visuals({ card }: { card: ProfileCard }) {
   };
   if (!has.timeline && !has.activity && !has.team) return null;
   return (
-    <section className="mb-10 flex flex-col gap-4">
+    <div className="mb-10 flex flex-col gap-10">
       {has.timeline ? (
-        <VisualTile title="Timeline" subtitle="wins · OSS · solo · job">
-          <TimelineChart data={card.charts.timeline} />
-        </VisualTile>
+        <section>
+          <SectionLabel counter="01">timeline</SectionLabel>
+          <VisualTile subtitle="wins · OSS · solo · job">
+            <TimelineChart data={card.charts.timeline} />
+          </VisualTile>
+        </section>
       ) : null}
       {has.activity ? (
-        <VisualTile
-          title="Activity"
-          subtitle={`${card.charts.primary_repo_daily_activity!.repo} · lines changed / week`}
-        >
-          <ActivityChart data={card.charts.primary_repo_daily_activity} />
-        </VisualTile>
+        <section>
+          <SectionLabel counter="02">activity</SectionLabel>
+          <VisualTile
+            subtitle={`${card.charts.primary_repo_daily_activity!.repo} · lines changed / week`}
+          >
+            <ActivityChart data={card.charts.primary_repo_daily_activity} />
+          </VisualTile>
+        </section>
       ) : null}
       {has.team ? (
-        <VisualTile
-          title="Team"
-          subtitle={`top contributors · ${card.charts.primary_repo_team!.repo}`}
-        >
-          <TeamBars data={card.charts.primary_repo_team!} />
-        </VisualTile>
+        <section>
+          <SectionLabel counter="03">team</SectionLabel>
+          <VisualTile
+            subtitle={`top contributors · ${card.charts.primary_repo_team!.repo}`}
+          >
+            <TeamBars data={card.charts.primary_repo_team!} />
+          </VisualTile>
+        </section>
       ) : null}
-    </section>
+    </div>
   );
 }
 
 function VisualTile({
-  title,
   subtitle,
   children,
 }: {
-  title: string;
   subtitle: string;
   children: React.ReactNode;
 }) {
   return (
     <div className="rounded-2xl border border-border/40 bg-card/60 p-4 sm:p-5">
-      <div className="mb-3 flex items-baseline justify-between gap-3">
-        <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground">
-          {title}
-        </h2>
+      <div className="mb-3 flex items-baseline justify-end">
         <span className="font-mono text-[10px] text-muted-foreground/70 truncate">
           {subtitle}
         </span>
@@ -344,9 +400,14 @@ function ShippedStrip({ shipped }: { shipped: CardClaim[] }) {
   return (
     <section className="mb-10 -mx-4 sm:-mx-6">
       <div className="flex items-baseline justify-between px-4 sm:px-6 mb-3">
-        <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground">
-          What I&apos;ve shipped
-        </h2>
+        <div className="flex items-baseline gap-2">
+          <span className="font-mono text-[11px] text-muted-foreground/60">
+            05
+          </span>
+          <span className="text-[11px] uppercase tracking-wide text-muted-foreground">
+            what I&apos;ve shipped
+          </span>
+        </div>
         <span className="text-[11px] text-muted-foreground/70">
           {shipped.length} project{shipped.length === 1 ? "" : "s"}
         </span>
@@ -425,12 +486,12 @@ function Disclosure({ disclosure }: { disclosure: CardClaim | null }) {
   // Hard-trim to 2 sentences regardless of what copy-editor sends.
   const text = trimSentences(stripMd(disclosure.text), 2);
   return (
-    <div className="mb-10 rounded-2xl border border-[var(--chart-4)]/25 bg-[var(--chart-4)]/[0.05] p-5 sm:p-6">
-      <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">
-        Working on
+    <section className="mb-10">
+      <SectionLabel counter="06">working on</SectionLabel>
+      <div className="rounded-2xl border border-[var(--chart-4)]/25 bg-[var(--chart-4)]/[0.05] p-5 sm:p-6">
+        <p className="text-[14px] leading-relaxed">{text}</p>
       </div>
-      <p className="text-[14px] leading-relaxed">{text}</p>
-    </div>
+    </section>
   );
 }
 
@@ -735,14 +796,6 @@ function pickAhaMoment(insights: CardClaim[]): CardClaim | null {
   const words = stripMd(best.text).split(/\s+/).length;
   if (words > 30) return null;
   return best;
-}
-
-function numberWord(n: number): string {
-  if (n === 2) return "Two";
-  if (n === 3) return "Three";
-  if (n === 4) return "Four";
-  if (n === 5) return "Five";
-  return String(n);
 }
 
 // Silence unused-import warnings for charts we expose but may not use here.

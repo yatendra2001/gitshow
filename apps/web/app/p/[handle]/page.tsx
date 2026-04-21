@@ -1,13 +1,12 @@
 import { notFound } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getPublicCardByHandle, getDemoCard } from "@/lib/cards";
-import { ProfileCardView } from "@/components/scan/profile-card";
+import { LeanProfileCard } from "@/components/profile/lean-card";
 
 /**
  * Public, crawlable profile view — the "share this with a hiring manager"
  * surface. Reads the handle's latest succeeded scan card from R2
- * (served direct, no auth) and renders the same ProfileCardView the
- * builder uses.
+ * (served direct, no auth) and renders the LeanProfileCard (same as /{handle}).
  *
  * Fallback: when no scan exists yet for a handle, we serve the demo
  * card for `yatendra2001` and 404 for anyone else.
@@ -33,7 +32,7 @@ export default async function PublicProfilePage({
 
   if (!card) notFound();
 
-  return <ProfileCardView card={card} chrome={true} />;
+  return <LeanProfileCard card={card} />;
 }
 
 export async function generateMetadata({
