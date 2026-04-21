@@ -12,7 +12,7 @@ import type { GitHubData } from "../types.js";
 import type { PersonAgentOutput } from "./agents/person.js";
 import type { SkillsAgentOutput } from "./agents/skills.js";
 import type { BuildLogEntry } from "./agents/build-log.js";
-import type { ProjectAgentOutput } from "./agents/projects.js";
+import type { Project } from "./agents/projects.js";
 import type { WorkEntry } from "./agents/work.js";
 import type { EducationEntry } from "./agents/education.js";
 import type { ContactOutput } from "./agents/contact.js";
@@ -22,7 +22,7 @@ export interface AssembleInput {
   github: GitHubData;
   person: PersonAgentOutput;
   skills: SkillsAgentOutput;
-  projects: ProjectAgentOutput[];
+  projects: Project[];
   buildLog: BuildLogEntry[];
   work: WorkEntry[];
   education: EducationEntry[];

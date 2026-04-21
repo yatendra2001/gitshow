@@ -41,6 +41,12 @@ const BodySchema = z.object({
     .optional(),
   context_notes: z.string().max(2000).optional(),
   model: z.string().optional(),
+  /**
+   * Which worker pipeline to invoke. "resume" produces the new Resume
+   * JSON rendered by /{handle}; "claim" produces the legacy ProfileCard.
+   * Defaults to "resume" now that the new pipeline is wired end-to-end.
+   */
+  pipeline: z.enum(["resume", "claim"]).optional(),
 });
 
 export async function POST(req: Request) {
@@ -63,6 +69,7 @@ export async function POST(req: Request) {
   const scanId = `scan-${nanoid(10)}`;
   const sessionId = `or-${nanoid(14)}`;
   const model = body.model ?? "anthropic/claude-sonnet-4.6";
+  const pipeline = body.pipeline ?? "resume";
   const now = Date.now();
 
   try {
@@ -110,6 +117,7 @@ export async function POST(req: Request) {
         scanId,
         handle: body.handle,
         model,
+        pipeline,
         twitter: body.socials?.twitter,
         linkedin: body.socials?.linkedin,
         website: body.socials?.website,
@@ -144,6 +152,7 @@ function buildMachineEnv(
     scanId: string;
     handle: string;
     model: string;
+    pipeline: "resume" | "claim";
     twitter?: string;
     linkedin?: string;
     website?: string;
@@ -155,6 +164,7 @@ function buildMachineEnv(
     SCAN_ID: s.scanId,
     HANDLE: s.handle,
     MODEL: s.model,
+    PIPELINE: s.pipeline,
     GITSHOW_CLOUD_MODE: "1",
     CF_ACCOUNT_ID: requireVar(env, "CF_ACCOUNT_ID"),
     CF_API_TOKEN: requireVar(env, "CF_API_TOKEN"),
