@@ -1,137 +1,14 @@
 @import "tailwindcss";
-@plugin "tailwindcss-animate";
-@custom-variant dark (&:is(.dark *));
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
 
-/*
- * Design tokens
- *
- * The palette intentionally matches the target profile-card JSX so the chat
- * shell and the artifact feel like one document:
- *   bg   = #FAFAF7 (warm near-white)
- *   card = #FFFFFF
- *   ink  = #0F172A (slate-900)
- *   mute = #8C877C (warm gray — used for captions/handles)
- *   blue = #3B82F6 (accent — flightcast / job stream)
- *
- * Font stack also preserves the JSX: Plus Jakarta Sans for UI, Instrument
- * Serif for hero/numbers, JetBrains Mono for code/captions. Loaded via
- * next/font/google in lib/fonts.ts — these CSS vars are wired there.
- */
-
-:root {
-  --background: oklch(0.98 0.004 84);
-  --foreground: oklch(0.22 0.02 252);
-
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.22 0.02 252);
-
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.22 0.02 252);
-
-  --primary: oklch(0.22 0.02 252);
-  --primary-foreground: oklch(0.98 0.004 84);
-
-  --secondary: oklch(0.95 0.005 84);
-  --secondary-foreground: oklch(0.22 0.02 252);
-
-  --muted: oklch(0.95 0.005 84);
-  --muted-foreground: oklch(0.55 0.015 70);
-
-  --accent: oklch(0.95 0.005 84);
-  --accent-foreground: oklch(0.22 0.02 252);
-
-  --destructive: oklch(0.6 0.2 27);
-  --destructive-foreground: oklch(0.98 0.004 84);
-
-  --border: oklch(0.91 0.008 80);
-  --input: oklch(0.91 0.008 80);
-  --ring: oklch(0.22 0.02 252);
-
-  --radius: 0.625rem;
-
-  --chart-1: oklch(0.65 0.16 258);
-  --chart-2: oklch(0.65 0.18 295);
-  --chart-3: oklch(0.65 0.15 160);
-  --chart-4: oklch(0.75 0.17 70);
-  --chart-5: oklch(0.65 0.2 25);
-
-  /* GitShow custom tokens (mirror the JSX) */
-  --gs-surface-soft: oklch(0.96 0.006 82);
-  --gs-surface-deep: oklch(0.89 0.01 80);
-  --gs-text-muted: oklch(0.62 0.012 75);
-  --gs-good-fg: oklch(0.52 0.13 160);
-  --gs-good-bg: oklch(0.94 0.06 160);
-  --gs-warn-fg: oklch(0.53 0.16 65);
-
-  /* Fonts — set by next/font assignments in layout.tsx */
-  --font-sans: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-
-  /* Motion — one canonical easing curve (chatbot-parity). Any custom
-   * spring-feel transitions reach for this instead of inventing their
-   * own, so motion stays consistent across the app. */
-  --ease-spring: cubic-bezier(0.22, 1, 0.36, 1);
-
-  /* Shadows — elevation for cards + composer focus glow. Kept subtle
-   * in light mode; dark mode softens them further. */
-  --shadow-card: 0 1px 2px 0 oklch(0 0 0 / 0.05);
-  --shadow-float: 0 8px 24px -8px oklch(0 0 0 / 0.15),
-                  0 2px 6px -2px oklch(0 0 0 / 0.08);
-  --shadow-composer: 0 1px 2px 0 oklch(0 0 0 / 0.04);
-  --shadow-composer-focus: 0 1px 2px 0 oklch(0 0 0 / 0.04),
-                           0 0 0 3px oklch(var(--ring) / 0.18);
-}
-
-.dark {
-  /* Near-black chrome with subtle warm tint — Cursor / Claude / ChatGPT
-   * agent-UI feel, not pure black and not cold blue. */
-  --background: oklch(0.135 0.004 260);
-  --foreground: oklch(0.965 0.003 60);
-
-  --card: oklch(0.175 0.004 260);
-  --card-foreground: oklch(0.965 0.003 60);
-
-  --popover: oklch(0.195 0.004 260);
-  --popover-foreground: oklch(0.965 0.003 60);
-
-  --primary: oklch(0.96 0 0);
-  --primary-foreground: oklch(0.18 0.01 260);
-
-  --secondary: oklch(0.225 0.004 260);
-  --secondary-foreground: oklch(0.965 0.003 60);
-
-  --muted: oklch(0.22 0.004 260);
-  --muted-foreground: oklch(0.6 0.008 260);
-
-  --accent: oklch(0.24 0.01 260);
-  --accent-foreground: oklch(0.965 0.003 60);
-
-  --destructive: oklch(0.62 0.19 27);
-  --destructive-foreground: oklch(0.965 0.003 60);
-
-  --border: oklch(0.26 0.004 260);
-  --input: oklch(0.26 0.004 260);
-  --ring: oklch(0.55 0.18 258);
-
-  --gs-surface-soft: oklch(0.195 0.004 260);
-  --gs-surface-deep: oklch(0.26 0.004 260);
-  --gs-text-muted: oklch(0.6 0.008 260);
-  --gs-good-fg: oklch(0.78 0.16 158);
-  --gs-good-bg: oklch(0.26 0.06 158);
-  --gs-warn-fg: oklch(0.78 0.14 65);
-
-  /* Softer shadows in dark mode — the usual black-on-black recipe makes
-   * elevation invisible, so we scale down alpha and lean on rim light. */
-  --shadow-card: 0 1px 2px 0 oklch(0 0 0 / 0.35);
-  --shadow-float: 0 12px 28px -8px oklch(0 0 0 / 0.55),
-                  0 2px 6px -2px oklch(0 0 0 / 0.35);
-  --shadow-composer: 0 1px 2px 0 oklch(0 0 0 / 0.35);
-  --shadow-composer-focus: 0 1px 2px 0 oklch(0 0 0 / 0.35),
-                           0 0 0 3px oklch(var(--ring) / 0.25);
-}
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -147,196 +24,213 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-destructive: var(--destructive);
-  --color-destructive-foreground: var(--destructive-foreground);
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-
-  --color-gs-surface-soft: var(--gs-surface-soft);
-  --color-gs-surface-deep: var(--gs-surface-deep);
-  --color-gs-text-muted: var(--gs-text-muted);
-  --color-gs-good-fg: var(--gs-good-fg);
-  --color-gs-good-bg: var(--gs-good-bg);
-  --color-gs-warn-fg: var(--gs-warn-fg);
-
-  --font-sans: var(--font-sans);
-  --font-serif: var(--font-serif);
-  --font-mono: var(--font-mono);
-
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
 }
 
-* {
-  border-color: var(--border);
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
 }
 
-html,
-body {
-  background-color: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
+.dark {
+  --background: oklch(0.18 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
 }
 
-/* Grow animation used by the TeamBars component (ported from JSX). */
-@keyframes grow {
-  from {
-    transform: scaleX(0);
-    transform-origin: left;
+@layer base {
+  * {
+    @apply border-border;
   }
-  to {
-    transform: scaleX(1);
-    transform-origin: left;
+
+  body {
+    @apply bg-background text-foreground;
   }
-}
 
-/* ── Motion primitives ──────────────────────────────────────────────
- * Entries use opacity + a small vertical translate. Transform-only so
- * the GPU composites them without repaint. `prefers-reduced-motion`
- * zeros the translate + duration — still announces but without swoop.
- */
-@keyframes gs-enter {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
+  /* Shiki dual theme support */
+  .shiki,
+  .shiki span {
+    color: var(--shiki-light);
+    background-color: transparent;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+
+  .dark .shiki,
+  .dark .shiki span {
+    color: var(--shiki-dark);
+    background-color: transparent;
   }
-}
-@keyframes gs-fade-in {
-  from { opacity: 0; }
-  to   { opacity: 1; }
-}
-@keyframes gs-pulse-soft {
-  0%, 100% { opacity: 0.55; }
-  50%      { opacity: 1; }
-}
-@keyframes gs-caret {
-  0%, 100% { opacity: 1; }
-  50%      { opacity: 0; }
-}
-@keyframes gs-stream-in {
-  from {
-    opacity: 0;
-    transform: translateY(2px);
-    filter: blur(2px);
+
+.prose pre {
+    @apply leading-relaxed bg-transparent! font-mono!;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
+
+  .prose code {
+    @apply m-0! mx-1! border rounded-md! px-1.5 py-0.5 bg-muted/60 dark:bg-muted/40 text-[13px]! font-mono text-foreground/90!;
   }
-}
 
-/* Shimmer — "Thinking…" placeholder before the first reasoning delta
- * arrives and during any long wait. Chatbot-parity: gradient sweep
- * across the text at a ~2s cadence. The gradient uses the current
- * foreground color against a muted shine so it stays readable. */
-@keyframes gs-shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-
-.gs-enter  { animation: gs-enter 200ms var(--ease-spring) both; }
-.gs-fade   { animation: gs-fade-in 180ms var(--ease-spring) both; }
-.gs-stream { animation: gs-stream-in 260ms var(--ease-spring) both; }
-.gs-pulse  { animation: gs-pulse-soft 1600ms ease-in-out infinite; }
-.gs-caret  { animation: gs-caret 1000ms steps(1, end) infinite; }
-
-/* Apply to any text that should shimmer: `<span class="gs-shimmer">Thinking…</span>`. */
-.gs-shimmer {
-  background-image: linear-gradient(
-    90deg,
-    color-mix(in oklch, var(--foreground), transparent 65%) 0%,
-    var(--foreground) 50%,
-    color-mix(in oklch, var(--foreground), transparent 65%) 100%
-  );
-  background-size: 200% 100%;
-  background-clip: text;
-  -webkit-background-clip: text;
-  color: transparent;
-  animation: gs-shimmer 2000ms linear infinite;
-}
-
-/*
- * Progress-bar shimmer — a white highlight band that sweeps across
- * the filled portion of a progress bar. Sits on top of a solid
- * accent-color base via absolute positioning; the parent provides
- * the color + width.
- */
-@keyframes gs-progress-shimmer {
-  0%   { transform: translateX(-100%); }
-  100% { transform: translateX(100%); }
-}
-.gs-progress-shimmer {
-  background-image: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(255, 255, 255, 0.55) 50%,
-    transparent 100%
-  );
-  animation: gs-progress-shimmer 1800ms linear infinite;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .gs-enter, .gs-fade, .gs-stream {
-    animation-duration: 1ms;
-    animation-name: gs-fade-in;
+  .prose code::before, .prose code::after {
+    @apply content-none!;
   }
-  .gs-pulse, .gs-caret, .gs-shimmer, .gs-progress-shimmer { animation: none; }
-  .gs-shimmer {
-    background: none;
-    color: var(--muted-foreground);
-    -webkit-background-clip: initial;
-    background-clip: initial;
+
+  .prose h1 {
+    @apply text-2xl! font-semibold! tracking-tight! leading-tight!;
   }
-}
 
-/* Scoped scrollbar — chat pane + progress pane only. */
-.gs-chat-scroll::-webkit-scrollbar,
-.gs-pane-scroll::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-.gs-chat-scroll::-webkit-scrollbar-thumb,
-.gs-pane-scroll::-webkit-scrollbar-thumb {
-  background-color: var(--gs-surface-deep);
-  border-radius: 999px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-}
-.gs-chat-scroll::-webkit-scrollbar-thumb:hover,
-.gs-pane-scroll::-webkit-scrollbar-thumb:hover {
-  background-color: color-mix(in oklch, var(--gs-surface-deep), var(--foreground) 30%);
-  background-clip: padding-box;
-}
-.gs-chat-scroll::-webkit-scrollbar-track,
-.gs-pane-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
+  .prose h2 {
+    @apply text-xl! font-semibold! tracking-tight! leading-tight!;
+  }
 
-/* Noise texture for the chrome panels — adds depth without costing
- * perf (pure CSS radial gradient + very subtle opacity). */
-.gs-noise {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.025;
-  background-image:
-    radial-gradient(circle at 20% 10%, white 0.5px, transparent 0.8px),
-    radial-gradient(circle at 80% 40%, white 0.5px, transparent 0.8px),
-    radial-gradient(circle at 40% 80%, white 0.5px, transparent 0.8px);
-  background-size: 3px 3px, 5px 5px, 7px 7px;
+  .prose h3 {
+    @apply text-lg! font-semibold! tracking-tight! leading-tight!;
+  }
+
+  .prose h4 {
+    @apply text-base! font-medium! tracking-tight! leading-tight!;
+  }
+
+  .prose h5 {
+    @apply text-base! font-medium! tracking-tight! leading-tight!;
+  }
+
+  .prose h6 {
+    @apply text-base! font-medium! tracking-tight! leading-tight!;
+  }
+
+  .prose a {
+    @apply text-primary underline underline-offset-4;
+  }
+
+  .prose blockquote {
+    @apply border-l-4 border-amber-500! pl-4 italic bg-muted/50 p-4 rounded-md rounded-l-none;
+  }
+
+  .prose blockquote p {
+    @apply m-0!;
+  }
+
+  .prose blockquote p:first-child {
+    @apply mt-0!;
+  }
+
+  /* Task lists (remark-gfm): remove bullet marker so it renders like a pure checklist */
+  .prose :where(ul.contains-task-list):not(:where([class~="not-prose"] *)) {
+    @apply list-none! pl-0!;
+  }
+
+  .prose :where(li.task-list-item):not(:where([class~="not-prose"] *)) {
+    @apply pl-0!;
+  }
+
+  .prose
+    :where(li.task-list-item > input[type="checkbox"]):not(
+      :where([class~="not-prose"] *)
+    ) {
+    @apply mr-2 align-middle!;
+  }
+
+  .prose :where(table):not(:where([class~="not-prose"]) *) {
+    @apply w-full min-w-full;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+
+  .prose :where(th):not(:where([class~="not-prose"] *)),
+  .prose :where(td):not(:where([class~="not-prose"] *)) {
+    @apply px-6 py-4 align-middle m-0 whitespace-nowrap;
+  }
+
+  .prose tr{
+    @apply hover:bg-accent/50! transition-colors! cursor-pointer! h-10!;
+  }
+
+  .prose :where(th):not(:where([class~="not-prose"] *)) {
+    @apply text-left font-semibold text-foreground border-b border-border m-0! bg-muted/50 p-3! py-2!;
+  }
+
+  .prose :where(td):not(:where([class~="not-prose"] *)) {
+    @apply text-muted-foreground border-b border-border text-sm! p-2!;
+  }
+
+  .prose :where(th:not(:last-child)):not(:where([class~="not-prose"] *)),
+  .prose :where(td:not(:last-child)):not(:where([class~="not-prose"] *)) {
+    @apply border-r border-border;
+  }
+
+  .prose :where(tbody tr:last-child td):not(:where([class~="not-prose"] *)) {
+    @apply border-b-0;
+  }
+
 }
