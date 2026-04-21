@@ -77,14 +77,14 @@ export const PHASE_COPY: Record<PipelinePhase, PhaseCopy> = {
     done: "Assembled your profile",
   },
   critic: {
-    title: "Double-checking every claim",
+    title: "Double-checking the details",
     activity: "Downgrading anything that doesn't hold up…",
-    done: "Reviewed every claim",
+    done: "Reviewed the details",
   },
   bind: {
-    title: "Linking claims to commits",
-    activity: "Attaching a receipt to every sentence…",
-    done: "Linked every claim to a commit",
+    title: "Linking statements to commits",
+    activity: "Attaching a source to every sentence…",
+    done: "Linked every line to a commit",
   },
 };
 

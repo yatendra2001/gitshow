@@ -176,7 +176,7 @@ function renderPrintable(card: ProfileCard): string {
   ` : ""}
 
   ${card.disclosure ? `
-  <h2>Next chapter</h2>
+  <h2>Working on</h2>
   <div class="disclosure">${esc(trim2(card.disclosure.text))}</div>
   ` : ""}
 

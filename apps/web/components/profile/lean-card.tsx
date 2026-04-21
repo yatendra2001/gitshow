@@ -47,6 +47,11 @@ import type {
   DailyActivity,
 } from "@gitshow/shared/schemas";
 import { cn } from "@/lib/utils";
+import {
+  TimelineChart,
+  ActivityChart,
+  TeamBars,
+} from "@/components/scan/profile-card";
 
 // ─── Public entry ──────────────────────────────────────────────────
 
@@ -67,6 +72,8 @@ export function LeanProfileCard({ card }: { card: ProfileCard }) {
       <Hook hook={card.hook} />
 
       <KpiRow numbers={card.numbers} onEvidence={setEvidence} />
+
+      <Visuals card={card} />
 
       {aha ? <AhaMoment claim={aha} /> : null}
 
@@ -257,6 +264,75 @@ function InsightCard({
   );
 }
 
+// ─── Visuals (timeline · activity · team) ──────────────────────────
+//
+// Three compact chart tiles below the KPI row. Same data the big
+// ProfileCardView renders — we bring it into the lean card because
+// users flagged that the public /{handle} felt too thin compared to
+// the preview. Clicking a tile doesn't open anything; they're a
+// "read at a glance" surface. Each tile is collapsible on mobile to
+// keep the card scannable.
+
+function Visuals({ card }: { card: ProfileCard }) {
+  const has = {
+    timeline: card.charts.timeline.length > 0,
+    activity: !!card.charts.primary_repo_daily_activity,
+    team:
+      !!card.charts.primary_repo_team &&
+      card.charts.primary_repo_team.contributors.length > 0,
+  };
+  if (!has.timeline && !has.activity && !has.team) return null;
+  return (
+    <section className="mb-10 flex flex-col gap-4">
+      {has.timeline ? (
+        <VisualTile title="Timeline" subtitle="wins · OSS · solo · job">
+          <TimelineChart data={card.charts.timeline} />
+        </VisualTile>
+      ) : null}
+      {has.activity ? (
+        <VisualTile
+          title="Activity"
+          subtitle={`${card.charts.primary_repo_daily_activity!.repo} · lines changed / week`}
+        >
+          <ActivityChart data={card.charts.primary_repo_daily_activity} />
+        </VisualTile>
+      ) : null}
+      {has.team ? (
+        <VisualTile
+          title="Team"
+          subtitle={`top contributors · ${card.charts.primary_repo_team!.repo}`}
+        >
+          <TeamBars data={card.charts.primary_repo_team!} />
+        </VisualTile>
+      ) : null}
+    </section>
+  );
+}
+
+function VisualTile({
+  title,
+  subtitle,
+  children,
+}: {
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-border/40 bg-card/60 p-4 sm:p-5">
+      <div className="mb-3 flex items-baseline justify-between gap-3">
+        <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground">
+          {title}
+        </h2>
+        <span className="font-mono text-[10px] text-muted-foreground/70 truncate">
+          {subtitle}
+        </span>
+      </div>
+      {children}
+    </div>
+  );
+}
+
 // ─── Shipped strip ──────────────────────────────────────────────────
 
 function ShippedStrip({ shipped }: { shipped: CardClaim[] }) {
@@ -265,7 +341,7 @@ function ShippedStrip({ shipped }: { shipped: CardClaim[] }) {
     <section className="mb-10 -mx-4 sm:-mx-6">
       <div className="flex items-baseline justify-between px-4 sm:px-6 mb-3">
         <h2 className="text-[11px] uppercase tracking-wide text-muted-foreground">
-          Shipped
+          What I&apos;ve shipped
         </h2>
         <span className="text-[11px] text-muted-foreground/70">
           {shipped.length} project{shipped.length === 1 ? "" : "s"}
@@ -329,7 +405,7 @@ function Disclosure({ disclosure }: { disclosure: CardClaim | null }) {
   return (
     <div className="mb-10 rounded-2xl border border-[var(--chart-4)]/25 bg-[var(--chart-4)]/[0.05] p-5 sm:p-6">
       <div className="text-[11px] uppercase tracking-wide text-muted-foreground mb-2">
-        Next chapter
+        Working on
       </div>
       <p className="text-[14px] leading-relaxed">{text}</p>
     </div>
