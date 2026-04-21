@@ -26,6 +26,7 @@ import {
   SelectField,
   TextareaField,
 } from "./_form";
+import { SkillIconPicker } from "@/components/skill-icon-picker";
 import { cn } from "@/lib/utils";
 
 /**
@@ -303,14 +304,11 @@ export function SkillsSectionForm({
             placeholder="TypeScript"
             required
           />
-          <InputField
-            label="Icon key"
-            value={item.iconKey ?? ""}
-            onChange={(v) =>
-              onItemChange({ ...item, iconKey: v || undefined })
-            }
-            placeholder="typescript"
-            hint="Known keys: react, nextjs, typescript, nodejs, python, go, postgres, docker, kubernetes, java, csharp. Empty for text-only pill."
+          <SkillIconPicker
+            label="Icon"
+            value={item.iconKey}
+            onChange={(next) => onItemChange({ ...item, iconKey: next })}
+            hint="Search the catalogue, or pick text-only to render without a brand mark."
           />
         </div>
       )}
