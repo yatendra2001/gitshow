@@ -24,6 +24,24 @@ import { getUserGitHubToken } from "@/lib/user-token";
 
 const BodySchema = z.object({
   answers: z.record(z.string(), z.string().max(1000)),
+  /**
+   * Structured social links supplied by the user up-front. These are
+   * propagated to the worker as LINKEDIN/TWITTER/WEBSITE env vars — the
+   * work/education agents use them as LinkedIn inputs; blog_urls feeds
+   * the blog-import agent.
+   */
+  socials: z
+    .object({
+      linkedin: z.string().url().optional().or(z.literal("")),
+      twitter: z.string().max(60).optional().or(z.literal("")),
+      website: z.string().url().optional().or(z.literal("")),
+      youtube: z.string().url().optional().or(z.literal("")),
+    })
+    .optional(),
+  blog_urls: z
+    .array(z.string().url())
+    .max(5)
+    .optional(),
 });
 
 export async function POST(
@@ -76,13 +94,16 @@ export async function POST(
   const model = "anthropic/claude-sonnet-4.6";
   const now = Date.now();
 
+  const socials = parse.data.socials ?? {};
+  const blogUrls = parse.data.blog_urls ?? [];
+
   try {
     await env.DB.prepare(
       `INSERT INTO scans
          (id, user_id, handle, session_id, model, status, current_phase,
           cost_cents, llm_calls, socials_json, context_notes,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'queued', NULL, 0, 0, NULL, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, 'queued', NULL, 0, 0, ?, ?, ?, ?)`,
     )
       .bind(
         scanId,
@@ -90,6 +111,7 @@ export async function POST(
         intake.handle,
         sessionId,
         model,
+        Object.keys(socials).length > 0 ? JSON.stringify(socials) : null,
         contextNotes,
         now,
         now,
@@ -123,6 +145,10 @@ export async function POST(
         handle: intake.handle,
         model,
         contextNotes: contextNotes ?? undefined,
+        linkedin: socials.linkedin || undefined,
+        twitter: socials.twitter || undefined,
+        website: socials.website || undefined,
+        blogUrls,
         userGhToken,
       }),
     });
@@ -159,6 +185,10 @@ function buildScanEnv(
     handle: string;
     model: string;
     contextNotes?: string;
+    linkedin?: string;
+    twitter?: string;
+    website?: string;
+    blogUrls?: string[];
     userGhToken: string;
   },
 ): Record<string, string> {
@@ -166,6 +196,10 @@ function buildScanEnv(
     SCAN_ID: s.scanId,
     HANDLE: s.handle,
     MODEL: s.model,
+    // Phase 2 pivot: this intake flow now exclusively feeds the resume
+    // pipeline. The old claim pipeline path still exists on the worker
+    // (PIPELINE=claim) for rollback, but new scans go resume-first.
+    PIPELINE: "resume",
     GITSHOW_CLOUD_MODE: "1",
     CF_ACCOUNT_ID: requireVar(env, "CF_ACCOUNT_ID"),
     CF_API_TOKEN: requireVar(env, "CF_API_TOKEN"),
@@ -178,6 +212,11 @@ function buildScanEnv(
     GH_TOKEN: s.userGhToken,
   };
   if (s.contextNotes) out.CONTEXT_NOTES = s.contextNotes;
+  if (s.linkedin) out.LINKEDIN = s.linkedin;
+  if (s.twitter) out.TWITTER = s.twitter;
+  if (s.website) out.WEBSITE = s.website;
+  if (s.blogUrls && s.blogUrls.length > 0)
+    out.BLOG_URLS = s.blogUrls.join(",");
   // Optional envs — not on CloudflareEnv's hard type yet, so read via
   // an escape-hatch cast. Missing values are fine (the sender silently
   // no-ops).
