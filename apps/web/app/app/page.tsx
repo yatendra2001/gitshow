@@ -43,6 +43,7 @@ interface ProfileRow {
   handle: string;
   public_slug: string;
   last_scan_at: number | null;
+  view_count: number | null;
 }
 
 export default async function AppHomePage() {
@@ -55,7 +56,7 @@ export default async function AppHomePage() {
 
   const [profileRow, latestScan, activeScan] = await Promise.all([
     env.DB.prepare(
-      `SELECT handle, public_slug, last_scan_at
+      `SELECT handle, public_slug, last_scan_at, view_count
          FROM user_profiles WHERE user_id = ? LIMIT 1`,
     )
       .bind(userId)
@@ -118,6 +119,7 @@ export default async function AppHomePage() {
           handle={githubHandle}
           slug={profileRow?.public_slug ?? githubHandle.toLowerCase()}
           lastScanAt={profileRow?.last_scan_at ?? null}
+          viewCount={profileRow?.view_count ?? 0}
         />
       ) : draftReady ? (
         <DraftState handle={githubHandle} />
@@ -242,10 +244,12 @@ function PublishedState({
   handle,
   slug,
   lastScanAt,
+  viewCount,
 }: {
   handle: string;
   slug: string;
   lastScanAt: number | null;
+  viewCount: number;
 }) {
   const daysSinceScan = lastScanAt
     ? Math.floor((Date.now() - lastScanAt) / (1000 * 60 * 60 * 24))
@@ -267,7 +271,7 @@ function PublishedState({
       <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
         Your portfolio is live
       </h1>
-      <p className="text-[14px] leading-relaxed text-muted-foreground mb-7">
+      <p className="text-[14px] leading-relaxed text-muted-foreground mb-4">
         Published at{" "}
         <Link
           href={`/${slug}`}
@@ -282,6 +286,15 @@ function PublishedState({
         ) : null}
         .
       </p>
+      <div className="mb-7 inline-flex items-center gap-2 rounded-xl border border-border/40 bg-card/30 px-3 py-1.5 text-[12px] text-muted-foreground">
+        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+        <span>
+          <span className="text-foreground font-medium tabular-nums">
+            {viewCount.toLocaleString()}
+          </span>{" "}
+          {viewCount === 1 ? "view" : "views"}
+        </span>
+      </div>
       <div className="flex flex-wrap gap-2">
         <Link
           href={`/${slug}`}

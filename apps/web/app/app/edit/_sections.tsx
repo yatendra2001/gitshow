@@ -1,6 +1,9 @@
 "use client";
 
+import { useState } from "react";
 import { nanoid } from "nanoid";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type {
   Resume,
   WorkEntry,
@@ -23,6 +26,7 @@ import {
   SelectField,
   TextareaField,
 } from "./_form";
+import { cn } from "@/lib/utils";
 
 /**
  * Per-section form components. Each takes the current draft + an
@@ -817,15 +821,92 @@ export function BlogSectionForm({
             value={item.image}
             onChange={(url) => onItemChange({ ...item, image: url })}
           />
-          <TextareaField
+          <MarkdownField
             label="Body (markdown)"
             value={item.body}
             onChange={(v) => onItemChange({ ...item, body: v })}
-            rows={18}
           />
         </div>
       )}
     />
+  );
+}
+
+/**
+ * Split-pane markdown editor with live preview. Desktop shows edit +
+ * preview side-by-side; mobile falls back to a tab toggle so we don't
+ * halve the already-cramped mobile viewport.
+ */
+function MarkdownField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [mode, setMode] = useState<"edit" | "preview">("edit");
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[12px] text-foreground font-medium">{label}</span>
+        <div className="md:hidden inline-flex rounded-lg border border-border/40 p-0.5 text-[11px]">
+          <button
+            type="button"
+            onClick={() => setMode("edit")}
+            className={cn(
+              "px-2 py-1 rounded-md transition-colors",
+              mode === "edit"
+                ? "bg-foreground text-background"
+                : "text-muted-foreground",
+            )}
+          >
+            Edit
+          </button>
+          <button
+            type="button"
+            onClick={() => setMode("preview")}
+            className={cn(
+              "px-2 py-1 rounded-md transition-colors",
+              mode === "preview"
+                ? "bg-foreground text-background"
+                : "text-muted-foreground",
+            )}
+          >
+            Preview
+          </button>
+        </div>
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-stretch">
+        <textarea
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          rows={20}
+          placeholder={"# Hello world\n\nWrite your post in markdown…"}
+          className={cn(
+            "rounded-xl border border-border/50 bg-card/30 px-3 py-2 text-[13px] leading-relaxed font-mono focus:outline-none focus:shadow-[var(--shadow-composer-focus)] transition-shadow duration-200 min-h-[400px]",
+            mode === "preview" && "hidden md:block",
+          )}
+        />
+        <div
+          className={cn(
+            "rounded-xl border border-border/40 bg-card/40 px-4 py-3 overflow-auto min-h-[400px]",
+            mode === "edit" && "hidden md:block",
+          )}
+        >
+          <div className="prose max-w-full text-pretty font-sans leading-relaxed text-muted-foreground dark:prose-invert text-[13px]">
+            {value.trim().length > 0 ? (
+              <Markdown remarkPlugins={[remarkGfm]}>{value}</Markdown>
+            ) : (
+              <span className="text-muted-foreground/50 italic">
+                Preview appears here.
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
