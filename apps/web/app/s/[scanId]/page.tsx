@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { auth } from "@/auth";
+import { getSession } from "@/auth";
 import { getScanByIdForUser } from "@/lib/scans";
 import { getScanCard, mergeUserEdits } from "@/lib/cards";
 import { SplitPane } from "@/components/scan/split-pane";
@@ -13,7 +13,7 @@ export default async function ScanPage({
 }: {
   params: Promise<{ scanId: string }>;
 }) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) redirect("/signin");
 
   const { scanId } = await params;

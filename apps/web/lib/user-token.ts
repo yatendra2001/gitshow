@@ -1,5 +1,6 @@
 /**
- * Read the user's GitHub OAuth access_token from the accounts table.
+ * Read the user's GitHub OAuth access token from Better Auth's
+ * `account` table.
  *
  * Every authenticated API route that spawns a Fly machine should use
  * this — the bot `GH_TOKEN` secret only sees public data, whereas the
@@ -9,6 +10,10 @@
  * If the user revoked the app on GitHub since signing in, `gh api`
  * will 401 and the scan will fail loudly. That's better than silently
  * downgrading to public-only reads.
+ *
+ * Column naming is Better Auth's singular/camelCase convention:
+ * `account.userId`, `account.providerId`, `account.accessToken`
+ * (migration 0006).
  */
 
 export async function getUserGitHubToken(
@@ -17,12 +22,12 @@ export async function getUserGitHubToken(
 ): Promise<string | null> {
   const row = await db
     .prepare(
-      `SELECT access_token FROM accounts
-         WHERE userId = ? AND provider = 'github' AND access_token IS NOT NULL
-         ORDER BY rowid DESC
+      `SELECT accessToken FROM account
+         WHERE userId = ? AND providerId = 'github' AND accessToken IS NOT NULL
+         ORDER BY updatedAt DESC
          LIMIT 1`,
     )
     .bind(userId)
-    .first<{ access_token: string | null }>();
-  return row?.access_token ?? null;
+    .first<{ accessToken: string | null }>();
+  return row?.accessToken ?? null;
 }

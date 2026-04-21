@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { auth } from "@/auth";
+import { getSession } from "@/auth";
 import { NotificationBell } from "@/components/notifications/bell";
 import { PushEnableButton } from "@/components/notifications/push-enable";
 import { getProfileBySlug } from "@/lib/profiles";
@@ -9,6 +9,7 @@ import { StartFirstScanButton } from "./_start-button";
 import { RefreshButton } from "./_refresh-button";
 import { DeleteProfileButton } from "./_delete-profile-button";
 import { DeleteAccountHandler } from "./_delete-handler";
+import { SignOutButton } from "./_signout-button";
 
 /**
  * /app — the authenticated home. Single-person model:
@@ -46,12 +47,12 @@ interface ScanSlim {
 }
 
 export default async function AppHomePage() {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) redirect("/signin");
   const userId = session.user.id;
-  // Prefer the GitHub login (username) captured in the signIn callback.
-  // Fall back to display name only if login never made it into the row
-  // (e.g. a sign-in from before migration 0005 landed).
+  // Prefer the GitHub login (username) captured by mapProfileToUser
+  // on sign-in. Fall back to the display name only if login never
+  // populated (legacy row from before the Better Auth migration).
   const githubHandle = (session.user.login ?? session.user.name ?? "").trim();
 
   const { env } = await getCloudflareContext({ async: true });
@@ -112,14 +113,7 @@ export default async function AppHomePage() {
         <div className="flex items-center gap-2">
           <PushEnableButton />
           <NotificationBell />
-          <form action="/api/auth/signout" method="post">
-            <button
-              type="submit"
-              className="text-[12px] text-muted-foreground hover:text-foreground transition-colors min-h-9 px-2"
-            >
-              Sign out
-            </button>
-          </form>
+          <SignOutButton />
         </div>
       </header>
 

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { auth } from "@/auth";
+import { getSession } from "@/auth";
 import {
   listNotificationsForUser,
   markAllNotificationsRead,
@@ -15,7 +15,7 @@ import {
  * are purely what-happened, not how-much-did-it-cost.
  */
 export async function GET(req: Request) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
@@ -40,7 +40,7 @@ export async function GET(req: Request) {
  * /api/notifications/[id].
  */
 export async function POST(req: Request) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }

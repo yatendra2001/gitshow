@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { auth } from "@/auth";
+import { getSession } from "@/auth";
 import {
   addPushSubscription,
   removePushSubscription,
@@ -14,7 +14,7 @@ import {
  * push_subscriptions keyed by (user_id, endpoint).
  */
 export async function POST(req: Request) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
@@ -54,7 +54,7 @@ export async function POST(req: Request) {
  * the push service.
  */
 export async function DELETE(req: Request) {
-  const session = await auth();
+  const session = await getSession();
   if (!session?.user?.id) {
     return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
   }
