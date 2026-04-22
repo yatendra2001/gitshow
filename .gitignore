@@ -16,3 +16,4 @@ apps/**/.wrangler/
 .bun-cache/
 ui_feedback_image/
 portfolio/
+codeforge/
