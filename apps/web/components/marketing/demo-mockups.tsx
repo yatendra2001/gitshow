@@ -246,7 +246,7 @@ export function PortfolioAnalyticsMockup() {
                         >
                             <div
                                 className="w-full rounded-sm bg-foreground/80"
-                                style={{ height: `${(d / max) * 100}%` }}
+                                style={{ height: `${Math.round((d / max) * 76)}px` }}
                             />
                             <span className="text-[9px] text-muted-foreground">
                                 {["M", "T", "W", "T", "F", "S", "S"][i]}
