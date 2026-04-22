@@ -66,10 +66,17 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body
         className={cn(
-          "min-h-screen bg-background font-sans antialiased relative",
+          "min-h-screen bg-background font-sans antialiased relative overflow-x-hidden",
           geist.variable,
           geistMono.variable,
         )}
+        /**
+         * Browser extensions (Grammarly, ad-blockers, password managers) inject
+         * attributes like `bis_register` and `__processed_*` into <body> before
+         * React hydrates. Those mutations don't come from our code, so we tell
+         * React to stop shouting about the diff.
+         */
+        suppressHydrationWarning
       >
         <ThemeProvider attribute="class" defaultTheme="dark">
           <TooltipProvider delayDuration={0}>{children}</TooltipProvider>

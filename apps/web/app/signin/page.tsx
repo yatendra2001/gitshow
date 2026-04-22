@@ -7,6 +7,13 @@ import { Logo } from "@/components/logo";
  * /signin is only useful when you're signed out. If a session cookie
  * is already live, bounce straight to the dashboard — stopping on a
  * page asking you to sign in again is always a bug.
+ *
+ * In prod (OpenNext Workers) this `getSession()` call resolves
+ * against a warm Cloudflare context in ~100ms. In local `next dev`
+ * the first call after boot can be slow (cold context init); that's
+ * a dev-only annoyance, not a real regression. Don't remove this to
+ * work around local dev — if local flow feels bad, use
+ * `opennextjs-cloudflare preview`.
  */
 export const dynamic = "force-dynamic";
 

@@ -22,6 +22,10 @@ const nextConfig: NextConfig = {
   images: {
     remotePatterns: [
       { protocol: "https", hostname: "avatars.githubusercontent.com" },
+      // Marketing landing: template stub imagery. Swap out when we ship real
+      // testimonials + screenshots.
+      { protocol: "https", hostname: "randomuser.me" },
+      { protocol: "https", hostname: "images.unsplash.com" },
     ],
   },
 };
