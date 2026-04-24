@@ -123,6 +123,16 @@ async function main() {
       profileDir: `/tmp/gitshow/${scanId}`,
       writeToR2: true,
       phases: createD1Phases(d1, scanId),
+      onGitHubFetched: async ({ accessState, dataSources }) => {
+        try {
+          await d1.updateScanFetchSnapshot(scanId, {
+            access_state: accessState,
+            data_sources: dataSources,
+          });
+        } catch (err) {
+          scanLog.warn({ err }, "scan.fetch-snapshot.persist.failed");
+        }
+      },
       onProgress: (text) => {
         if (process.env.GITSHOW_DEBUG) process.stderr.write(text);
       },

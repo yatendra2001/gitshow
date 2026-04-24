@@ -164,15 +164,19 @@ export async function runBuildLogAgent(
 }
 
 /**
- * Pick the candidate set for the build log. Rule: owned + not fork + not
- * archived + meaningful (3+ commits OR stars OR a README). This is
- * deliberately generous — the section is about breadth.
+ * Pick the candidate set for the build log. Rule: repos the user built
+ * or co-maintained + meaningful activity. Drive-by contributor repos
+ * (PRs to someone else's project) belong in the "open-source
+ * contributions" framing, not "things I built" — they're surfaced via
+ * PR artifacts to the person agent instead.
  */
 function selectCandidates(
   github: GitHubData,
   artifacts: Record<string, Artifact>,
 ): RepoRef[] {
   return github.ownedRepos.filter((r) => {
+    const rel = r.relationship ?? "owner";
+    if (rel === "contributor" || rel === "reviewer") return false;
     if (r.isFork || r.isArchived) return false;
     const commits = r.userCommitCount ?? 0;
     const stars = r.stargazerCount ?? 0;
