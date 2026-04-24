@@ -45,10 +45,10 @@ export async function POST(req: Request) {
 
   const { env } = await getCloudflareContext({ async: true });
   const intakeId = `intake-${nanoid(10)}`;
-  // Default model = openrouter/auto so the allowed-models list in our
-  // OpenRouter workspace controls which model answers. Request body
-  // still overrides when set.
-  const model = parse.data.model ?? "openrouter/auto";
+  // Pinned to moonshotai/kimi-k2.6 — `openrouter/auto` could land on
+  // unreliable models (e.g. Gemini 2.5 Flash closing streams mid-call).
+  // Request body still overrides when set.
+  const model = parse.data.model ?? "moonshotai/kimi-k2.6";
 
   // The user's GitHub OAuth token is REQUIRED — it's what gives the
   // Fly worker read access to their private + org repos. If missing,

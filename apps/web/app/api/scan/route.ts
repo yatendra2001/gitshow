@@ -76,11 +76,11 @@ export async function POST(req: Request) {
 
   const scanId = `scan-${nanoid(10)}`;
   const sessionId = `or-${nanoid(14)}`;
-  // `openrouter/auto` lets OpenRouter pick the best model per request
-  // from the allowed-models list configured in our OpenRouter
-  // workspace. Flip the default there without a redeploy; request
-  // body still wins when it pins an explicit model.
-  const model = body.model ?? "openrouter/auto";
+  // Pinned to moonshotai/kimi-k2.6 — `openrouter/auto` occasionally routed
+  // requests to Gemini 2.5 Flash, which closed streams mid-agent with
+  // `server_error: stream closed with reason: error` and broke scans.
+  // Request body still wins when it pins an explicit model.
+  const model = body.model ?? "moonshotai/kimi-k2.6";
   const pipeline = body.pipeline ?? "resume";
   const now = Date.now();
 
