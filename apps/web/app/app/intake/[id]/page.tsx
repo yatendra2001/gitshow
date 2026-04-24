@@ -120,8 +120,15 @@ export default function IntakePage({
     }
 
     const trimmed = (v: string) => v.trim();
+    // Server demands real http(s) URLs for linkedin/website/youtube/blogs.
+    // Accept bare hosts like `linkedin.com/in/foo` by prepending https://.
+    const normalizeUrl = (v: string) => {
+      const t = v.trim();
+      if (!t) return "";
+      return /^https?:\/\//i.test(t) ? t : `https://${t}`;
+    };
     const cleanBlogs = inputs.blogUrls
-      .map(trimmed)
+      .map(normalizeUrl)
       .filter((u) => u.length > 0)
       .slice(0, 5);
     const socials: {
@@ -130,10 +137,10 @@ export default function IntakePage({
       website?: string;
       youtube?: string;
     } = {};
-    if (trimmed(inputs.linkedin)) socials.linkedin = trimmed(inputs.linkedin);
+    if (trimmed(inputs.linkedin)) socials.linkedin = normalizeUrl(inputs.linkedin);
     if (trimmed(inputs.twitter)) socials.twitter = trimmed(inputs.twitter);
-    if (trimmed(inputs.website)) socials.website = trimmed(inputs.website);
-    if (trimmed(inputs.youtube)) socials.youtube = trimmed(inputs.youtube);
+    if (trimmed(inputs.website)) socials.website = normalizeUrl(inputs.website);
+    if (trimmed(inputs.youtube)) socials.youtube = normalizeUrl(inputs.youtube);
 
     try {
       const resp = await fetch(
@@ -149,8 +156,19 @@ export default function IntakePage({
         },
       );
       if (!resp.ok) {
-        const err = (await resp.json().catch(() => ({}))) as { error?: string };
-        setSubmitError(err.error ?? "Something went wrong.");
+        const err = (await resp.json().catch(() => ({}))) as {
+          error?: string;
+          issues?: Array<{ path?: Array<string | number>; message?: string }>;
+        };
+        // "invalid body" is useless to users. If the server returned
+        // zod issues, show the first field + message instead.
+        const issue = err.issues?.[0];
+        if (err.error === "invalid body" && issue) {
+          const field = issue.path?.join(".") ?? "input";
+          setSubmitError(`${field}: ${issue.message ?? "invalid value"}`);
+        } else {
+          setSubmitError(err.error ?? "Something went wrong.");
+        }
         return;
       }
       // Land directly on the live progress view for the new scan.
