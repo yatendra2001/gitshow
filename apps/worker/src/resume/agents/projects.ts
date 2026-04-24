@@ -27,6 +27,7 @@ import type { ScanSession, Artifact } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
 import type { GitHubData, RepoRef } from "../../types.js";
 import { runAgentWithSubmit } from "../../agents/base.js";
+import { modelForRole } from "@gitshow/shared/models";
 import { createWorkerTools } from "../../tools/web.js";
 import { parseDependencies } from "../dep-parser.js";
 import { join } from "node:path";
@@ -231,7 +232,7 @@ async function runSingleProjectAgent(input: SingleProjectInput): Promise<Project
   let result: ProjectAgentOutput;
   try {
     const run = await runAgentWithSubmit({
-      model: session.model,
+      model: modelForRole("section"),
       systemPrompt: SYSTEM_PROMPT,
       input: userMessage,
       extraTools: tools,

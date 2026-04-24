@@ -18,7 +18,11 @@
 import type { Artifact } from "../schemas.js";
 import type { GitHubData, RepoRef } from "../types.js";
 
-const TARGET = 20;
+// Curated "My Projects" grid — the template caps visible cards around
+// 4-6. Previously set to 20 which blew the wall-clock (each card spends
+// a ~2min web-research budget). The exhaustive timeline lives in
+// buildLog — it carries the breadth signal, not this section.
+const TARGET = 6;
 
 export function pickFeatured(
   github: GitHubData,

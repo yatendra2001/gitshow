@@ -1,42 +1,68 @@
 /**
- * LinkedIn helper — fetches a user-provided LinkedIn URL via Jina Reader
- * and returns raw markdown text the work/education agents can feed into
- * their LLM input.
+ * LinkedIn helper — fetches a user-provided LinkedIn URL and returns
+ * markdown text the work/education agents feed into their LLM input.
  *
- * Notes on reliability:
- *   - LinkedIn aggressively blocks anonymous scrapers. Jina Reader
- *     succeeds on most PUBLIC profile URLs (the ones you see without
- *     logging in) but fails unpredictably for "members only" pages.
- *   - We NEVER fabricate a LinkedIn URL. The user must have provided
- *     `session.socials.linkedin` — otherwise this helper returns null.
- *   - PDF upload fallback (user exports "Save to PDF" from LinkedIn)
- *     is exposed via `parsePdfContent`. Real PDF parsing requires a
- *     dependency we haven't added; for now that path accepts a text
- *     string the webapp has already extracted and just threads it
- *     through to the agents. See TODO in `fetchLinkedIn`.
+ * Fallback chain (first non-null wins):
+ *   1. TinyFish Fetch (real-browser render — handles LinkedIn's JS auth-wall better)
+ *   2. Jina Reader (plain scraper — works for many PUBLIC profiles)
+ *
+ * Both endpoints can return login-wall HTML for signed-out viewers; we
+ * reject results shorter than MIN_TEXT_CHARS AND matching login-wall
+ * heuristics. Returning null is the signal "no usable LinkedIn content"
+ * — agents then fall back to intake + GitHub hints.
  */
 
 import type { ScanSession } from "../schemas.js";
+import { TinyFishClient } from "@gitshow/shared/cloud/tinyfish";
 
 export interface LinkedInMaterial {
-  /** Source URL we fetched, or the word "pdf" when the user uploaded a PDF. */
+  /** Where the content came from — URL for web fetches, `"pdf"` for uploads. */
   source: string;
+  /** Which fallback tier succeeded — useful for scan_events + debugging. */
+  tier: "tinyfish" | "jina" | "pdf";
   /** Markdown / plain text content for agent consumption. */
   text: string;
 }
 
 const JINA_TIMEOUT_MS = 30_000;
+const MIN_TEXT_CHARS = 800;
+const LOGIN_WALL_PATTERN = /sign\s*in|login|authwall|members only|join (?:now|linkedin)/i;
 
 /**
- * Attempt to fetch the user's LinkedIn profile via Jina Reader.
- * Returns null when no LinkedIn URL was provided, the fetch fails, or
- * the page content is clearly a login wall (< 800 chars and contains
- * "sign in to see").
+ * Attempt to fetch the user's LinkedIn profile via the best available
+ * scraper. Returns null when no URL was provided, all fetches fail, or
+ * the only content we got is clearly a login wall.
  */
-export async function fetchLinkedIn(session: ScanSession): Promise<LinkedInMaterial | null> {
+export async function fetchLinkedIn(
+  session: ScanSession,
+  opts: { onProgress?: (text: string) => void } = {},
+): Promise<LinkedInMaterial | null> {
   const url = session.socials.linkedin;
   if (!url) return null;
+  const log = opts.onProgress ?? (() => {});
 
+  // Tier 1: TinyFish. Real browser renders JS, bypasses simple auth-walls.
+  const tf = TinyFishClient.fromEnv();
+  if (tf) {
+    const resp = await tf.fetchUrls([url], { format: "markdown" });
+    if (resp.ok) {
+      const first = resp.results[0];
+      if (first && isUsable(first.text)) {
+        log(`[linkedin] tinyfish ok (${first.text.length} chars)\n`);
+        return { source: url, tier: "tinyfish", text: first.text };
+      }
+      const tfErr = resp.errors[0]?.error;
+      log(
+        `[linkedin] tinyfish returned ${first?.text?.length ?? 0} chars` +
+          (tfErr ? ` (err: ${tfErr})` : "") +
+          ` — trying jina.\n`,
+      );
+    } else {
+      log(`[linkedin] tinyfish request failed: ${resp.requestError ?? "unknown"} — trying jina.\n`);
+    }
+  }
+
+  // Tier 2: Jina Reader — free, no key, decent on static linkedin pages.
   try {
     const res = await fetch(`https://r.jina.ai/${url}`, {
       redirect: "follow",
@@ -46,29 +72,37 @@ export async function fetchLinkedIn(session: ScanSession): Promise<LinkedInMater
       },
       signal: AbortSignal.timeout(JINA_TIMEOUT_MS),
     });
-    if (!res.ok) return null;
-    const text = await res.text();
-    if (!text) return null;
-    if (
-      text.length < 800 &&
-      /sign\s*in|login|authwall|members only/i.test(text)
-    ) {
-      // LinkedIn returned a login wall. Surface a synthetic hint so the
-      // agent can fall back to GitHub-only signals without pretending it
-      // got LinkedIn content.
-      return null;
+    if (res.ok) {
+      const text = await res.text();
+      if (isUsable(text)) {
+        log(`[linkedin] jina ok (${text.length} chars)\n`);
+        return { source: url, tier: "jina", text };
+      }
+      log(`[linkedin] jina returned ${text.length} chars — rejecting.\n`);
+    } else {
+      log(`[linkedin] jina http ${res.status}.\n`);
     }
-    return { source: url, text };
-  } catch {
-    return null;
+  } catch (err) {
+    log(`[linkedin] jina threw: ${err instanceof Error ? err.message : String(err)}\n`);
   }
+
+  return null;
+}
+
+function isUsable(text: string | null | undefined): boolean {
+  if (!text) return false;
+  if (text.length < MIN_TEXT_CHARS) {
+    // Short responses are usually login walls or 404 shells.
+    return !LOGIN_WALL_PATTERN.test(text);
+  }
+  // Longer responses are probably real content even if they mention
+  // "sign in" somewhere in the header chrome — length is the stronger signal.
+  return true;
 }
 
 /**
  * Accept pre-extracted PDF content from the webapp upload path. The
- * webapp handles the actual PDF→text conversion (pdf-parse or
- * equivalent) because adding that dep to the worker is more weight than
- * it needs. If the extraction failed, caller passes null.
+ * webapp handles PDF→text extraction; if nothing usable, caller passes null.
  *
  * TODO: wire into the webapp `/api/scan/pdf-upload` endpoint — it should
  * extract text server-side and forward it as CONTEXT_NOTES with a
@@ -76,7 +110,7 @@ export async function fetchLinkedIn(session: ScanSession): Promise<LinkedInMater
  */
 export function parsePdfContent(text: string | null): LinkedInMaterial | null {
   if (!text || text.length < 200) return null;
-  return { source: "pdf", text };
+  return { source: "pdf", tier: "pdf", text };
 }
 
 /**
@@ -91,3 +125,6 @@ export function extractCompaniesFromNotes(notes: string | undefined): string[] {
   for (const m of matches) seen.add(m[1]);
   return Array.from(seen);
 }
+
+// Exported for unit testing.
+export const __private = { isUsable, LOGIN_WALL_PATTERN, MIN_TEXT_CHARS };

@@ -17,6 +17,7 @@
 
 import * as z from "zod/v4";
 import { guessSkillIconKey } from "@gitshow/shared/skill-icon-slugs";
+import { modelForRole } from "@gitshow/shared/models";
 import { runAgentWithSubmit } from "../../agents/base.js";
 import type { ScanSession, Artifact } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
@@ -51,11 +52,13 @@ export type Skill = z.infer<typeof SkillSchema>;
 export const SkillsAgentOutputSchema = z.object({
   skills: z
     .array(SkillSchema)
-    .min(4)
-    .max(12)
+    .min(8)
+    .max(15)
     .describe(
-      "4-12 skills, ordered by strongest claim first. Prefer specific languages + " +
-      "frameworks over generic tags ('TypeScript' over 'JavaScript frameworks').",
+      "8-15 skills, ordered by strongest claim first. Prefer specific languages + " +
+      "frameworks over generic tags ('TypeScript' over 'JavaScript frameworks'). " +
+      "For a prolific GitHub user you should usually land in the 10-14 range; " +
+      "only drop below 8 if the ledger genuinely doesn't support it.",
     ),
 });
 export type SkillsAgentOutput = z.infer<typeof SkillsAgentOutputSchema>;
@@ -77,7 +80,8 @@ Guidelines:
 - Prefer SHIPPED over EXPERIMENTED. A language with 50k+ insertions across 5+ repos is a real skill. A language with one 200-line toy is not.
 - Consolidate: don't list "TypeScript" and "JavaScript" separately if TypeScript dominates — TypeScript wins.
 - Don't invent skills. Only pick from what the input data actually shows.
-- 10 is a good target. Going below 6 or above 12 is rare.
+- AIM FOR 10-14 pills. Portfolios with only 4-5 skills read as thin. Go as high as the ledger legitimately supports. If you see clear evidence of both a language AND its dominant framework (e.g. Dart + Flutter, TypeScript + React, Python + FastAPI), list BOTH as separate pills — they're separate skills.
+- Include infrastructure + tooling when the ledger shows it: Docker, Kubernetes, Postgres, Redis, GraphQL, Tailwind, etc. Each deserves a pill when repos actually use it.
 
 iconKey — set the slug from the SkillSchema description when there's a canonical mark. We also run a deterministic name→slug backfill after you submit, so 'Tailwind CSS' without iconKey still comes out with iconKey='tailwindcss'. You don't need to fight the system: pick iconKey freely when you know it, omit confidently when you don't.
 
@@ -89,7 +93,7 @@ export async function runSkillsAgent(
   const userMessage = buildInput(input);
 
   const { result } = await runAgentWithSubmit({
-    model: input.session.model,
+    model: modelForRole("section"),
     systemPrompt: SYSTEM_PROMPT,
     input: userMessage,
     submitToolName: "submit_skills",
@@ -118,17 +122,23 @@ function buildInput(input: SkillsAgentInput): string {
   lines.push(`## Skills ledger`);
   lines.push("");
 
-  // Language aggregation: bytes weighted across top repos.
+  // Language aggregation: bytes weighted across repos the user actually
+  // touched. Owned repos count at full weight; drive-by / collaborator
+  // contributions count at half weight (user used the language but in
+  // someone else's codebase).
   const langBytes: Record<string, number> = {};
   for (const r of github.ownedRepos) {
     if (r.isArchived) continue;
+    const rel = r.relationship ?? "owner";
+    const multiplier = rel === "owner" || rel === "org_member" ? 1 : 0.5;
+    const weight = (r.stargazerCount ?? 1) * 1000 * multiplier;
     for (const lang of r.languages) {
-      langBytes[lang] = (langBytes[lang] ?? 0) + (r.stargazerCount ?? 1) * 1000;
+      langBytes[lang] = (langBytes[lang] ?? 0) + weight;
     }
   }
   const langEntries = Object.entries(langBytes)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 20);
+    .slice(0, 25);
   if (langEntries.length > 0) {
     lines.push(`### Top languages (weighted by repo presence + stars):`);
     for (const [lang, weight] of langEntries) {

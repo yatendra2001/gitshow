@@ -23,6 +23,7 @@
 import * as z from "zod/v4";
 import pLimit from "p-limit";
 import { runAgentWithSubmit } from "../../agents/base.js";
+import { modelForRole } from "@gitshow/shared/models";
 import type { ScanSession } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
 import type { BlogPost } from "@gitshow/shared/resume";
@@ -119,7 +120,7 @@ async function importOne(args: {
 
   try {
     const { result } = await runAgentWithSubmit({
-      model: session.model,
+      model: modelForRole("bulk"),
       systemPrompt: SYSTEM_PROMPT,
       input: buildInput(url, fetched),
       submitToolName: "submit_blog_post",

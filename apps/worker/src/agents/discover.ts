@@ -12,6 +12,7 @@
 
 import { runAgentWithSubmit, type AgentEventEmit } from "./base.js";
 import { toolLabel } from "@gitshow/shared/phase-copy";
+import { modelForRole } from "@gitshow/shared/models";
 import {
   DiscoverOutputSchema,
   type DiscoverOutput,
@@ -81,7 +82,7 @@ export async function runDiscover(input: DiscoverInput): Promise<DiscoverOutput>
   const userMessage = buildDiscoverInput(input);
 
   const { result } = await runAgentWithSubmit({
-    model: input.session.model,
+    model: modelForRole("orchestrator"),
     systemPrompt: DISCOVER_PROMPT,
     input: userMessage,
     submitToolName: "submit_discover",

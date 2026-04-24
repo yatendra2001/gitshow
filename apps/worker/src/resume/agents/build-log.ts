@@ -24,6 +24,7 @@
 
 import * as z from "zod/v4";
 import { runAgentWithSubmit } from "../../agents/base.js";
+import { modelForRole } from "@gitshow/shared/models";
 import type { ScanSession, Artifact } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
 import type { GitHubData, RepoRef } from "../../types.js";
@@ -111,7 +112,7 @@ export async function runBuildLogAgent(
     log(`[build-log] batch ${i + 1}/${batches.length} (${batch.length} repos)\n`);
 
     const { result } = await runAgentWithSubmit({
-      model: input.session.model,
+      model: modelForRole("bulk"),
       systemPrompt: SYSTEM_PROMPT,
       input: ledger,
       submitToolName: "submit_build_log",
@@ -174,16 +175,30 @@ function selectCandidates(
   github: GitHubData,
   artifacts: Record<string, Artifact>,
 ): RepoRef[] {
+  // The timeline is still meant to be broad — this is where "has shipped
+  // a LOT" reads from. But scratch repos with one commit + no README just
+  // add noise. Bar = "meaningful": either someone starred it, or it has
+  // a sustained commit history, or it has enough README to be a real
+  // thing the dev described to someone.
+  const MIN_COMMITS = 10;
+  const MIN_README = 300;
   return github.ownedRepos.filter((r) => {
     const rel = r.relationship ?? "owner";
     if (rel === "contributor" || rel === "reviewer") return false;
     if (r.isFork || r.isArchived) return false;
     const commits = r.userCommitCount ?? 0;
     const stars = r.stargazerCount ?? 0;
-    const hasReadme = Boolean(
-      (artifacts[`repo:${r.fullName}`]?.metadata as Record<string, unknown> | undefined)?.has_readme,
+    const meta = artifacts[`repo:${r.fullName}`]?.metadata as
+      | Record<string, unknown>
+      | undefined;
+    const readmeChars = typeof meta?.readme_chars === "number" ? (meta.readme_chars as number) : 0;
+    const hasReadme = Boolean(meta?.has_readme);
+    return (
+      stars > 0 ||
+      commits >= MIN_COMMITS ||
+      readmeChars >= MIN_README ||
+      (hasReadme && commits >= 3)
     );
-    return commits >= 3 || stars > 0 || hasReadme;
   });
 }
 

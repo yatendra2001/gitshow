@@ -34,6 +34,13 @@ R2_SECRET_ACCESS_KEY=""
 OPENROUTER_API_KEY=""
 GH_TOKEN=""
 
+# ── Web scraping / search (TinyFish) ───────────────────────────────
+# Used by the LinkedIn fetcher (real-browser render) and the
+# DevEvidence research phase (Google-like search + scrape). Scanning
+# still works without it — the pipeline falls back to Jina Reader
+# and skips the evidence phase. Get a key at agent.tinyfish.ai.
+TINYFISH_API_KEY=""
+
 # ── Realtime publish target (leave blank to skip DO publishing) ────
 REALTIME_ENDPOINT="https://gitshow-realtime.yatendra2001kumar.workers.dev"
 PIPELINE_SHARED_SECRET=""

@@ -23,6 +23,11 @@ import type { ScanSession, Artifact } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
 import type { GitHubData } from "../../types.js";
 import { fetchLinkedIn, extractCompaniesFromNotes } from "../linkedin.js";
+import { modelForRole } from "@gitshow/shared/models";
+import {
+  formatEvidenceBag,
+  type EvidenceBag,
+} from "../research/dev-evidence.js";
 
 export const WorkEntryLLMSchema = z.object({
   company: z.string().max(120),
@@ -66,15 +71,18 @@ export interface WorkAgentInput {
   usage: SessionUsage;
   github: GitHubData;
   artifacts: Record<string, Artifact>;
+  /** Optional evidence bag from the DevEvidence research phase. */
+  evidence?: EvidenceBag;
   onProgress?: (text: string) => void;
 }
 
 const SYSTEM_PROMPT = `You reconstruct a developer's work history for their portfolio.
 
-You'll receive THREE inputs, ordered by trust:
+You'll receive these inputs, ordered by trust:
   1. Intake answers (if present) — user-provided; treat as authoritative.
   2. LinkedIn markdown (if present) — user confirmed this URL; treat as factual, but prefer intake when they conflict.
-  3. GitHub signals — bio, company field, team-repo contributors. Treat these as HINTS, never confirmed employment.
+  3. Web evidence (if present) — interviews, press, talks, podcasts we found. Use confidence=high evidence as strong signal for employment (a press piece saying "X, an engineer at Stripe, built ..." is solid). Confidence medium or low require corroboration from another source before you commit a company.
+  4. GitHub signals — bio, company field, team-repo contributors. Treat these as HINTS, never confirmed employment.
 
 Produce a chronological work[] array, most-recent first. Each entry:
   - company: official company name ("Stripe", not "stripe.com")
@@ -107,7 +115,7 @@ export async function runWorkAgent(input: WorkAgentInput): Promise<WorkEntry[]> 
   }
 
   const { result } = await runAgentWithSubmit({
-    model: input.session.model,
+    model: modelForRole("section"),
     systemPrompt: SYSTEM_PROMPT,
     input: userMessage.text,
     submitToolName: "submit_work",
@@ -150,12 +158,21 @@ async function buildInput(input: WorkAgentInput): Promise<{ text: string; hasAny
     lines.push("");
   }
 
-  // (2) LinkedIn markdown via Jina Reader.
-  const linkedin = await fetchLinkedIn(session);
+  // (2) Web evidence from the DevEvidence research phase (optional).
+  if (input.evidence && input.evidence.cards.length > 0) {
+    hasSource = true;
+    lines.push(formatEvidenceBag(input.evidence, 15));
+    lines.push("");
+  }
+
+  // (3) LinkedIn markdown — TinyFish first, Jina fallback (see linkedin.ts).
+  const linkedin = await fetchLinkedIn(session, { onProgress });
   if (linkedin) {
     hasSource = true;
-    (onProgress ?? (() => {}))(`\n[work] fetched LinkedIn (${linkedin.text.length} chars)\n`);
-    lines.push(`## LinkedIn content (${linkedin.source})`);
+    (onProgress ?? (() => {}))(
+      `\n[work] LinkedIn tier=${linkedin.tier} chars=${linkedin.text.length}\n`,
+    );
+    lines.push(`## LinkedIn content (tier=${linkedin.tier})`);
     // Clamp to 8k chars — LinkedIn pages are noisy; the agent only
     // needs the Experience + Education blocks.
     lines.push(linkedin.text.slice(0, 8000));
