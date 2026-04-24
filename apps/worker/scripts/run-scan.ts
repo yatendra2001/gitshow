@@ -26,6 +26,7 @@ import { createD1Phases } from "../src/resume/phases.js";
 import { SessionUsage } from "../src/session.js";
 import { D1Client } from "../src/cloud/d1.js";
 import { DOPublishClient } from "@gitshow/shared/cloud/do-client";
+import { DEFAULT_SCAN_MODEL } from "@gitshow/shared/models";
 import {
   ResendSender,
   renderScanComplete,
@@ -49,7 +50,7 @@ async function main() {
 
   const scanId = requireEnv("SCAN_ID");
   const handle = requireEnv("HANDLE");
-  const model = process.env.MODEL || "anthropic/claude-sonnet-4.6";
+  const model = process.env.MODEL || DEFAULT_SCAN_MODEL;
   const flyMachineId = process.env.FLY_MACHINE_ID || null;
 
   const socials: ScanSocials = {};

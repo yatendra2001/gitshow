@@ -3,6 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { FlyClient } from "@gitshow/shared/cloud/fly";
+import { DEFAULT_SCAN_MODEL } from "@gitshow/shared/models";
 import { requireProApi } from "@/lib/entitlements";
 import { getUserGitHubToken } from "@/lib/user-token";
 
@@ -76,11 +77,10 @@ export async function POST(req: Request) {
 
   const scanId = `scan-${nanoid(10)}`;
   const sessionId = `or-${nanoid(14)}`;
-  // Pinned to anthropic/claude-sonnet-4.6 — `openrouter/auto` occasionally
-  // routed to Gemini 2.5 Flash which closed streams mid-agent. Sonnet is
-  // the most reliable tool-caller in our agent loop (Kimi K2.5 was flaky
-  // at `submit_*`, K2.6 not yet trusted for this). Body still wins.
-  const model = body.model ?? "anthropic/claude-sonnet-4.6";
+  // Default model lives in @gitshow/shared/models — change it there and
+  // all scan/intake entry points + the worker fallback pick it up.
+  // Body still wins when it pins an explicit model.
+  const model = body.model ?? DEFAULT_SCAN_MODEL;
   const pipeline = body.pipeline ?? "resume";
   const now = Date.now();
 

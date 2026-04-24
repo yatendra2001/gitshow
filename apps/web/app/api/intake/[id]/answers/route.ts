@@ -3,6 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { FlyClient } from "@gitshow/shared/cloud/fly";
+import { DEFAULT_SCAN_MODEL } from "@gitshow/shared/models";
 import { requireProApi } from "@/lib/entitlements";
 import {
   getIntakeForUser,
@@ -93,9 +94,9 @@ export async function POST(
   // Spawn the full scan with intake context baked in.
   const scanId = `scan-${nanoid(10)}`;
   const sessionId = `or-${nanoid(14)}`;
-  // Match /api/scan: pinned to anthropic/claude-sonnet-4.6 — reliable
-  // tool-caller; auto routing was hitting flaky models mid-agent.
-  const model = "anthropic/claude-sonnet-4.6";
+  // Default lives in @gitshow/shared/models — change it there and all
+  // entry points follow.
+  const model = DEFAULT_SCAN_MODEL;
   const now = Date.now();
 
   const socials = parse.data.socials ?? {};
