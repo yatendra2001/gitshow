@@ -8,19 +8,27 @@ import {
 import type { Resume } from "@gitshow/shared/resume";
 
 /**
- * Makes the template's `DATA` available to every section/navbar component
- * via `useData()`, so each can do `const DATA = useData()` instead of
- * `import { DATA } from "@/data/resume"`.
+ * Two views over the same backing `Resume`:
  *
- * The provider takes the server-loaded `Resume` (JSON) + `handle` string
- * and memoises the template-shape transform (which resolves icon keys to
- * React components on the client). This keeps the server/client boundary
- * serializable — no React components cross it — while letting the
- * unmodified template components consume a DATA object with icon
- * components as they expect.
+ *   - `useData()` returns the legacy template-shape `TemplateData` (icons
+ *     as React components, socials keyed uppercase). All template
+ *     components in `components/section/**` consume this.
+ *   - `useResume()` returns the raw `Resume` JSON. New section components
+ *     in `components/sections/**` (publications, hackathons) consume this
+ *     directly because their props are typed against the canonical
+ *     entry schemas in `@gitshow/shared/resume`.
+ *
+ * Keeping both lets us migrate sections one-by-one without forcing a
+ * full template rewrite.
  */
 
-const Ctx = createContext<TemplateData | null>(null);
+interface CtxValue {
+  data: TemplateData;
+  resume: Resume;
+  handle: string;
+}
+
+const Ctx = createContext<CtxValue | null>(null);
 
 export interface DataProviderProps {
   resume: Resume;
@@ -29,19 +37,39 @@ export interface DataProviderProps {
 }
 
 export function DataProvider({ resume, handle, children }: DataProviderProps) {
-  const data = useMemo(
-    () => resumeToTemplateData(resume, handle),
+  const value = useMemo<CtxValue>(
+    () => ({ data: resumeToTemplateData(resume, handle), resume, handle }),
     [resume, handle],
   );
-  return <Ctx.Provider value={data}>{children}</Ctx.Provider>;
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useData(): TemplateData {
-  const d = useContext(Ctx);
-  if (!d) {
+  const v = useContext(Ctx);
+  if (!v) {
     throw new Error(
       "useData() must be used inside a <DataProvider>. Wrap the /{handle} route tree.",
     );
   }
-  return d;
+  return v.data;
+}
+
+export function useResume(): Resume {
+  const v = useContext(Ctx);
+  if (!v) {
+    throw new Error(
+      "useResume() must be used inside a <DataProvider>. Wrap the /{handle} route tree.",
+    );
+  }
+  return v.resume;
+}
+
+export function useHandle(): string {
+  const v = useContext(Ctx);
+  if (!v) {
+    throw new Error(
+      "useHandle() must be used inside a <DataProvider>. Wrap the /{handle} route tree.",
+    );
+  }
+  return v.handle;
 }

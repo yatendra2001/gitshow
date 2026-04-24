@@ -57,6 +57,8 @@ async function main() {
   if (process.env.TWITTER) socials.twitter = process.env.TWITTER;
   if (process.env.LINKEDIN) socials.linkedin = process.env.LINKEDIN;
   if (process.env.WEBSITE) socials.website = process.env.WEBSITE;
+  if (process.env.ORCID) socials.orcid = process.env.ORCID;
+  if (process.env.STACKOVERFLOW) socials.stackoverflow = process.env.STACKOVERFLOW;
 
   // Up to 5 user-provided blog URLs — comma-separated via BLOG_URLS env.
   // Consumed by the blog-import agent in the resume pipeline.

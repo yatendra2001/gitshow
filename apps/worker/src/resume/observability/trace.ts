@@ -30,9 +30,27 @@ import type { Resume } from "@gitshow/shared/resume";
 export type TraceEventKind =
   | "stage.start"
   | "stage.end"
+  | "stage.resource"
   | "tinyfish.search"
   | "tinyfish.fetch"
   | "linkedin.fetch"
+  | "linkedin.tier.attempt"
+  | "linkedin.facts.emitted"
+  | "fetcher.start"
+  | "fetcher.facts"
+  | "fetcher.error"
+  | "fetcher.end"
+  | "github.api.call"
+  | "inventory.clone"
+  | "judge.verdict"
+  | "kg.merger.deterministic"
+  | "kg.merger.llm"
+  | "kg.edge.resolved"
+  | "kg.evaluator"
+  | "media.download"
+  | "media.banner.generated"
+  | "render.select"
+  | "render.hero-prose.call"
   | "llm.call"
   | "note"
   | "evaluator";
@@ -71,6 +89,14 @@ export interface StageEndEvent extends TraceEventBase {
   ok: boolean;
   error?: string;
 }
+export interface StageResourceEvent extends TraceEventBase {
+  kind: "stage.resource";
+  label: string;
+  memoryMB?: number;
+  heapUsedMB?: number;
+  diskMB?: number;
+}
+
 export interface TinyFishSearchEvent extends TraceEventBase {
   kind: "tinyfish.search";
   query: string;
@@ -110,6 +136,138 @@ export interface LinkedInFetchEvent extends TraceEventBase {
   reason?: string;
   durationMs: number;
 }
+export interface LinkedInTierAttemptEvent extends TraceEventBase {
+  kind: "linkedin.tier.attempt";
+  tier: 1 | 2 | 3 | 4;
+  method: "tinyfish" | "jina" | "playwright" | "pdf";
+  ok: boolean;
+  durationMs: number;
+  reason?: string;
+}
+export interface LinkedInFactsEmittedEvent extends TraceEventBase {
+  kind: "linkedin.facts.emitted";
+  tier: number;
+  positions: number;
+  educations: number;
+  skills: number;
+}
+
+export interface FetcherStartEvent extends TraceEventBase {
+  kind: "fetcher.start";
+  label: string;
+  input?: Record<string, unknown>;
+}
+export interface FetcherFactsEvent extends TraceEventBase {
+  kind: "fetcher.facts";
+  label: string;
+  /** Edge type or "PERSON" — what kind of fact landed. */
+  entityType: string;
+  count: number;
+  /** Up to 5 fact previews, JSON-stringified + truncated. */
+  preview?: string;
+}
+export interface FetcherErrorEvent extends TraceEventBase {
+  kind: "fetcher.error";
+  label: string;
+  error: string;
+  stack?: string;
+  retryable: boolean;
+}
+export interface FetcherEndEvent extends TraceEventBase {
+  kind: "fetcher.end";
+  label: string;
+  durationMs: number;
+  factsEmitted: number;
+  status: "ok" | "empty" | "error";
+}
+
+export interface GithubApiCallEvent extends TraceEventBase {
+  kind: "github.api.call";
+  endpoint: string;
+  status: number;
+  rateLimitRemaining?: number;
+  durationMs: number;
+}
+export interface InventoryCloneEvent extends TraceEventBase {
+  kind: "inventory.clone";
+  repo: string;
+  sizeBytes?: number;
+  durationMs: number;
+  filesDiscovered?: number;
+  ok: boolean;
+  error?: string;
+}
+
+export interface JudgeVerdictEvent extends TraceEventBase {
+  kind: "judge.verdict";
+  repo: string;
+  judgeKind: string; // ProjectKind
+  shouldFeature: boolean;
+  reason: string;
+  filesRead: number;
+}
+
+export interface KgMergerDeterministicEvent extends TraceEventBase {
+  kind: "kg.merger.deterministic";
+  mergedPairs: number;
+  retainedPairs: number;
+}
+export interface KgMergerLlmEvent extends TraceEventBase {
+  kind: "kg.merger.llm";
+  pairCount: number;
+  decisions: Array<{ a: string; b: string; decision: string; rationale: string }>;
+}
+export interface KgEdgeResolvedEvent extends TraceEventBase {
+  kind: "kg.edge.resolved";
+  edgeId: string;
+  edgeType: string;
+  sourceCount: number;
+  band: string;
+}
+export interface KgEvaluatorEvent extends TraceEventBase {
+  kind: "kg.evaluator";
+  blockingErrors: number;
+  warnings: number;
+  details: Array<{ section: string; severity: string; message: string }>;
+}
+
+export interface MediaDownloadEvent extends TraceEventBase {
+  kind: "media.download";
+  /** "project-hero" | "company-logo" | "school-logo" — kept generic */
+  mediaKind: string;
+  url: string;
+  ok: boolean;
+  r2Key?: string;
+  bytes?: number;
+  origin?: string;
+  durationMs: number;
+  error?: string;
+}
+export interface MediaBannerGeneratedEvent extends TraceEventBase {
+  kind: "media.banner.generated";
+  projectId: string;
+  model: string;
+  ok: boolean;
+  durationMs: number;
+  r2Key?: string;
+  costUsd?: number;
+  rejectionReason?: string;
+}
+
+export interface RenderSelectEvent extends TraceEventBase {
+  kind: "render.select";
+  section: string;
+  entityCount: number;
+  filter?: string;
+}
+export interface RenderHeroProseCallEvent extends TraceEventBase {
+  kind: "render.hero-prose.call";
+  model: string;
+  durationMs: number;
+  linksEmbedded: number;
+  ok: boolean;
+}
+
 export interface LLMCallEvent extends TraceEventBase {
   kind: "llm.call";
   /** Agent/stage label: "resume:work", "dev-evidence:plan", etc. */
@@ -153,9 +311,27 @@ export interface EvaluatorEvent extends TraceEventBase {
 export type TraceEvent =
   | StageStartEvent
   | StageEndEvent
+  | StageResourceEvent
   | TinyFishSearchEvent
   | TinyFishFetchEvent
   | LinkedInFetchEvent
+  | LinkedInTierAttemptEvent
+  | LinkedInFactsEmittedEvent
+  | FetcherStartEvent
+  | FetcherFactsEvent
+  | FetcherErrorEvent
+  | FetcherEndEvent
+  | GithubApiCallEvent
+  | InventoryCloneEvent
+  | JudgeVerdictEvent
+  | KgMergerDeterministicEvent
+  | KgMergerLlmEvent
+  | KgEdgeResolvedEvent
+  | KgEvaluatorEvent
+  | MediaDownloadEvent
+  | MediaBannerGeneratedEvent
+  | RenderSelectEvent
+  | RenderHeroProseCallEvent
   | LLMCallEvent
   | NoteEvent
   | EvaluatorEvent;
@@ -182,6 +358,8 @@ export interface FinalizedTrace {
     skills: number;
     buildLog: number;
     blog: number;
+    hackathons: number;
+    publications: number;
     personSummaryLen: number;
   };
   /** Rolled-up totals for at-a-glance triage. */
@@ -192,6 +370,13 @@ export interface FinalizedTrace {
     tinyfishFetchesOk: number;
     llmCalls: number;
     totalLlmCostUsd: number;
+    fetcherFactsTotal: number;
+    fetcherErrors: number;
+    judgeVerdicts: number;
+    judgeFeatured: number;
+    mediaDownloadsOk: number;
+    mediaDownloadsFail: number;
+    bannersGenerated: number;
     stages: Array<{ label: string; durationMs: number; ok: boolean }>;
   };
   events: TraceEvent[];
@@ -226,6 +411,10 @@ export class ScanTrace {
     this.push<StageEndEvent>({ kind: "stage.end", label, durationMs, ok, error });
   }
 
+  stageResource(e: Omit<StageResourceEvent, "kind" | "seq" | "t">): void {
+    this.push<StageResourceEvent>({ kind: "stage.resource", ...e });
+  }
+
   tinyfishSearch(e: Omit<TinyFishSearchEvent, "kind" | "seq" | "t">): void {
     this.push<TinyFishSearchEvent>({ kind: "tinyfish.search", ...e });
   }
@@ -238,8 +427,74 @@ export class ScanTrace {
     this.push<LinkedInFetchEvent>({ kind: "linkedin.fetch", ...e });
   }
 
+  linkedInTierAttempt(e: Omit<LinkedInTierAttemptEvent, "kind" | "seq" | "t">): void {
+    this.push<LinkedInTierAttemptEvent>({ kind: "linkedin.tier.attempt", ...e });
+  }
+
+  linkedInFactsEmitted(e: Omit<LinkedInFactsEmittedEvent, "kind" | "seq" | "t">): void {
+    this.push<LinkedInFactsEmittedEvent>({ kind: "linkedin.facts.emitted", ...e });
+  }
+
+  fetcherStart(e: Omit<FetcherStartEvent, "kind" | "seq" | "t">): void {
+    this.push<FetcherStartEvent>({ kind: "fetcher.start", ...e });
+  }
+  fetcherFacts(e: Omit<FetcherFactsEvent, "kind" | "seq" | "t">): void {
+    this.push<FetcherFactsEvent>({
+      kind: "fetcher.facts",
+      ...e,
+      preview: bound(e.preview, 1500),
+    });
+  }
+  fetcherError(e: Omit<FetcherErrorEvent, "kind" | "seq" | "t">): void {
+    this.push<FetcherErrorEvent>({
+      kind: "fetcher.error",
+      ...e,
+      stack: bound(e.stack, 4000),
+    });
+  }
+  fetcherEnd(e: Omit<FetcherEndEvent, "kind" | "seq" | "t">): void {
+    this.push<FetcherEndEvent>({ kind: "fetcher.end", ...e });
+  }
+
+  githubApiCall(e: Omit<GithubApiCallEvent, "kind" | "seq" | "t">): void {
+    this.push<GithubApiCallEvent>({ kind: "github.api.call", ...e });
+  }
+  inventoryClone(e: Omit<InventoryCloneEvent, "kind" | "seq" | "t">): void {
+    this.push<InventoryCloneEvent>({ kind: "inventory.clone", ...e });
+  }
+
+  judgeVerdict(e: Omit<JudgeVerdictEvent, "kind" | "seq" | "t">): void {
+    this.push<JudgeVerdictEvent>({ kind: "judge.verdict", ...e });
+  }
+
+  kgMergerDeterministic(e: Omit<KgMergerDeterministicEvent, "kind" | "seq" | "t">): void {
+    this.push<KgMergerDeterministicEvent>({ kind: "kg.merger.deterministic", ...e });
+  }
+  kgMergerLlm(e: Omit<KgMergerLlmEvent, "kind" | "seq" | "t">): void {
+    this.push<KgMergerLlmEvent>({ kind: "kg.merger.llm", ...e });
+  }
+  kgEdgeResolved(e: Omit<KgEdgeResolvedEvent, "kind" | "seq" | "t">): void {
+    this.push<KgEdgeResolvedEvent>({ kind: "kg.edge.resolved", ...e });
+  }
+  kgEvaluator(e: Omit<KgEvaluatorEvent, "kind" | "seq" | "t">): void {
+    this.push<KgEvaluatorEvent>({ kind: "kg.evaluator", ...e });
+  }
+
+  mediaDownload(e: Omit<MediaDownloadEvent, "kind" | "seq" | "t">): void {
+    this.push<MediaDownloadEvent>({ kind: "media.download", ...e });
+  }
+  mediaBannerGenerated(e: Omit<MediaBannerGeneratedEvent, "kind" | "seq" | "t">): void {
+    this.push<MediaBannerGeneratedEvent>({ kind: "media.banner.generated", ...e });
+  }
+
+  renderSelect(e: Omit<RenderSelectEvent, "kind" | "seq" | "t">): void {
+    this.push<RenderSelectEvent>({ kind: "render.select", ...e });
+  }
+  renderHeroProseCall(e: Omit<RenderHeroProseCallEvent, "kind" | "seq" | "t">): void {
+    this.push<RenderHeroProseCallEvent>({ kind: "render.hero-prose.call", ...e });
+  }
+
   llmCall(e: Omit<LLMCallEvent, "kind" | "seq" | "t">): void {
-    // Truncate long strings so the trace stays readable.
     this.push<LLMCallEvent>({
       kind: "llm.call",
       ...e,
@@ -263,8 +518,19 @@ export class ScanTrace {
     this._meta.finishedAt = finishedAt;
     this._meta.durationMs = finishedAt - this._meta.startedAt;
 
-    let searches = 0, searchesOk = 0, fetches = 0, fetchesOk = 0;
-    let llmCalls = 0, totalLlmCostUsd = 0;
+    let searches = 0,
+      searchesOk = 0,
+      fetches = 0,
+      fetchesOk = 0;
+    let llmCalls = 0,
+      totalLlmCostUsd = 0;
+    let fetcherFactsTotal = 0,
+      fetcherErrors = 0,
+      judgeVerdicts = 0,
+      judgeFeatured = 0;
+    let mediaDownloadsOk = 0,
+      mediaDownloadsFail = 0,
+      bannersGenerated = 0;
     const stages: Array<{ label: string; durationMs: number; ok: boolean }> = [];
     for (const e of this._events) {
       if (e.kind === "tinyfish.search") {
@@ -278,6 +544,18 @@ export class ScanTrace {
         if (e.cost) totalLlmCostUsd += e.cost;
       } else if (e.kind === "stage.end") {
         stages.push({ label: e.label, durationMs: e.durationMs, ok: e.ok });
+      } else if (e.kind === "fetcher.facts") {
+        fetcherFactsTotal += e.count;
+      } else if (e.kind === "fetcher.error") {
+        fetcherErrors++;
+      } else if (e.kind === "judge.verdict") {
+        judgeVerdicts++;
+        if (e.shouldFeature) judgeFeatured++;
+      } else if (e.kind === "media.download") {
+        if (e.ok) mediaDownloadsOk++;
+        else mediaDownloadsFail++;
+      } else if (e.kind === "media.banner.generated") {
+        if (e.ok) bannersGenerated++;
       }
     }
 
@@ -291,6 +569,8 @@ export class ScanTrace {
             skills: resume.skills.length,
             buildLog: resume.buildLog.length,
             blog: resume.blog.length,
+            hackathons: resume.hackathons?.length ?? 0,
+            publications: resume.publications?.length ?? 0,
             personSummaryLen: resume.person?.summary?.length ?? 0,
           }
         : undefined,
@@ -301,6 +581,13 @@ export class ScanTrace {
         tinyfishFetchesOk: fetchesOk,
         llmCalls,
         totalLlmCostUsd: Number(totalLlmCostUsd.toFixed(4)),
+        fetcherFactsTotal,
+        fetcherErrors,
+        judgeVerdicts,
+        judgeFeatured,
+        mediaDownloadsOk,
+        mediaDownloadsFail,
+        bannersGenerated,
         stages,
       },
       events: this._events,

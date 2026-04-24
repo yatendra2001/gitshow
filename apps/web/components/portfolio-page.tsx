@@ -4,13 +4,15 @@
 import BlurFade from "@/components/magicui/blur-fade";
 import BlurFadeText from "@/components/magicui/blur-fade-text";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useData } from "@/components/data-provider";
+import { useData, useResume } from "@/components/data-provider";
 import Link from "next/link";
 import Markdown from "react-markdown";
 import ContactSection from "@/components/section/contact-section";
-import HackathonsSection from "@/components/section/hackathons-section";
+import BuildLogSection from "@/components/section/build-log-section";
 import ProjectsSection from "@/components/section/projects-section";
 import WorkSection from "@/components/section/work-section";
+import HackathonsSection from "@/components/sections/hackathons";
+import PublicationsSection from "@/components/sections/publications";
 import { ArrowUpRight } from "lucide-react";
 
 const BLUR_FADE_DELAY = 0.04;
@@ -24,6 +26,8 @@ const BLUR_FADE_DELAY = 0.04;
  */
 export default function PortfolioPage() {
   const DATA = useData();
+  const resume = useResume();
+  const hidden = new Set(resume.sections.hidden);
   return (
     <main className="min-h-dvh flex flex-col gap-14 relative">
       <section id="hero">
@@ -145,16 +149,30 @@ export default function PortfolioPage() {
           </div>
         </div>
       </section>
-      <section id="projects">
-        <BlurFade delay={BLUR_FADE_DELAY * 11}>
-          <ProjectsSection />
+      {!hidden.has("projects") && (
+        <section id="projects">
+          <BlurFade delay={BLUR_FADE_DELAY * 11}>
+            <ProjectsSection />
+          </BlurFade>
+        </section>
+      )}
+      {!hidden.has("hackathons") && resume.hackathons.length > 0 && (
+        <BlurFade delay={BLUR_FADE_DELAY * 12}>
+          <HackathonsSection entries={resume.hackathons} />
         </BlurFade>
-      </section>
-      <section id="hackathons">
+      )}
+      {!hidden.has("publications") && resume.publications.length > 0 && (
         <BlurFade delay={BLUR_FADE_DELAY * 13}>
-          <HackathonsSection />
+          <PublicationsSection entries={resume.publications} />
         </BlurFade>
-      </section>
+      )}
+      {!hidden.has("buildLog") && DATA.hackathons.length > 0 && (
+        <section id="buildLog">
+          <BlurFade delay={BLUR_FADE_DELAY * 14}>
+            <BuildLogSection />
+          </BlurFade>
+        </section>
+      )}
       <section id="contact">
         <BlurFade delay={BLUR_FADE_DELAY * 16}>
           <ContactSection />

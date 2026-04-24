@@ -1,98 +1,93 @@
 /**
- * Resume pipeline orchestrator.
+ * Resume pipeline orchestrator (KG-first).
  *
- * Produces a validated `Resume` JSON from a GitHub handle + optional
- * LinkedIn / socials / intake notes. Runs parallel to the legacy claim
- * pipeline at `apps/worker/src/pipeline.ts`; neither is deleted until
- * the new one is verified end-to-end.
- *
- * Stage map:
- *   1. github-fetch        — all owned repos + PRs + reviews + profile.
- *   2. repo-filter         — tier repos (deep / light / metadata).
- *   3. inventory           — clone deep-tier repos, run git-archaeology
- *                            for accurate first-commit dates + team-repo
- *                            signals + language LOC totals.
- *   4. normalize           — artifact table with inventory enrichment.
- *   5. discover            — one Opus/Sonnet pass to produce the
- *                            investigation_angles + primary_shape that
- *                            frame the person-agent's summary.
- *   6. pick-featured       — ~20 top repos for deep per-project research.
- *   7. section agents      — parallel: build-log, skills, projects,
- *                            work, education (projects is itself a
- *                            fan-out of 20 sub-agents with web research).
- *   8. person              — after the parallel batch so summary can
- *                            reference project titles + work companies.
- *   9. contact             — rule-based, zero LLM.
- *  10. assemble            — merge + Zod-validate into Resume.
- *  11. persist             — write draft.json to R2 when cloud env present.
+ * Stage map per session-8 §15:
+ *   1. github-fetch         — owned repos + PRs + reviews + profile
+ *   2. repo-filter          — tier repos (deep / light / metadata)
+ *   3. inventory            — clone deep-tier repos for the Repo Judge
+ *   4. repo-judge           — Kimi reads README + tree + samples per repo;
+ *                             produces Judgment{kind, polish, shouldFeature, …}
+ *   5. fetcher fan-out      — github-facts (sync) + linkedin tier chain +
+ *                             personal-site + twitter + hn/devto/medium +
+ *                             orcid + semantic-scholar + arxiv + stackoverflow
+ *                             + blog-import (existing). All emit TypedFacts.
+ *   6. merge-facts          — fuse all TypedFacts into one KnowledgeGraph
+ *                             (deterministic + LLM pair-resolution)
+ *   7. apply-judgments      — overlay per-repo Judgments onto Project nodes
+ *   8. media-fetch          — og → README hero → YouTube → Gemini gen for
+ *                             projects; Clearbit/favicon for companies/schools
+ *   9. persist-kg           — write latest.json + scan-{id}.json to R2
+ *  10. evaluate-kg          — blocking-error gate + warnings
+ *  11. hero-prose           — single Opus call → description + summary
+ *  12. render-from-kg       — pure Resume projection (zero LLM)
+ *  13. persist-resume       — write draft.json to R2
+ *  14. persist-trace        — write trace.json to R2
  */
 
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
 import pLimit from "p-limit";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 import { fetchGitHubData } from "../github-fetcher.js";
 import { filterRepos } from "../repo-filter.js";
 import { cloneAndInventory } from "../inventory-runner.js";
-import { normalize } from "../normalize.js";
-import { runDiscover } from "../agents/discover.js";
 import type { ScanSession } from "../schemas.js";
 import type { GitHubData, StructuredInventory } from "../types.js";
 import type { SessionUsage } from "../session.js";
-import { pickFeatured } from "./pick-featured.js";
-import { runPersonAgent } from "./agents/person.js";
-import { runSkillsAgent } from "./agents/skills.js";
-import { runBuildLogAgent } from "./agents/build-log.js";
-import { runProjectsAgent } from "./agents/projects.js";
-import { runWorkAgent } from "./agents/work.js";
-import { runEducationAgent } from "./agents/education.js";
-import { runContactAgent } from "./agents/contact.js";
+
+import { judgeAllRepos, type RepoJudgeOutput } from "./judge/repo-judge.js";
+import {
+  emitGithubFacts,
+  runLinkedInPublicFetcher,
+  runLinkedInPlaywrightFetcher,
+  runLinkedInPdfFetcher,
+  runPersonalSiteFetcher,
+  runTwitterBioFetcher,
+  runHnProfileFetcher,
+  runDevtoProfileFetcher,
+  runMediumProfileFetcher,
+  runOrcidFetcher,
+  runSemanticScholarFetcher,
+  runArxivFetcher,
+  runStackoverflowFetcher,
+} from "./fetchers/index.js";
 import { runBlogImportAgent } from "./agents/blog-import.js";
-import { runDevEvidenceResearch, type EvidenceBag } from "./research/dev-evidence.js";
-import { assembleResume } from "./assemble.js";
-import { evaluateResume } from "./evaluator.js";
+import { mergeFactsIntoKG } from "./kg/merger.js";
+import { evaluateKg } from "./kg/evaluator.js";
+import { writeKgToR2 } from "./kg/persist-kg.js";
+import { fetchMediaForKG } from "./media/index.js";
+import { generateHeroProse } from "./render/hero-prose.js";
+import { renderResumeFromKg } from "./render/render-from-kg.js";
+
+import {
+  makeSource,
+  projectId as kgProjectId,
+  type KnowledgeGraph,
+  type TypedFact,
+  type BuiltFact,
+} from "@gitshow/shared/kg";
 import { ScanTrace, traceR2Key } from "./observability/trace.js";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { writeDraftResume } from "./persist.js";
 import { noopPhases, type PhaseReporter } from "./phases.js";
 import type { Resume } from "@gitshow/shared/resume";
 
-/**
- * Max repos we'll clone + git-inventory. Above this we skip inventory
- * on the least-significant repos and fall back to raw GitHub metadata.
- * Keeps the pipeline bounded for prolific users with hundreds of repos.
- */
-const INVENTORY_CAP = 15;
+const INVENTORY_CAP = 30;
 const INVENTORY_CONCURRENCY = 3;
+const JUDGE_MAX_CANDIDATES = 30;
 
 export interface RunResumePipelineOptions {
   session: ScanSession;
   usage: SessionUsage;
   /**
-   * Scratch directory for clones + web-cache. Defaults to
-   * `profiles/{handle}/`. In cloud mode the caller passes a Fly-local
-   * path (e.g. `/data/scans/{scanId}/`).
+   * Scratch directory for clones. Defaults to `profiles/{handle}/`.
+   * Cloud mode passes a Fly-local path (e.g. `/data/scans/{scanId}/`).
    */
   profileDir?: string;
-  /**
-   * When set, the resulting Resume is uploaded to R2 at
-   * `resumes/{handle}/draft.json`. Enabled automatically in cloud mode
-   * via env detection in `persist.ts`.
-   */
+  /** When true, write Resume + KG + trace to R2. */
   writeToR2?: boolean;
   onProgress?: (text: string) => void;
-  /**
-   * Reports per-stage progress to D1 so the progress page can render
-   * a live phase headline + event log. Defaults to a no-op for local /
-   * dev runs that don't have a cloud D1 wired up.
-   */
   phases?: PhaseReporter;
-  /**
-   * Callback fired right after github-fetch with the access state +
-   * data-source counts. Lets the cloud wrapper persist the snapshot onto
-   * the scans row (migration 0011) so the UI can show locked orgs +
-   * coverage before the rest of the pipeline completes.
-   */
+  /** GitHub-fetch snapshot hook (for early UI hydration). */
   onGitHubFetched?: (snapshot: {
     accessState: {
       orgs: GitHubData["orgAccess"];
@@ -100,6 +95,10 @@ export interface RunResumePipelineOptions {
     };
     dataSources: GitHubData["fetchStats"];
   }) => Promise<void> | void;
+  /** Pre-extracted LinkedIn PDF text from scans.linkedin_pdf_text. */
+  linkedinPdfText?: string;
+  /** User-supplied email captured at intake (overrides anything we infer). */
+  intakeEmail?: string;
 }
 
 export async function runResumePipeline(
@@ -111,27 +110,18 @@ export async function runResumePipeline(
   const profileDir = opts.profileDir ?? `profiles/${session.handle}`;
   await mkdir(profileDir, { recursive: true });
 
-  // Observability: collect a full per-scan trace. Every TinyFish + LLM
-  // call emits an event via this accumulator; at the end we flush the
-  // whole packet to R2 at `debug/{scanId}/trace.json`.
   const trace = new ScanTrace({
     scanId: session.id,
     handle: session.handle,
     model: session.model,
-    worker: { version: "0.3.0" },
+    worker: { version: "0.4.0-kg" },
   });
 
-  // 1. Collect GitHub data
+  // 1. GitHub fetch
   const github = await phases.phase("github-fetch", async () => {
     log(`\n[pipeline] stage 1: github fetch\n`);
     return fetchGitHubData(session.handle);
   });
-
-  // Fire the post-fetch snapshot hook as early as possible so the
-  // progress UI can render locked-orgs + data-source counts while the
-  // slower stages (inventory, agent fan-out) are still running. Errors
-  // here are swallowed — persisting the snapshot is best-effort, never
-  // worth failing the whole pipeline for.
   if (opts.onGitHubFetched) {
     try {
       await opts.onGitHubFetched({
@@ -148,7 +138,7 @@ export async function runResumePipeline(
     }
   }
 
-  // 2. Tier repos for inventory depth
+  // 2. Tier repos
   const filtered = await phases.phase("repo-filter", async () => {
     log(`[pipeline] stage 2: repo filter\n`);
     const f = filterRepos(github);
@@ -158,218 +148,266 @@ export async function runResumePipeline(
     return f;
   });
 
-  // 3. Inventory deep repos in parallel — bounded concurrency, capped
-  //    overall so we don't die on a yatendra2001 with 500 repos.
-  const inventories = await phases.phase("inventory", async () => {
-    log(`[pipeline] stage 3: inventory (cap ${INVENTORY_CAP}, concurrency ${INVENTORY_CONCURRENCY})\n`);
+  // 3. Inventory: clone deep-tier repos so the Repo Judge can read them.
+  const cloned: Record<string, string> = {};
+  await phases.phase("inventory", async () => {
+    log(
+      `[pipeline] stage 3: inventory (cap ${INVENTORY_CAP}, concurrency ${INVENTORY_CONCURRENCY})\n`,
+    );
     const toInventory = filtered.deep.slice(0, INVENTORY_CAP);
-    const inventoryLimit = pLimit(INVENTORY_CONCURRENCY);
-    const out: Record<string, StructuredInventory> = {};
+    const limit = pLimit(INVENTORY_CONCURRENCY);
     await Promise.all(
       toInventory.map((repo) =>
-        inventoryLimit(async () => {
+        limit(async () => {
           try {
-            const inv = await cloneAndInventory({
+            const inv: StructuredInventory = await cloneAndInventory({
               fullName: repo.fullName,
               handle: session.handle,
               profileDir,
               log,
             });
-            out[repo.fullName] = inv;
+            cloned[repo.fullName] = inv.repoPath;
           } catch (err) {
-            log(`[inv] ${repo.fullName} failed: ${(err as Error).message.slice(0, 80)}\n`);
+            log(
+              `[inv] ${repo.fullName} failed: ${(err as Error).message.slice(0, 80)}\n`,
+            );
           }
         }),
       ),
     );
-    return out;
+    return cloned;
   });
 
-  // 4. Normalize — artifact table w/ inventory enrichment
-  const { artifacts, indexes } = await phases.phase("normalize", async () => {
-    log(`[pipeline] stage 4: normalize\n`);
-    return normalize({ github, inventories });
-  });
-
-  // 5. Discover — frames downstream person-agent with investigation
-  //    angles + primary_shape.
-  const discover = await phases.phase("discover", async () => {
-    log(`[pipeline] stage 5: discover\n`);
-    return runDiscover({
+  // 4. Repo Judge (Kimi K2.6) — produces shouldFeature/kind/polish per repo.
+  const judgments = await phases.phase("repo-judge", async () => {
+    log(`[pipeline] stage 4: repo-judge (max ${JUDGE_MAX_CANDIDATES})\n`);
+    return judgeAllRepos({
       session,
       usage,
       github,
-      artifacts,
-      indexes,
-      onProgress,
-    });
-  });
-
-  // 6. Pick featured set for deep per-project research
-  const featured = pickFeatured(github, artifacts);
-  log(`[pipeline] picked ${featured.length} featured repos\n`);
-
-  // 6b. DevEvidence — orchestrator+workers web research so downstream
-  //    agents have grounded facts (interviews, talks, HN, press). No-ops
-  //    gracefully if TINYFISH_API_KEY is unset.
-  const evidence = await phases.phase("dev-evidence", async () => {
-    log(`[pipeline] stage 6b: dev-evidence research\n`);
-    return runDevEvidenceResearch({
-      session,
-      usage,
-      github,
-      discover,
-      featuredFullNames: featured,
+      clonedPaths: cloned,
+      maxCandidates: JUDGE_MAX_CANDIDATES,
       trace,
       onProgress,
     });
   });
-  log(
-    `[pipeline]   evidence: ${evidence.cards.length} cards (${evidence.queriesRun}/${evidence.queriesPlanned} queries)\n`,
-  );
+  log(`[pipeline]   judged ${Object.keys(judgments).length} repos\n`);
 
-  // 7. Parallel section agents. current_phase stays at "section-agents"
-  //    for the whole block; per-agent sub-events fan out in the log.
-  const [buildLog, skills, projects, work, education, blog] = await phases.phase(
-    "section-agents",
-    () => {
-      log(`[pipeline] stage 7: section agents (parallel)\n`);
-      return Promise.all([
-        phases.subPhase("resume:build-log", () =>
-          runBuildLogAgent({ session, usage, github, artifacts, onProgress }),
-        ),
-        phases.subPhase("resume:skills", () =>
-          runSkillsAgent({ session, usage, github, artifacts, onProgress }),
-        ),
-        phases.subPhase("resume:projects", () =>
-          runProjectsAgent({
-            session,
-            usage,
-            github,
-            artifacts,
-            featuredFullNames: featured,
-            profileDir,
-            onProgress,
-          }),
-        ),
-        phases.subPhase("resume:work", () =>
-          runWorkAgent({ session, usage, github, artifacts, evidence, trace, onProgress }),
-        ),
-        phases.subPhase("resume:education", () =>
-          runEducationAgent({ session, usage, github, artifacts, evidence, trace, onProgress }),
-        ),
-        phases.subPhase("resume:blog-import", () =>
-          runBlogImportAgent({
-            session,
-            usage,
-            urls: session.blog_urls ?? [],
-            onProgress,
-          }),
-        ),
-      ]);
-    },
-  );
+  // 5. Fetcher fan-out (parallel). Each fetcher returns TypedFact[].
+  //    LinkedIn is internally tiered (1+2 → 3 → 4 PDF).
+  const personName = github.profile.name ?? session.handle;
+  const fetchersResult = await phases.phase("fetchers", async () => {
+    log(`[pipeline] stage 5: fetcher fan-out\n`);
+    const githubFacts = emitGithubFacts({ github, trace });
+    log(`[pipeline]   github-facts: ${githubFacts.length} facts (sync)\n`);
 
-  // 8. Person — post-synthesis so the summary can reference
-  //    project titles, work companies, education schools.
-  const person = await phases.phase("resume:person", async () => {
-    log(`[pipeline] stage 8: person (post-synthesis)\n`);
-    return runPersonAgent({
+    const [
+      linkedInFacts,
+      personalSiteFacts,
+      twitterFacts,
+      hnFacts,
+      devtoFacts,
+      mediumFacts,
+      orcidFacts,
+      semanticScholarFacts,
+      arxivFacts,
+      stackoverflowFacts,
+      blog,
+    ] = await Promise.all([
+      phases.subPhase("fetch:linkedin", () =>
+        runLinkedInTierChain({ session, usage, trace, onProgress, pdfText: opts.linkedinPdfText }),
+      ),
+      phases.subPhase("fetch:personal-site", () =>
+        runPersonalSiteFetcher({ session, usage, trace, onProgress }),
+      ),
+      phases.subPhase("fetch:twitter", () =>
+        runTwitterBioFetcher({ session, usage, trace, onProgress }),
+      ),
+      phases.subPhase("fetch:hn", () =>
+        runHnProfileFetcher({ session, usage, trace, onProgress }),
+      ),
+      phases.subPhase("fetch:devto", () =>
+        runDevtoProfileFetcher({ session, usage, trace, onProgress }),
+      ),
+      phases.subPhase("fetch:medium", () =>
+        runMediumProfileFetcher({ session, usage, trace, onProgress }),
+      ),
+      phases.subPhase("fetch:orcid", () =>
+        runOrcidFetcher({ session, usage, trace, onProgress }),
+      ),
+      phases.subPhase("fetch:semantic-scholar", () =>
+        runSemanticScholarFetcher({
+          session,
+          usage,
+          trace,
+          onProgress,
+          personName,
+          affiliationGuess: github.profile.bio ?? undefined,
+        }),
+      ),
+      phases.subPhase("fetch:arxiv", () =>
+        runArxivFetcher({ session, usage, trace, onProgress, personName }),
+      ),
+      phases.subPhase("fetch:stackoverflow", () =>
+        runStackoverflowFetcher({ session, usage, trace, onProgress }),
+      ),
+      phases.subPhase("blog-import", () =>
+        runBlogImportAgent({
+          session,
+          usage,
+          urls: session.blog_urls ?? [],
+          onProgress,
+        }),
+      ),
+    ]);
+
+    return {
+      githubFacts,
+      linkedInFacts,
+      personalSiteFacts,
+      twitterFacts,
+      hnFacts,
+      devtoFacts,
+      mediumFacts,
+      orcidFacts,
+      semanticScholarFacts,
+      arxivFacts,
+      stackoverflowFacts,
+      blog,
+    };
+  });
+
+  // 6. Project facts from judgments + intake email/socials.
+  const judgmentFacts = projectJudgmentsToBuiltFacts(judgments);
+  const intakeFacts = projectIntakeFacts(session, opts.intakeEmail);
+
+  const allFacts: TypedFact[] = [
+    ...fetchersResult.githubFacts,
+    ...fetchersResult.linkedInFacts,
+    ...fetchersResult.personalSiteFacts,
+    ...fetchersResult.twitterFacts,
+    ...fetchersResult.hnFacts,
+    ...fetchersResult.devtoFacts,
+    ...fetchersResult.mediumFacts,
+    ...fetchersResult.orcidFacts,
+    ...fetchersResult.semanticScholarFacts,
+    ...fetchersResult.arxivFacts,
+    ...fetchersResult.stackoverflowFacts,
+    ...judgmentFacts,
+    ...intakeFacts,
+  ];
+  log(`[pipeline]   total facts: ${allFacts.length}\n`);
+
+  // 7. Merge facts into one KG.
+  const kg = await phases.phase("merge", async () => {
+    log(`[pipeline] stage 6: merge facts → KG\n`);
+    return mergeFactsIntoKG(allFacts, {
       session,
       usage,
-      github,
-      discover,
-      artifacts,
-      featuredProjects: projects.slice(0, 6).map((p) => ({
-        title: p.title,
-        summary: p.description.slice(0, 160),
-      })),
-      workCompanies: work.map((w) => w.company),
-      educationSchools: education.map((e) => e.school),
-      evidence,
+      meta: {
+        scanId: session.id,
+        handle: session.handle,
+        model: session.model,
+        startedAt: Date.parse(session.started_at),
+        finishedAt: Date.now(),
+      },
+      trace,
       onProgress,
     });
   });
 
-  // 9. Contact — rules only, deterministic. Intentionally outside the
-  //    phase reporter: sub-second, zero LLM, noise in the log.
-  log(`[pipeline] stage 9: contact\n`);
-  const contact = runContactAgent({ session, github });
+  // 8. Apply judgments to Project nodes. The judgment is the source of
+  //    truth on shouldFeature/kind/polish/purpose/reason for repo-backed
+  //    projects.
+  applyJudgmentsToKg(kg, judgments);
 
-  // 10. Assemble
-  const resume = await phases.phase("assemble", async () => {
-    log(`[pipeline] stage 10: assemble\n`);
-    return assembleResume({
-      session,
-      github,
-      person,
-      skills,
-      projects,
-      buildLog,
-      work,
-      education,
-      contact,
-      blog,
+  // 9. Media fetch (og → README → YouTube → Gemini gen / Clearbit logos).
+  const r2 = r2ClientFromEnv();
+  await phases.phase("media", async () => {
+    log(`[pipeline] stage 7: media fetch\n`);
+    if (!r2) {
+      log(`[pipeline]   skipping R2-backed media (env missing); using remote URLs\n`);
+    }
+    await fetchMediaForKG(kg, {
+      trace,
+      r2: r2 ? { client: r2.client, bucket: r2.bucket, handle: session.handle } : undefined,
     });
   });
 
-  // 10b. Evaluator — deterministic quality gate. Flags issues so we can
-  //      see in scan_events WHY an output is thin without waiting for
-  //      the user to notice. Retry loop is a v2 follow-up.
-  const evalReport = await phases.phase("evaluate", async () => {
-    const hasLinkedIn = !!session.socials.linkedin;
-    const hasIntakeSignal = !!(
-      session.context_notes && session.context_notes.trim().length > 0
-    );
-    const report = evaluateResume({
-      resume,
-      hasLinkedIn,
-      hasIntakeSignal,
-      evidence,
+  // 10. Persist KG (latest + immutable snapshot).
+  if (opts.writeToR2 || process.env.R2_BUCKET_NAME) {
+    await phases.phase("persist-kg", async () => {
+      log(`[pipeline] stage 8: persist KG\n`);
+      const res = await writeKgToR2({
+        handle: session.handle,
+        scanId: session.id,
+        kg,
+        log,
+      });
+      if (!res.ok) {
+        log(`[pipeline]   KG persist failed: ${res.error ?? "unknown"}\n`);
+      }
+    });
+  }
+
+  // 11. Evaluate.
+  await phases.phase("evaluate-kg", async () => {
+    log(`[pipeline] stage 9: evaluator\n`);
+    const report = evaluateKg({
+      kg,
+      hasLinkedIn: !!session.socials.linkedin,
+      hasLinkedInPdf: !!opts.linkedinPdfText,
+      hasPersonalSite: !!session.socials.website,
+      trace,
     });
     log(
-      `[pipeline] evaluator: ${report.pass ? "PASS" : "FAIL"} (${report.issues.length} issues)\n`,
+      `[pipeline]   evaluator: ${report.pass ? "PASS" : "FAIL"} — ${report.blockingErrors} blocking, ${report.warnings} warnings\n`,
     );
     for (const i of report.issues) {
       log(`[pipeline]   [${i.severity}] ${i.section}: ${i.message}\n`);
     }
-    trace.evaluator({
-      pass: report.pass,
-      issueCount: report.issues.length,
-      issues: report.issues.map((i) => ({
-        section: i.section,
-        severity: i.severity,
-        message: i.message,
-      })),
-    });
     return report;
   });
-  if (!evalReport.pass) {
-    log(
-      `[pipeline] evaluator flagged ${evalReport.issues.filter((i) => i.severity === "error").length} error(s) — shipping anyway (v1: no retry loop yet).\n`,
-    );
-  }
+
+  // 12. Hero prose (single Opus call).
+  const prose = await phases.phase("hero-prose", async () => {
+    log(`[pipeline] stage 10: hero-prose\n`);
+    return generateHeroProse({ session, usage, kg, trace, onProgress });
+  });
+
+  // 13. Render Resume from KG (zero LLM).
+  const resume = await phases.phase("render", async () => {
+    log(`[pipeline] stage 11: render-from-kg\n`);
+    return renderResumeFromKg({
+      kg,
+      handle: session.handle,
+      scanId: session.id,
+      prose,
+      blog: fetchersResult.blog,
+      email: opts.intakeEmail,
+      trace,
+    });
+  });
 
   log(
-    `[pipeline] done. ${projects.length} projects, ${buildLog.length} build-log entries, ${skills.skills.length} skills, ${blog.length} blog posts.\n`,
+    `[pipeline] done. ${resume.projects.length} projects, ${resume.work.length} work, ` +
+      `${resume.education.length} edu, ${resume.skills.length} skills, ` +
+      `${resume.publications.length} pubs, ${resume.hackathons.length} hackathons, ` +
+      `${resume.buildLog.length} build-log, ${resume.blog.length} blog\n`,
   );
 
-  // 11. Persist to R2 when requested (cloud mode) or when
-  //     R2_BUCKET_NAME is present (dev-with-real-R2 flag).
+  // 14. Persist Resume + trace.
   if (opts.writeToR2 || process.env.R2_BUCKET_NAME) {
-    await phases.phase("persist", async () => {
-      log(`[pipeline] stage 11: write draft.json to R2\n`);
+    await phases.phase("persist-resume", async () => {
+      log(`[pipeline] stage 12: persist resume\n`);
       try {
         await writeDraftResume({ handle: session.handle, resume, log });
       } catch (err) {
         log(
-          `[pipeline] R2 write failed: ${(err as Error).message.slice(0, 160)}\n`,
+          `[pipeline] resume persist failed: ${(err as Error).message.slice(0, 200)}\n`,
         );
       }
     });
-
-    // 11b. Persist the trace alongside the draft. Best-effort: never
-    //      fail the scan over observability.
     await phases.phase("persist-trace", async () => {
       try {
         const packet = trace.finalize(resume);
@@ -385,29 +423,191 @@ export async function runResumePipeline(
   return resume;
 }
 
+// ─── LinkedIn tier chain ────────────────────────────────────────────
+
+async function runLinkedInTierChain(opts: {
+  session: ScanSession;
+  usage: SessionUsage;
+  trace: ScanTrace;
+  onProgress?: (t: string) => void;
+  pdfText?: string;
+}): Promise<TypedFact[]> {
+  const { session, usage, trace, onProgress, pdfText } = opts;
+
+  if (!session.socials.linkedin && !pdfText) {
+    return [];
+  }
+
+  // Tier 1 + Tier 2 (TinyFish + Jina).
+  const t12 = await runLinkedInPublicFetcher({ session, usage, trace, onProgress });
+  if (t12.length > 0) return t12;
+
+  // Tier 3 — Playwright with Googlebot UA.
+  const t3 = await runLinkedInPlaywrightFetcher({
+    session,
+    usage,
+    trace,
+    onProgress,
+  });
+  if (t3.length > 0) return t3;
+
+  // Tier 4 — uploaded PDF salvage.
+  if (pdfText) {
+    return runLinkedInPdfFetcher({
+      session,
+      usage,
+      trace,
+      onProgress,
+      pdfText,
+    });
+  }
+  return [];
+}
+
+// ─── Judgment → BUILT facts ─────────────────────────────────────────
+
+function projectJudgmentsToBuiltFacts(
+  judgments: Record<string, RepoJudgeOutput>,
+): BuiltFact[] {
+  const facts: BuiltFact[] = [];
+  for (const [fullName, j] of Object.entries(judgments)) {
+    facts.push({
+      kind: "BUILT",
+      project: {
+        title: friendlyTitleFromFullName(fullName, j.repo.description),
+        purpose: j.judgment.purpose,
+        kind: j.judgment.kind,
+        polish: j.judgment.polish,
+        reason: j.judgment.reason,
+        tags: j.judgment.technologies,
+        repoFullName: fullName,
+        dates: {
+          start: j.repo.createdAt ?? undefined,
+          end: j.repo.pushedAt ?? undefined,
+          active: !j.repo.isArchived,
+        },
+      },
+      attrs: {
+        active: !j.repo.isArchived,
+        start: j.repo.createdAt ?? undefined,
+        end: j.repo.pushedAt ?? undefined,
+      },
+      source: makeSource({
+        fetcher: "repo-judge",
+        method: "llm-extraction",
+        confidence: j.judgment.shouldFeature ? "high" : "medium",
+        url: `https://github.com/${fullName}`,
+        snippet: j.judgment.purpose,
+      }),
+    });
+  }
+  return facts;
+}
+
+function friendlyTitleFromFullName(fullName: string, description?: string | null): string {
+  if (description && description.length < 80 && /^[A-Z]/.test(description.trim())) {
+    return description.trim();
+  }
+  const name = fullName.split("/").pop() ?? fullName;
+  return name
+    .replace(/[-_]+/g, " ")
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+// ─── Apply judgments to KG ──────────────────────────────────────────
+
+function applyJudgmentsToKg(
+  kg: KnowledgeGraph,
+  judgments: Record<string, RepoJudgeOutput>,
+): void {
+  for (const [fullName, j] of Object.entries(judgments)) {
+    const expectedId = kgProjectId({
+      repoFullName: fullName,
+      title: friendlyTitleFromFullName(fullName, j.repo.description),
+    });
+    const project =
+      kg.entities.projects.find((p) => p.id === expectedId) ??
+      kg.entities.projects.find((p) => p.repoFullName === fullName);
+    if (!project) continue;
+    project.kind = j.judgment.kind;
+    project.polish = j.judgment.polish;
+    project.shouldFeature = j.judgment.shouldFeature;
+    project.purpose = j.judgment.purpose;
+    project.reason = j.judgment.reason;
+    project.tags = uniqStrings([...(project.tags ?? []), ...j.judgment.technologies]);
+    kg.judgments[project.id] = j.judgment;
+  }
+}
+
+function uniqStrings(arr: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of arr) {
+    const trimmed = s.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+  }
+  return out;
+}
+
+// ─── Intake facts (high-priority overrides) ──────────────────────────
+
+function projectIntakeFacts(
+  session: ScanSession,
+  intakeEmail?: string,
+): TypedFact[] {
+  const facts: TypedFact[] = [];
+  const src = makeSource({
+    fetcher: "intake",
+    method: "user-input",
+    confidence: "high",
+    snippet: "user-supplied at intake",
+  });
+  const personPatch: { email?: string; url?: string } = {};
+  if (intakeEmail) personPatch.email = intakeEmail;
+  if (session.socials.website) personPatch.url = session.socials.website;
+  if (Object.keys(personPatch).length > 0) {
+    facts.push({ kind: "PERSON", person: personPatch, source: src });
+  }
+  return facts;
+}
+
+// ─── R2 helpers ─────────────────────────────────────────────────────
+
+function r2ClientFromEnv(): { client: S3Client; bucket: string } | null {
+  const accountId = process.env.CF_ACCOUNT_ID;
+  const bucket = process.env.R2_BUCKET_NAME;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+  if (!accountId || !bucket || !accessKeyId || !secretAccessKey) return null;
+  return {
+    client: new S3Client({
+      region: "auto",
+      endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+      credentials: { accessKeyId, secretAccessKey },
+    }),
+    bucket,
+  };
+}
+
 async function uploadTraceToR2(
   scanId: string,
   packet: unknown,
   log: (t: string) => void,
 ): Promise<void> {
-  const accountId = process.env.CF_ACCOUNT_ID;
-  const bucket = process.env.R2_BUCKET_NAME;
-  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-  if (!accountId || !bucket || !accessKeyId || !secretAccessKey) {
+  const r2 = r2ClientFromEnv();
+  if (!r2) {
     log(`[trace] skipping R2 upload — missing R2 env\n`);
     return;
   }
-  const client = new S3Client({
-    region: "auto",
-    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
-    credentials: { accessKeyId, secretAccessKey },
-  });
   const key = traceR2Key(scanId);
   const body = JSON.stringify(packet, null, 2);
-  await client.send(
+  await r2.client.send(
     new PutObjectCommand({
-      Bucket: bucket,
+      Bucket: r2.bucket,
       Key: key,
       Body: body,
       ContentType: "application/json",

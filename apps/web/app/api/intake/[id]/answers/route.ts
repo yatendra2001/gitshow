@@ -37,6 +37,10 @@ const BodySchema = z.object({
       twitter: z.string().max(60).optional().or(z.literal("")),
       website: z.string().url().optional().or(z.literal("")),
       youtube: z.string().url().optional().or(z.literal("")),
+      /** ORCID iD URL — feeds the orcid + semantic-scholar fetchers. */
+      orcid: z.string().url().optional().or(z.literal("")),
+      /** Stack Overflow profile URL — feeds the stackoverflow fetcher. */
+      stackoverflow: z.string().url().optional().or(z.literal("")),
     })
     .optional(),
   blog_urls: z
@@ -153,6 +157,8 @@ export async function POST(
         linkedin: socials.linkedin || undefined,
         twitter: socials.twitter || undefined,
         website: socials.website || undefined,
+        orcid: socials.orcid || undefined,
+        stackoverflow: socials.stackoverflow || undefined,
         blogUrls,
         userGhToken,
       }),
@@ -193,6 +199,8 @@ function buildScanEnv(
     linkedin?: string;
     twitter?: string;
     website?: string;
+    orcid?: string;
+    stackoverflow?: string;
     blogUrls?: string[];
     userGhToken: string;
   },
@@ -220,6 +228,8 @@ function buildScanEnv(
   if (s.linkedin) out.LINKEDIN = s.linkedin;
   if (s.twitter) out.TWITTER = s.twitter;
   if (s.website) out.WEBSITE = s.website;
+  if (s.orcid) out.ORCID = s.orcid;
+  if (s.stackoverflow) out.STACKOVERFLOW = s.stackoverflow;
   if (s.blogUrls && s.blogUrls.length > 0)
     out.BLOG_URLS = s.blogUrls.join(",");
   // Optional envs — not on CloudflareEnv's hard type yet, so read via

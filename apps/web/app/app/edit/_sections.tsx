@@ -405,6 +405,7 @@ export function ProjectsSectionForm({
         image: undefined,
         video: undefined,
         href: undefined,
+        kind: "code",
       })}
       renderItem={(item, _i, onItemChange) => (
         <div className="flex flex-col gap-3">
@@ -1089,6 +1090,8 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   education: "Education",
   skills: "Skills",
   projects: "Projects",
-  buildLog: `"I like building things"`,
+  hackathons: "Hackathons",
+  publications: "Publications",
+  buildLog: "Build Log",
   contact: "Contact",
 };

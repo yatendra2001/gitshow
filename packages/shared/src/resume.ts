@@ -207,6 +207,24 @@ export type EducationEntry = z.infer<typeof EducationEntrySchema>;
 // Projects — the curated featured grid (top ~20)
 // ──────────────────────────────────────────────────────────────
 
+/** Project kind — `research-artifact` is for researcher personas (deferred image-first variant per §19.1). */
+export const ProjectKindSchema = z.enum(["code", "research-artifact"]);
+export type ProjectKind = z.infer<typeof ProjectKindSchema>;
+
+export const ProjectMediaSchema = z.object({
+  /** R2 URL or absolute hero image (1200×630). */
+  hero: UrlOrPath.optional(),
+  /** Optional thumbnails (square 400×400). */
+  thumb: UrlOrPath.optional(),
+  /** Up to 6 additional screenshots, R2-hosted. */
+  screenshots: z.array(UrlOrPath).max(6).default([]),
+  /** Origin of the hero asset — useful for the editor + future "regenerate" UI. */
+  heroOrigin: z
+    .enum(["og", "readme", "youtube", "generated", "user-upload"])
+    .optional(),
+});
+export type ProjectMedia = z.infer<typeof ProjectMediaSchema>;
+
 export const ProjectSchema = z.object({
   id: z.string(),
   title: z.string().max(120),
@@ -225,8 +243,63 @@ export const ProjectSchema = z.object({
   video: UrlOrPath.optional(),
   /** Primary canonical link used when the whole card is clickable. */
   href: z.string().url().optional(),
+  /** §3.2 — distinguishes code projects from research artifacts. Default "code". */
+  kind: ProjectKindSchema.default("code"),
+  /** Hero/thumbnails sourced via the media pipeline. */
+  media: ProjectMediaSchema.optional(),
 });
 export type Project = z.infer<typeof ProjectSchema>;
+
+// ──────────────────────────────────────────────────────────────
+// Hackathons — Achievement nodes with kind=hackathon, projected per §9.1
+// ──────────────────────────────────────────────────────────────
+
+export const HackathonEntrySchema = z.object({
+  id: z.string(),
+  title: z.string().max(200),
+  date: z.string().max(40).optional(),
+  description: z.string().max(800).optional(),
+  location: z.string().max(120).optional(),
+  rank: z.string().max(80).optional(),
+  sources: z
+    .array(
+      z.object({
+        label: z.string().max(40),
+        href: z.string().url(),
+      }),
+    )
+    .max(6)
+    .default([]),
+});
+export type HackathonEntry = z.infer<typeof HackathonEntrySchema>;
+
+// ──────────────────────────────────────────────────────────────
+// Publications — research papers, talks, podcasts (researcher persona)
+// ──────────────────────────────────────────────────────────────
+
+export const PublicationKindSchema = z.enum([
+  "paper",
+  "preprint",
+  "talk",
+  "podcast",
+  "video",
+]);
+export type PublicationKind = z.infer<typeof PublicationKindSchema>;
+
+export const PublicationEntrySchema = z.object({
+  id: z.string(),
+  title: z.string().max(400),
+  kind: PublicationKindSchema,
+  /** Conference, journal, podcast host, etc. */
+  venue: z.string().max(200).optional(),
+  publishedAt: z.string().max(40).optional(),
+  url: z.string().url(),
+  doi: z.string().max(200).optional(),
+  coAuthors: z.array(z.string().max(120)).max(20).default([]),
+  /** Optional summary line for the card. */
+  summary: z.string().max(600).optional(),
+});
+export type PublicationEntry = z.infer<typeof PublicationEntrySchema>;
 
 // ──────────────────────────────────────────────────────────────
 // Build-log entry — one row in "I like building things" timeline
@@ -305,6 +378,8 @@ export const SectionKeySchema = z.enum([
   "education",
   "skills",
   "projects",
+  "hackathons",
+  "publications",
   "buildLog",
   "contact",
 ]);
@@ -315,7 +390,9 @@ export const DEFAULT_SECTION_ORDER: SectionKey[] = [
   "about",
   "work",
   "education",
+  "publications",
   "skills",
+  "hackathons",
   "projects",
   "buildLog",
   "contact",
@@ -366,6 +443,8 @@ export const ResumeSchema = z.object({
   work: z.array(WorkEntrySchema).max(30).default([]),
   education: z.array(EducationEntrySchema).max(20).default([]),
   projects: z.array(ProjectSchema).max(40).default([]),
+  hackathons: z.array(HackathonEntrySchema).max(40).default([]),
+  publications: z.array(PublicationEntrySchema).max(60).default([]),
   buildLog: z.array(BuildLogEntrySchema).max(500).default([]),
   blog: z.array(BlogPostSchema).max(50).default([]),
   theme: ThemeSchema.default({ mode: "dark" }),

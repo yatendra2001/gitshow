@@ -368,6 +368,11 @@ export const ScanSocialsSchema = z.object({
   twitter: z.string().optional(),
   linkedin: z.string().optional(),
   website: z.string().optional(),
+  github: z.string().optional(),
+  /** ORCID iD URL (https://orcid.org/0000-0000-0000-0000) for the researcher persona. */
+  orcid: z.string().optional(),
+  /** Stack Overflow user URL (https://stackoverflow.com/users/{id}/{slug}). */
+  stackoverflow: z.string().optional(),
   other: z.array(z.string()).optional(),
 });
 export type ScanSocials = z.infer<typeof ScanSocialsSchema>;
