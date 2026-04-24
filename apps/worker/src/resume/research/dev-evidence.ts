@@ -37,10 +37,9 @@ import {
 
 // ─── Schema (what the orchestrator produces) ──────────────────────────
 
-// Cap at 5 queries so a single scan stays under TinyFish's free-tier
-// 5-searches/minute ceiling. Tighter than the article's spirit (quality
-// > quantity) but matches what we can afford to run without rate-limit
-// errors.
+// Query count isn't capped to dodge rate limits — we pace calls instead
+// (see DEFAULT_SEARCH_INTERVAL_MS below). Kept at a reasonable ceiling
+// just so an orchestrator hallucination doesn't ask for 50.
 const QueryPlanSchema = z.object({
   queries: z
     .array(
@@ -51,8 +50,8 @@ const QueryPlanSchema = z.object({
         ),
       }),
     )
-    .min(2)
-    .max(5),
+    .min(3)
+    .max(10),
 });
 type QueryPlan = z.infer<typeof QueryPlanSchema>;
 
@@ -121,17 +120,14 @@ export interface DevEvidenceInput {
   onProgress?: (text: string) => void;
 }
 
-const DEFAULT_MAX_URLS = 10;
+const DEFAULT_MAX_URLS = 15;
 const PER_QUERY_TOP_K = 2;
 const FETCH_CONCURRENCY = 3;
-// TinyFish free tier = 5 searches/min. Space calls at least 13s apart
-// so a single scan never trips the rate limit even if a second scan
-// fires right after. Override via TINYFISH_SEARCH_INTERVAL_MS when
-// running on a higher tier.
-const DEFAULT_SEARCH_INTERVAL_MS = 13_000;
-// Free tier = 25 fetches/min; we batch up to 10 per call, so two
-// back-to-back batches (20 URLs) still fit. No per-batch delay needed
-// as long as DEFAULT_MAX_URLS stays <= 10.
+// TinyFish free tier = 5 searches/min, 25 fetches/min. We don't cap the
+// number of calls — we pace them. Override these intervals to shrink on
+// Starter tier (20 searches/min, 100 fetches/min → ~3s search, ~0.6s fetch).
+const DEFAULT_SEARCH_INTERVAL_MS = 13_000; // 60s / 5 + 1s margin
+const DEFAULT_FETCH_BATCH_INTERVAL_MS = 25_000; // 60s / (25/10 batches) = 24s, +1s margin
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
@@ -209,9 +205,15 @@ export async function runDevEvidenceResearch(
     };
   }
 
-  // Fetch in batches of 10 (TinyFish max per request).
+  // Fetch in batches of 10 (TinyFish max per request). Each batch
+  // consumes up to 10 of the 25-per-min fetch budget, so we space
+  // batches ~25s apart on free tier.
   const batches: Array<typeof targets> = [];
   for (let i = 0; i < targets.length; i += 10) batches.push(targets.slice(i, i + 10));
+
+  const fetchIntervalMs = Number(
+    process.env.TINYFISH_FETCH_INTERVAL_MS ?? DEFAULT_FETCH_BATCH_INTERVAL_MS,
+  );
 
   const fetched: Array<{
     url: string;
@@ -221,7 +223,11 @@ export async function runDevEvidenceResearch(
     text: string;
     hint: TinyFishSearchResult;
   }> = [];
+  let lastFetchAt = 0;
   for (const batch of batches) {
+    const wait = fetchIntervalMs - (Date.now() - lastFetchAt);
+    if (wait > 0 && lastFetchAt > 0) await sleep(wait);
+    lastFetchAt = Date.now();
     const resp = await tf.fetchUrls(
       batch.map((b) => b.url),
       { format: "markdown" },
@@ -293,7 +299,7 @@ Guidelines:
   - Each query should probe a specific thread. Not "John Smith GitHub" — "Jane Doe Stripe payment protocol 2023" or "ai_buddy Flutter Awesome featured".
   - Mix approaches: site-scoped (e.g. site:news.ycombinator.com <project>), name+company, project+launch, "interview with <name>", podcast patterns.
   - Avoid duplicates and near-duplicates.
-  - Output 4-5 queries. We pay per search; be deliberate. Quality over quantity.
+  - Output 6-8 queries. Quality over quantity — a precise site-scoped query beats three vague ones.
 
 Each query MUST include a short "why" — what thread you're pulling on.
 
