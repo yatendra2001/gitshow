@@ -47,6 +47,8 @@ interface ProfileInputs {
   twitter: string;
   website: string;
   youtube: string;
+  orcid: string;
+  stackoverflow: string;
   blogUrls: string[];
 }
 
@@ -55,6 +57,8 @@ const EMPTY_INPUTS: ProfileInputs = {
   twitter: "",
   website: "",
   youtube: "",
+  orcid: "",
+  stackoverflow: "",
   blogUrls: [""],
 };
 
@@ -136,11 +140,16 @@ export default function IntakePage({
       twitter?: string;
       website?: string;
       youtube?: string;
+      orcid?: string;
+      stackoverflow?: string;
     } = {};
     if (trimmed(inputs.linkedin)) socials.linkedin = normalizeUrl(inputs.linkedin);
     if (trimmed(inputs.twitter)) socials.twitter = trimmed(inputs.twitter);
     if (trimmed(inputs.website)) socials.website = normalizeUrl(inputs.website);
     if (trimmed(inputs.youtube)) socials.youtube = normalizeUrl(inputs.youtube);
+    if (trimmed(inputs.orcid)) socials.orcid = normalizeUrl(inputs.orcid);
+    if (trimmed(inputs.stackoverflow))
+      socials.stackoverflow = normalizeUrl(inputs.stackoverflow);
 
     try {
       const resp = await fetch(
@@ -384,6 +393,18 @@ function ProfileInputsCard({
           placeholder="https://youtube.com/@yourhandle"
           value={inputs.youtube}
           onChange={(v) => set("youtube", v)}
+        />
+        <InputField
+          label="ORCID iD"
+          placeholder="https://orcid.org/0000-0000-0000-0000"
+          value={inputs.orcid}
+          onChange={(v) => set("orcid", v)}
+        />
+        <InputField
+          label="Stack Overflow"
+          placeholder="https://stackoverflow.com/users/123456/you"
+          value={inputs.stackoverflow}
+          onChange={(v) => set("stackoverflow", v)}
         />
       </div>
 
