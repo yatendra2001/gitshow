@@ -20,7 +20,7 @@ import { cn } from "@/lib/utils";
  * The body is a vertical phase timeline: each phase is a row with its
  * own status dot + copy. The running phase shimmers; done phases tick
  * with a duration; pending phases sit muted with an empty circle.
- * `section-agents` expands to the 6 parallel sub-agents nested
+ * `fetchers` expands to the parallel sub-fetchers nested
  * underneath.
  */
 
@@ -57,45 +57,63 @@ const PHASE_COPY: Record<string, string> = {
   "github-fetch": "Reading your GitHub",
   "repo-filter": "Picking which repos matter",
   inventory: "Studying your top repos",
-  normalize: "Organising the pieces",
-  discover: "Spotting what's distinctive",
-  "section-agents": "Crafting your portfolio sections",
-  "resume:person": "Writing your hero + about",
-  "resume:skills": "Curating your skills",
-  "resume:build-log": "Summarising every repo",
-  "resume:work": "Reconstructing work history",
-  "resume:education": "Reconstructing education",
-  "resume:blog-import": "Importing your blog posts",
-  "resume:projects": "Deep-researching featured projects",
-  assemble: "Putting it all together",
-  persist: "Saving your draft",
-  resume: "Finalising the resume",
+  "repo-judge": "Spotting what's distinctive",
+  fetchers: "Gathering context from across the web",
+  merge: "Organising the pieces",
+  media: "Finding cover images",
+  "persist-kg": "Saving the picture",
+  "evaluate-kg": "Double-checking everything",
+  "hero-prose": "Writing your hero + about",
+  render: "Crafting your portfolio sections",
+  "persist-resume": "Saving your draft",
+  "persist-trace": "Wrapping up",
+  // Sub-phases under fetchers — shown as children of that row.
+  "fetch:linkedin": "Reading your LinkedIn",
+  "fetch:personal-site": "Reading your personal site",
+  "fetch:twitter": "Reading your Twitter bio",
+  "fetch:hn": "Checking Hacker News",
+  "fetch:devto": "Checking dev.to",
+  "fetch:medium": "Checking Medium",
+  "fetch:orcid": "Looking up your ORCID",
+  "fetch:semantic-scholar": "Searching Semantic Scholar",
+  "fetch:arxiv": "Searching arXiv",
+  "fetch:stackoverflow": "Reading your Stack Overflow",
+  "blog-import": "Importing your blog posts",
 };
 
 /**
- * Ordered top-level phases. `section-agents` is a bucket for the 6
- * parallel sub-agents which we render as children rather than as
- * their own rows in the outer timeline.
+ * Ordered top-level phases. `fetchers` is a bucket for the parallel
+ * sub-fetchers (linkedin, hn, devto, blog-import, etc.) which we render
+ * as children rather than as their own rows in the outer timeline.
  */
 const PHASE_ORDER = [
   "github-fetch",
   "repo-filter",
   "inventory",
-  "normalize",
-  "discover",
-  "section-agents",
-  "resume:person",
-  "assemble",
-  "persist",
+  "repo-judge",
+  "fetchers",
+  "merge",
+  "media",
+  "persist-kg",
+  "evaluate-kg",
+  "hero-prose",
+  "render",
+  "persist-resume",
+  "persist-trace",
 ];
 
 const SECTION_AGENT_CHILDREN = [
-  "resume:build-log",
-  "resume:skills",
-  "resume:projects",
-  "resume:work",
-  "resume:education",
-  "resume:blog-import",
+  "fetch:linkedin",
+  "fetch:personal-site",
+  "fetch:twitter",
+  "fetch:hn",
+  "fetch:devto",
+  "fetch:medium",
+  "fetch:orcid",
+  "fetch:semantic-scholar",
+  "fetch:arxiv",
+  "fetch:stackoverflow",
+  "blog-import",
 ];
 
 type NodeStatus = "pending" | "running" | "done" | "failed";
@@ -123,11 +141,11 @@ function progressPercent(scan: ScanState): number {
   const current = scan.current_phase ?? scan.last_completed_phase;
   const idx = current ? PHASE_ORDER.indexOf(current) : -1;
   if (idx < 0) {
-    // section-agents in flight reports its child as current_phase; credit
-    // the parent row too so the bar isn't pinned at 55% during the long
-    // parallel block.
+    // The fetchers stage emits its children as current_phase (fetch:linkedin,
+    // fetch:hn, blog-import, etc.) — credit the parent row so the bar
+    // doesn't stall during the long parallel block.
     if (SECTION_AGENT_CHILDREN.includes(current ?? "")) {
-      const parentIdx = PHASE_ORDER.indexOf("section-agents");
+      const parentIdx = PHASE_ORDER.indexOf("fetchers");
       return Math.min(99, Math.round(((parentIdx + 0.5) / PHASE_ORDER.length) * 100));
     }
     return 4;
@@ -355,7 +373,7 @@ function buildPhaseTree(
   };
 
   return PHASE_ORDER.map((id) => {
-    if (id !== "section-agents") return resolve(id, true);
+    if (id !== "fetchers") return resolve(id, true);
 
     const children = SECTION_AGENT_CHILDREN.map((cid) => resolve(cid, true));
     const anyChildRunning = children.some((c) => c.status === "running");
@@ -363,11 +381,11 @@ function buildPhaseTree(
       children.length > 0 && children.every((c) => c.status === "done");
     const anyChildFailed = children.some((c) => c.status === "failed");
 
-    const bucket = byStage.get("section-agents");
+    const bucket = byStage.get("fetchers");
     let status: NodeStatus;
     if (anyChildFailed || bucket?.error) status = "failed";
     else if (bucket?.end || allChildrenDone) status = "done";
-    else if (bucket?.start || anyChildRunning || scan.current_phase === "section-agents")
+    else if (bucket?.start || anyChildRunning || scan.current_phase === "fetchers")
       status = "running";
     else status = "pending";
 
