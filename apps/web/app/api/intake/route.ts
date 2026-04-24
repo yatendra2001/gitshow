@@ -3,6 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { FlyClient } from "@gitshow/shared/cloud/fly";
+import { DEFAULT_SCAN_MODEL } from "@gitshow/shared/models";
 import { requireProApi } from "@/lib/entitlements";
 import { createIntakeSession } from "@/lib/intake";
 import { getUserGitHubToken } from "@/lib/user-token";
@@ -45,9 +46,9 @@ export async function POST(req: Request) {
 
   const { env } = await getCloudflareContext({ async: true });
   const intakeId = `intake-${nanoid(10)}`;
-  // Pinned to anthropic/claude-sonnet-4.6 — see /api/scan for rationale.
+  // Default lives in @gitshow/shared/models — see /api/scan for rationale.
   // Request body still overrides when set.
-  const model = parse.data.model ?? "anthropic/claude-sonnet-4.6";
+  const model = parse.data.model ?? DEFAULT_SCAN_MODEL;
 
   // The user's GitHub OAuth token is REQUIRED — it's what gives the
   // Fly worker read access to their private + org repos. If missing,

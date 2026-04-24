@@ -13,6 +13,7 @@ import { nanoid } from "nanoid";
 import { writeFile, readFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
+import { DEFAULT_SCAN_MODEL } from "@gitshow/shared/models";
 import type { ScanSession, ScanSocials } from "./schemas.js";
 
 const OPENROUTER_DASHBOARD = "https://openrouter.ai/sessions";
@@ -43,7 +44,7 @@ export function createScanSession(input: CreateSessionInput): ScanSession {
     context_notes: input.context_notes,
     started_at: new Date().toISOString(),
     dashboard_url: `${OPENROUTER_DASHBOARD}/${id}`,
-    model: input.model ?? "anthropic/claude-sonnet-4.6",
+    model: input.model ?? DEFAULT_SCAN_MODEL,
     // No cap by default — accuracy/quality > cost/time.
     cost_cap_usd: input.cost_cap_usd ?? Number.POSITIVE_INFINITY,
   };
