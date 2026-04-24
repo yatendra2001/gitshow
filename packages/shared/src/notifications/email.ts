@@ -14,6 +14,13 @@ export interface EmailSenderConfig {
   apiKey: string;
   /** RFC-compliant "Name <addr>" or just "addr". Default: gitshow noreply. */
   from?: string;
+  /**
+   * Fallback sender used when `from` is rejected (403/422 — typically
+   * unverified domain). `onboarding@resend.dev` is Resend's sandbox
+   * sender and needs no domain verification, so it's a safe default.
+   * Set to null to disable fallback.
+   */
+  fallbackFrom?: string | null;
   /** Defaults to https://api.resend.com/emails. */
   endpoint?: string;
   logger?: Logger;
@@ -35,6 +42,7 @@ export interface EmailMessage {
 export class ResendSender {
   private apiKey: string;
   private from: string;
+  private fallbackFrom: string | null;
   private endpoint: string;
   private timeoutMs: number;
   private log: Logger;
@@ -42,6 +50,8 @@ export class ResendSender {
   constructor(cfg: EmailSenderConfig) {
     this.apiKey = cfg.apiKey;
     this.from = cfg.from ?? "gitshow <noreply@gitshow.io>";
+    this.fallbackFrom =
+      cfg.fallbackFrom === undefined ? "onboarding@resend.dev" : cfg.fallbackFrom;
     this.endpoint = cfg.endpoint ?? "https://api.resend.com/emails";
     this.timeoutMs = cfg.timeoutMs ?? 5000;
     this.log = (cfg.logger ?? consoleLogger).child?.({ src: "email" }) ?? cfg.logger ?? consoleLogger;
@@ -60,11 +70,53 @@ export class ResendSender {
     return new ResendSender({
       apiKey,
       from: envObj.EMAIL_FROM ?? "gitshow <noreply@gitshow.io>",
+      fallbackFrom:
+        envObj.EMAIL_FALLBACK_FROM === undefined
+          ? undefined // use class default
+          : envObj.EMAIL_FALLBACK_FROM || null, // "" disables fallback
       logger: opts?.logger,
     });
   }
 
-  async send(msg: EmailMessage): Promise<{ ok: boolean; id?: string; error?: string }> {
+  async send(
+    msg: EmailMessage,
+  ): Promise<{ ok: boolean; id?: string; error?: string; from?: string }> {
+    const first = await this.attempt(msg, this.from);
+    if (first.ok) {
+      this.log.info?.(
+        { id: first.id, to: msg.to, from: this.from, subject: msg.subject },
+        "email.send.ok",
+      );
+      return { ...first, from: this.from };
+    }
+
+    // Domain not verified in Resend returns 403/422. Retry once with the
+    // sandbox sender so the user still gets something rather than silence.
+    const retryable =
+      this.fallbackFrom &&
+      this.fallbackFrom !== this.from &&
+      (first.status === 403 || first.status === 422);
+    if (!retryable) return { ok: false, error: first.error };
+
+    this.log.warn?.(
+      { from: this.from, fallbackFrom: this.fallbackFrom, reason: first.error },
+      "email.send.falling-back",
+    );
+    const retry = await this.attempt(msg, this.fallbackFrom!);
+    if (retry.ok) {
+      this.log.info?.(
+        { id: retry.id, to: msg.to, from: this.fallbackFrom, subject: msg.subject },
+        "email.send.ok.fallback",
+      );
+      return { ...retry, from: this.fallbackFrom! };
+    }
+    return { ok: false, error: retry.error };
+  }
+
+  private async attempt(
+    msg: EmailMessage,
+    from: string,
+  ): Promise<{ ok: boolean; id?: string; error?: string; status?: number }> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.timeoutMs);
     try {
@@ -75,7 +127,7 @@ export class ResendSender {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: this.from,
+          from,
           to: Array.isArray(msg.to) ? msg.to : [msg.to],
           subject: msg.subject,
           html: msg.html,
@@ -87,16 +139,20 @@ export class ResendSender {
       if (!resp.ok) {
         const body = await resp.text();
         this.log.warn?.(
-          { status: resp.status, body: body.slice(0, 300) },
+          { status: resp.status, from, body: body.slice(0, 300) },
           "email.send.bad-status",
         );
-        return { ok: false, error: `http ${resp.status}` };
+        return {
+          ok: false,
+          status: resp.status,
+          error: `http ${resp.status}: ${body.slice(0, 200)}`,
+        };
       }
       const data = (await resp.json()) as { id?: string };
       return { ok: true, id: data.id };
     } catch (err) {
       this.log.warn?.(
-        { err: err instanceof Error ? err.message : String(err) },
+        { err: err instanceof Error ? err.message : String(err), from },
         "email.send.failed",
       );
       return { ok: false, error: err instanceof Error ? err.message : String(err) };
