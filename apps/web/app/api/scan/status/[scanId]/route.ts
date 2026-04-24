@@ -25,6 +25,10 @@ interface ScanRow {
   last_heartbeat: number | null;
   created_at: number;
   completed_at: number | null;
+  /** JSON: { orgs: OrgAccess[], privateContributionsVisible: boolean } */
+  access_state: string | null;
+  /** JSON: { ownedRepos, orgRepos, contributionRepos, ... } */
+  data_sources: string | null;
 }
 
 interface EventRow {
@@ -51,7 +55,8 @@ export async function GET(
 
   const scan = await env.DB.prepare(
     `SELECT id, user_id, handle, status, current_phase, last_completed_phase,
-            error, cost_cents, llm_calls, last_heartbeat, created_at, completed_at
+            error, cost_cents, llm_calls, last_heartbeat, created_at, completed_at,
+            access_state, data_sources
        FROM scans WHERE id = ? AND user_id = ? LIMIT 1`,
   )
     .bind(scanId, session.user.id)
@@ -84,7 +89,18 @@ export async function GET(
       last_heartbeat: scan.last_heartbeat,
       created_at: scan.created_at,
       completed_at: scan.completed_at,
+      access_state: safeParse(scan.access_state),
+      data_sources: safeParse(scan.data_sources),
     },
     events: (events.results ?? []).reverse(),
   });
+}
+
+function safeParse(raw: string | null): unknown {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
 }
