@@ -62,7 +62,8 @@ const SYSTEM_PROMPT = `You reconstruct a developer's education history for their
 Inputs (same trust order as work):
   1. Intake answers.
   2. LinkedIn Education section.
-  3. Bio hints.
+  3. Web evidence cards (if present).
+  4. Bio hints.
 
 Produce education[] most-recent first. Each entry:
   - school: official name ("University of Waterloo", "MIT").
@@ -72,6 +73,7 @@ Produce education[] most-recent first. Each entry:
   - domain: root domain for logo lookup when knowable.
 
 Never invent a school. If no source supports one, return empty education[] with notes="no usable sources".
+NEVER write meta-narration in ANY field. "Degree confirmed", "per LinkedIn", "details not in current sources" etc. are banned — that language belongs in the notes field, not in user-facing text.
 
 Call submit_education exactly once.`;
 

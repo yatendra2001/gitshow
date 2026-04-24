@@ -41,7 +41,13 @@ export function pickFeatured(
     .filter((r: RepoRef) => {
       const rel = r.relationship ?? "owner";
       if (rel === "contributor" || rel === "reviewer") return false;
-      return !r.isFork && !r.isArchived;
+      if (r.isFork || r.isArchived) return false;
+      // Noise filter: contribution-graph mirrors, dotfiles, config
+      // dumps, and sandbox clones routinely score high on commits but
+      // are never real "projects". Drop them by name + description
+      // signal before they reach the deep-research agent.
+      if (isNoiseRepo(r)) return false;
+      return true;
     })
     .map((r: RepoRef) => ({
       repo: r,
@@ -52,6 +58,44 @@ export function pickFeatured(
   candidates.sort((a, b) => b.score - a.score);
 
   return candidates.slice(0, targetCount).map((c) => c.repo.fullName);
+}
+
+/**
+ * Repo-name + description heuristics for repos that LOOK prolific
+ * (high commits) but aren't real projects. Contribution-graph mirrors
+ * in particular explode commit counts via bulk import and show up as
+ * false top-6 candidates. Caught here rather than asking the LLM to
+ * notice, because the LLM has already committed to writing a card by
+ * the time the projects-agent sees them.
+ */
+const NOISE_NAME_PATTERNS = [
+  /^\.?dotfiles$/i,
+  /^\.?config$/i,
+  /^learn(ing)?$/i,
+  /^playground$/i,
+  /^sandbox$/i,
+  /^scratch$/i,
+  /^testing?$/i,
+  /^tmp$/i,
+  /mirror$/i,
+  /contrib(utions?)[-_]?(importer|mirror|graph|sync)/i,
+];
+
+const NOISE_DESC_PATTERNS = [
+  /auto-?generated\s+mock/i,
+  /contributions?\s+importer/i,
+  /contribution-?graph\s+mirror/i,
+  /no\s+real\s+source\s+code/i,
+  /mirror(ed)?\s+from\s+bitbucket/i,
+  /mirror(ed)?\s+of\s+a\s+private/i,
+];
+
+function isNoiseRepo(repo: RepoRef): boolean {
+  const name = repo.name ?? "";
+  if (NOISE_NAME_PATTERNS.some((p) => p.test(name))) return true;
+  const desc = repo.description ?? "";
+  if (NOISE_DESC_PATTERNS.some((p) => p.test(desc))) return true;
+  return false;
 }
 
 function scoreRepo(

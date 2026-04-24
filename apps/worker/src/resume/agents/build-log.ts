@@ -186,6 +186,9 @@ function selectCandidates(
     const rel = r.relationship ?? "owner";
     if (rel === "contributor" || rel === "reviewer") return false;
     if (r.isFork || r.isArchived) return false;
+    // Same noise filter as pick-featured — contribution-graph mirrors,
+    // dotfiles, scratch repos shouldn't clutter the timeline either.
+    if (isBuildLogNoise(r)) return false;
     const commits = r.userCommitCount ?? 0;
     const stars = r.stargazerCount ?? 0;
     const meta = artifacts[`repo:${r.fullName}`]?.metadata as
@@ -200,6 +203,34 @@ function selectCandidates(
       (hasReadme && commits >= 3)
     );
   });
+}
+
+const BL_NOISE_NAMES = [
+  /^\.?dotfiles$/i,
+  /^\.?config$/i,
+  /^learn(ing)?$/i,
+  /^playground$/i,
+  /^sandbox$/i,
+  /^scratch$/i,
+  /^testing?$/i,
+  /^tmp$/i,
+  /mirror$/i,
+  /contrib(utions?)[-_]?(importer|mirror|graph|sync)/i,
+];
+const BL_NOISE_DESCS = [
+  /auto-?generated\s+mock/i,
+  /contributions?\s+importer/i,
+  /contribution-?graph\s+mirror/i,
+  /no\s+real\s+source\s+code/i,
+  /mirror(ed)?\s+from\s+bitbucket/i,
+  /mirror(ed)?\s+of\s+a\s+private/i,
+];
+function isBuildLogNoise(repo: RepoRef): boolean {
+  const name = repo.name ?? "";
+  if (BL_NOISE_NAMES.some((p) => p.test(name))) return true;
+  const desc = repo.description ?? "";
+  if (BL_NOISE_DESCS.some((p) => p.test(desc))) return true;
+  return false;
 }
 
 function buildBatchLedger(batch: RepoRef[]): string {

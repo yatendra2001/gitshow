@@ -89,7 +89,7 @@ Produce a chronological work[] array, most-recent first. Each entry:
   - title: exact role title ("Software Engineer", "Founding Engineer")
   - start / end: "May 2021" / "Present" / "2020". Accept any format the source used.
   - location: "Remote", city, or omit.
-  - description: 1-3 sentences of specific, non-generic prose. What did they own? What shipped? Avoid filler ("passionate team player", "collaborated cross-functionally"). If no substance is available, a 1-line factual summary is fine.
+  - description: 1-3 sentences of specific, non-generic portfolio prose. What did they own? What shipped? Avoid filler ("passionate team player", "collaborated cross-functionally"). **If the source data doesn't give you concrete details, OMIT the description (leave it as an empty string). Do NOT write meta-narration about your sourcing process** — phrases like "Role confirmed; project-level details not available in current sources", "per LinkedIn", "per our records", "details not yet available" are all banned. The description must read like it was written by the developer, not by a quality-control report.
   - href: the company's primary URL if you can determine it from the source with certainty. Otherwise omit.
   - domain: the company's root domain (e.g. "stripe.com") for logo lookup. Omit if unclear.
   - badges: empty [] by default. Use ["Founding"] / ["Intern"] only when it's explicit in the source.
@@ -99,6 +99,7 @@ CRITICAL RULES:
   - Never guess dates. If the source says "2021" only, use "2021" — don't add a month.
   - Never pull employment from GitHub commit emails alone. Team-repo signals are HINTS for you to confirm in the LinkedIn / intake text, not standalone evidence.
   - When sources disagree, prefer intake > LinkedIn > GitHub hints. Note the conflict in "notes".
+  - NEVER leak internal-process language into description. Words like "confirmed", "not available", "in current sources", "per LinkedIn" belong in the notes field, not in user-facing prose.
 
 If ALL sources are empty or insubstantial, call submit_work with an empty work[] and notes="no usable sources". Do not fabricate.
 
