@@ -10,21 +10,24 @@ import { PIPELINE_PHASES, type PipelinePhase } from "./events";
 /**
  * Median wall-clock ms per phase, conservative. Safe to tweak — this is
  * only used for the ETA countdown, not the pipeline itself.
+ *
+ * Numbers seeded from the KG-pipeline rebuild (#95). Will get rolled up
+ * from `scan_events.duration_ms` once we have enough cloud runs.
  */
 export const PHASE_MEDIAN_MS: Record<PipelinePhase, number> = {
-  "github-fetch": 12_000,
+  "github-fetch": 15_000,
   "repo-filter": 1_000,
-  inventory: 7 * 60_000,
-  normalize: 6_000,
-  discover: 45_000,
-  workers: 9 * 60_000,
-  hook: 90_000,
-  numbers: 40_000,
-  disclosure: 30_000,
-  shipped: 35_000,
-  assemble: 20_000,
-  critic: 45_000,
-  bind: 3_000,
+  inventory: 60_000,
+  "repo-judge": 90_000,
+  fetchers: 60_000,
+  merge: 30_000,
+  media: 30_000,
+  "persist-kg": 1_000,
+  "evaluate-kg": 5_000,
+  "hero-prose": 30_000,
+  render: 1_000,
+  "persist-resume": 1_000,
+  "persist-trace": 1_000,
 };
 
 /** Total conservative median in ms (~ 20 min). */

@@ -21,22 +21,24 @@
 
 /**
  * All phase names the pipeline emits as stage-start / stage-end.
- * Source of truth: apps/worker/src/checkpoint.ts ScanPhase.
+ * Source of truth: apps/worker/src/resume/pipeline.ts. The fetchers
+ * stage is a parent that emits sub-phases (fetch:linkedin, fetch:hn,
+ * blog-import, etc.) — the UI groups those underneath this row.
  */
 export const PIPELINE_PHASES = [
   "github-fetch",
   "repo-filter",
   "inventory",
-  "normalize",
-  "discover",
-  "workers",
-  "hook",
-  "numbers",
-  "disclosure",
-  "shipped",
-  "assemble",
-  "critic",
-  "bind",
+  "repo-judge",
+  "fetchers",
+  "merge",
+  "media",
+  "persist-kg",
+  "evaluate-kg",
+  "hero-prose",
+  "render",
+  "persist-resume",
+  "persist-trace",
 ] as const;
 
 export type PipelinePhase = (typeof PIPELINE_PHASES)[number];
