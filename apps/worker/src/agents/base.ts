@@ -571,8 +571,40 @@ export async function runAgentWithSubmit<T>(config: {
   toolLabels?: ToolLabelResolver;
   /** Message id scoping every emitted event. */
   messageId?: string;
+  /**
+   * Observability: emits one `llm.call` event per invocation summarising
+   * model, prompts, result, tokens, cost. Scoped at the whole
+   * runAgentWithSubmit call — the internal retries collapse into one
+   * event (tokens + duration summed) so traces stay readable.
+   */
+  trace?: import("../resume/observability/trace.js").ScanTrace;
 }): Promise<AgentResult<T>> {
   const log = config.onProgress ?? (() => {});
+
+  const traceT0 = Date.now();
+  const emitTrace = (outcome: {
+    ok: boolean;
+    output?: unknown;
+    tokensUsed?: number;
+    error?: string;
+  }) => {
+    if (!config.trace) return;
+    config.trace.llmCall({
+      label: config.label ?? config.submitToolName,
+      model: config.model,
+      systemPrompt: config.systemPrompt,
+      input: config.input,
+      output: outcome.output ? JSON.stringify(outcome.output) : undefined,
+      ok: outcome.ok,
+      error: outcome.error,
+      durationMs: Date.now() - traceT0,
+      // OpenRouter returns a single token total today. Pipe it in as
+      // input+output for compatibility; we can split later when the
+      // SDK exposes per-direction counts.
+      inputTokens: undefined,
+      outputTokens: outcome.tokensUsed,
+    });
+  };
 
   let captured: T | null = null;
 
@@ -608,6 +640,7 @@ export async function runAgentWithSubmit<T>(config: {
   });
 
   if (captured) {
+    emitTrace({ ok: true, output: captured, tokensUsed: run1.tokensUsed });
     return {
       result: captured,
       tokensUsed: run1.tokensUsed,
@@ -646,6 +679,11 @@ You did NOT call ${config.submitToolName}. Your analysis above is good, but the 
   });
 
   if (captured) {
+    emitTrace({
+      ok: true,
+      output: captured,
+      tokensUsed: run1.tokensUsed + run2.tokensUsed,
+    });
     return {
       result: captured,
       tokensUsed: run1.tokensUsed + run2.tokensUsed,
@@ -683,6 +721,11 @@ CALL ${config.submitToolName} IMMEDIATELY.`;
   });
 
   if (captured) {
+    emitTrace({
+      ok: true,
+      output: captured,
+      tokensUsed: run1.tokensUsed + run2.tokensUsed + run3.tokensUsed,
+    });
     return {
       result: captured,
       tokensUsed: run1.tokensUsed + run2.tokensUsed + run3.tokensUsed,
@@ -691,10 +734,15 @@ CALL ${config.submitToolName} IMMEDIATELY.`;
     };
   }
 
-  throw new Error(
+  const failMsg =
     `Agent finished without calling ${config.submitToolName} after 3 attempts. ` +
-      `Model: ${config.model}. This model may not support tool calling reliably.`
-  );
+    `Model: ${config.model}. This model may not support tool calling reliably.`;
+  emitTrace({
+    ok: false,
+    error: failMsg,
+    tokensUsed: run1.tokensUsed + run2.tokensUsed + run3.tokensUsed,
+  });
+  throw new Error(failMsg);
 }
 
 // ---------- tool factory helpers ----------

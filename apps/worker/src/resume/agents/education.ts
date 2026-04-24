@@ -54,6 +54,7 @@ export interface EducationAgentInput {
   github: GitHubData;
   artifacts: Record<string, Artifact>;
   evidence?: EvidenceBag;
+  trace?: import("../observability/trace.js").ScanTrace;
   onProgress?: (text: string) => void;
 }
 
@@ -101,6 +102,7 @@ export async function runEducationAgent(
     usage: input.usage,
     label: "resume:education",
     onProgress: input.onProgress,
+    trace: input.trace,
   });
 
   return result.education.map((e, i): EducationEntry => ({
@@ -132,7 +134,7 @@ async function buildInput(input: EducationAgentInput): Promise<{ text: string; h
     lines.push("");
   }
 
-  const linkedin = await fetchLinkedIn(session, { onProgress });
+  const linkedin = await fetchLinkedIn(session, { onProgress, trace: input.trace });
   if (linkedin) {
     hasSource = true;
     (onProgress ?? (() => {}))(

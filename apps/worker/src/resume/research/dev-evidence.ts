@@ -34,6 +34,7 @@ import {
   TinyFishClient,
   type TinyFishSearchResult,
 } from "@gitshow/shared/cloud/tinyfish";
+import type { ScanTrace } from "../observability/trace.js";
 
 // ─── Schema (what the orchestrator produces) ──────────────────────────
 
@@ -117,6 +118,8 @@ export interface DevEvidenceInput {
   featuredFullNames: string[];
   /** Optional cap on fetched URLs (safety net). Default 12. */
   maxUrls?: number;
+  /** Observability — every TinyFish + LLM call emits an event. */
+  trace?: ScanTrace;
   onProgress?: (text: string) => void;
 }
 
@@ -172,7 +175,23 @@ export async function runDevEvidenceResearch(
     if (wait > 0 && lastSearchAt > 0) await sleep(wait);
     lastSearchAt = Date.now();
 
+    const searchT0 = Date.now();
     const r = await tf.search(q.query, { location: "us", language: "en" });
+    const searchDur = Date.now() - searchT0;
+    input.trace?.tinyfishSearch({
+      query: q.query,
+      location: "us",
+      language: "en",
+      ok: r.ok,
+      resultCount: r.results.length,
+      durationMs: searchDur,
+      error: r.requestError,
+      topResults: r.results.slice(0, 3).map((rr) => ({
+        title: rr.title,
+        url: rr.url,
+        snippet: rr.snippet?.slice(0, 200),
+      })),
+    });
     if (!r.ok) {
       warnings.push(`search.failed: ${q.query.slice(0, 40)} (${r.requestError ?? "unknown"})`);
       continue;
@@ -228,10 +247,32 @@ export async function runDevEvidenceResearch(
     const wait = fetchIntervalMs - (Date.now() - lastFetchAt);
     if (wait > 0 && lastFetchAt > 0) await sleep(wait);
     lastFetchAt = Date.now();
+    const fetchT0 = Date.now();
     const resp = await tf.fetchUrls(
       batch.map((b) => b.url),
       { format: "markdown" },
     );
+    const fetchDur = Date.now() - fetchT0;
+    input.trace?.tinyfishFetch({
+      urls: batch.map((b) => b.url),
+      ok: resp.ok,
+      durationMs: fetchDur,
+      requestError: resp.requestError,
+      perUrl: resp.ok
+        ? resp.results.map((r) => ({
+            url: r.url,
+            finalUrl: r.finalUrl,
+            title: r.title,
+            textChars: r.text?.length ?? 0,
+            language: r.language,
+            error: resp.errors.find((e) => e.url === r.url)?.error,
+          }))
+        : batch.map((b) => ({
+            url: b.url,
+            textChars: 0,
+            error: resp.requestError ?? "request failed",
+          })),
+    });
     if (!resp.ok) {
       warnings.push(`fetch.batch.failed: ${resp.requestError ?? "unknown"}`);
       continue;
@@ -361,6 +402,7 @@ async function planQueries(input: DevEvidenceInput): Promise<QueryPlan> {
     usage: input.usage,
     label: "dev-evidence:plan",
     onProgress: input.onProgress,
+    trace: input.trace,
   });
   return result;
 }
@@ -428,6 +470,7 @@ async function summarizePage(
     usage: input.usage,
     label: "dev-evidence:summarize",
     onProgress: input.onProgress,
+    trace: input.trace,
   });
 
   // Force the URL to the final URL we actually fetched (models sometimes

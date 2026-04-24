@@ -81,13 +81,16 @@ const NOISE_NAME_PATTERNS = [
   /contrib(utions?)[-_]?(importer|mirror|graph|sync)/i,
 ];
 
+// Generic only — no vendor-specific keywords. This catches the 80%
+// obvious-noise case cheaply; the robust answer is a Kimi repo-judge
+// stage (read README + source files, decide if real) coming in a
+// follow-up PR.
 const NOISE_DESC_PATTERNS = [
   /auto-?generated\s+mock/i,
   /contributions?\s+importer/i,
   /contribution-?graph\s+mirror/i,
   /no\s+real\s+source\s+code/i,
-  /mirror(ed)?\s+from\s+bitbucket/i,
-  /mirror(ed)?\s+of\s+a\s+private/i,
+  /mirror(ed)?\s+of\s+(?:a\s+)?private/i,
 ];
 
 function isNoiseRepo(repo: RepoRef): boolean {

@@ -73,6 +73,8 @@ export interface WorkAgentInput {
   artifacts: Record<string, Artifact>;
   /** Optional evidence bag from the DevEvidence research phase. */
   evidence?: EvidenceBag;
+  /** Observability — every TinyFish + LLM call inside the agent emits an event. */
+  trace?: import("../observability/trace.js").ScanTrace;
   onProgress?: (text: string) => void;
 }
 
@@ -128,6 +130,7 @@ export async function runWorkAgent(input: WorkAgentInput): Promise<WorkEntry[]> 
     usage: input.usage,
     label: "resume:work",
     onProgress: input.onProgress,
+    trace: input.trace,
   });
 
   return result.work.map((w, i): WorkEntry => ({
@@ -167,7 +170,7 @@ async function buildInput(input: WorkAgentInput): Promise<{ text: string; hasAny
   }
 
   // (3) LinkedIn markdown — TinyFish first, Jina fallback (see linkedin.ts).
-  const linkedin = await fetchLinkedIn(session, { onProgress });
+  const linkedin = await fetchLinkedIn(session, { onProgress, trace: input.trace });
   if (linkedin) {
     hasSource = true;
     (onProgress ?? (() => {}))(
