@@ -15,6 +15,7 @@ import { StartFirstScanButton } from "./_start-button";
 import { DeleteProfileButton } from "./_delete-profile-button";
 import { SignOutButton } from "./_signout-button";
 import { PublishDraftButton } from "./_publish-draft-button";
+import { CheckoutProcessingAutoRefresh } from "./_checkout-processing";
 import {
   AccessStateCard,
   type AccessState,
@@ -63,11 +64,19 @@ interface ProfileRow {
   view_count: number | null;
 }
 
-export default async function AppHomePage() {
+export default async function AppHomePage({
+  searchParams,
+}: {
+  searchParams?: Promise<{ checkout?: string | string[] }>;
+}) {
   const session = await getSession();
   if (!session?.user?.id) redirect("/signin");
   const userId = session.user.id;
   const githubHandle = (session.user.login ?? session.user.name ?? "").trim();
+
+  const sp = (await searchParams) ?? {};
+  const checkoutParam = Array.isArray(sp.checkout) ? sp.checkout[0] : sp.checkout;
+  const justCheckedOut = checkoutParam === "success";
 
   const { env } = await getCloudflareContext({ async: true });
 
@@ -106,11 +115,15 @@ export default async function AppHomePage() {
             <SignOutButton />
           </div>
         </header>
-        <NonProShowcase
-          handle={githubHandle}
-          hasPublished={Boolean(publishedResumeNonPro)}
-          wasCancelled={subscription?.status === "cancelled"}
-        />
+        {justCheckedOut ? (
+          <CheckoutProcessingState />
+        ) : (
+          <NonProShowcase
+            handle={githubHandle}
+            hasPublished={Boolean(publishedResumeNonPro)}
+            wasCancelled={subscription?.status === "cancelled"}
+          />
+        )}
       </main>
     );
   }
@@ -527,6 +540,27 @@ function PublishedState({
           <DeleteProfileButton />
         </div>
       </div>
+    </section>
+  );
+}
+
+// ─── Post-checkout, pre-webhook ─────────────────────────────────────
+
+function CheckoutProcessingState() {
+  return (
+    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
+      <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
+        Subscription
+      </div>
+      <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
+        Finishing your subscription…
+      </h1>
+      <p className="text-[14px] leading-relaxed text-muted-foreground mb-2">
+        Thanks for signing up. We&apos;re waiting on the final confirmation
+        from the payment processor. Your dashboard will unlock
+        automatically — no need to refresh.
+      </p>
+      <CheckoutProcessingAutoRefresh />
     </section>
   );
 }
