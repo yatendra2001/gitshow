@@ -76,11 +76,11 @@ export async function POST(req: Request) {
 
   const scanId = `scan-${nanoid(10)}`;
   const sessionId = `or-${nanoid(14)}`;
-  // Pinned to moonshotai/kimi-k2.6 — `openrouter/auto` occasionally routed
-  // requests to Gemini 2.5 Flash, which closed streams mid-agent with
-  // `server_error: stream closed with reason: error` and broke scans.
-  // Request body still wins when it pins an explicit model.
-  const model = body.model ?? "moonshotai/kimi-k2.6";
+  // Pinned to anthropic/claude-sonnet-4.6 — `openrouter/auto` occasionally
+  // routed to Gemini 2.5 Flash which closed streams mid-agent. Sonnet is
+  // the most reliable tool-caller in our agent loop (Kimi K2.5 was flaky
+  // at `submit_*`, K2.6 not yet trusted for this). Body still wins.
+  const model = body.model ?? "anthropic/claude-sonnet-4.6";
   const pipeline = body.pipeline ?? "resume";
   const now = Date.now();
 

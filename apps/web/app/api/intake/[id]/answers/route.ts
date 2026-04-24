@@ -93,9 +93,9 @@ export async function POST(
   // Spawn the full scan with intake context baked in.
   const scanId = `scan-${nanoid(10)}`;
   const sessionId = `or-${nanoid(14)}`;
-  // Match /api/scan: pinned to moonshotai/kimi-k2.6 (auto routing hit
-  // flaky models like Gemini 2.5 Flash that closed streams mid-agent).
-  const model = "moonshotai/kimi-k2.6";
+  // Match /api/scan: pinned to anthropic/claude-sonnet-4.6 — reliable
+  // tool-caller; auto routing was hitting flaky models mid-agent.
+  const model = "anthropic/claude-sonnet-4.6";
   const now = Date.now();
 
   const socials = parse.data.socials ?? {};
