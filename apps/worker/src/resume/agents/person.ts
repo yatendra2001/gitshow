@@ -82,6 +82,12 @@ const SYSTEM_PROMPT = `You write the identity block for an engineering portfolio
 
 4. "initials" — 2-character uppercase initials from the name. "Dillion Verma" -> "DV". "yatendra2001" -> "Y2" or "YK" if first+last from name are known.
 
+Weighting signal (IMPORTANT):
+  A merged PR into a widely-used open-source repo (10k+ stars: facebook/react, rust-lang/rust, vercel/next.js, kubernetes/kubernetes, etc.) is a STRONGER signal than most solo side projects. If the input's "Notable drive-by contributions" section lists any such repos, it's almost always the single most interesting line for a recruiter or peer reader.
+  - Describe drive-by contributions with the actual repo name ("shipped patches to rust-lang/rust") — not generic framing like "contributes to open source".
+  - Count merged PRs, not opened. Weight by stars and ecosystem reach, not volume.
+  - DO NOT invent the projects the user contributed to. Only cite what's in the input.
+
 Rules:
 - Do NOT cite anything not in the input.
 - Do NOT use em-dash punchlines.
@@ -134,6 +140,42 @@ function buildInput(input: PersonAgentInput): string {
     lines.push(`## Featured projects (reference for /#projects link)`);
     for (const p of featuredProjects.slice(0, 6)) {
       lines.push(`- ${p.title}: ${p.summary.slice(0, 140)}`);
+    }
+    lines.push("");
+  }
+
+  // Drive-by contributions — merged PRs into repos the user doesn't own.
+  // Sorted by stars so the summary can lead with the strongest signal
+  // (e.g. facebook/react, rust-lang/rust, vercel/next.js).
+  const externalContributions = github.ownedRepos
+    .filter((r) => r.relationship === "contributor" && !r.isPrivate)
+    .map((r) => {
+      const sig = r.contributionSignals ?? {};
+      const prCount = Math.max(sig.prsMerged ?? 0, sig.prsOpened ?? 0);
+      const commits = sig.commits ?? 0;
+      return {
+        fullName: r.fullName,
+        stars: r.stargazerCount,
+        prs: prCount,
+        commits,
+        score: r.stargazerCount * 10 + prCount * 5 + commits,
+      };
+    })
+    .filter((c) => c.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 10);
+
+  if (externalContributions.length > 0) {
+    lines.push(`## Notable drive-by contributions (sorted by reach)`);
+    lines.push(
+      `These are repos the developer does NOT own. A merged PR into any of the high-star entries is often the single strongest line in the About paragraph.`,
+    );
+    for (const c of externalContributions) {
+      const parts: string[] = [`- ${c.fullName}`];
+      if (c.stars > 0) parts.push(`${c.stars.toLocaleString()}★`);
+      if (c.prs > 0) parts.push(`${c.prs} PR${c.prs === 1 ? "" : "s"}`);
+      if (c.commits > 0) parts.push(`${c.commits} commits`);
+      lines.push(parts.join(" — "));
     }
     lines.push("");
   }

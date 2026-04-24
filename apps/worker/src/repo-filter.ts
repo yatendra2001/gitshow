@@ -9,9 +9,22 @@
  *
  * This ensures we can connect dots across repos — even a 3-commit shared-types
  * library might be the glue between 5 other repos.
+ *
+ * Relationships drive the tiering too:
+ *   - owner / collaborator / org_member → tier by activity (existing logic)
+ *   - contributor (drive-by PR or commit-search) → tier by signals from
+ *     contributionsCollection. A PR to facebook/react should never be
+ *     `metadata` — external impact is the whole signal.
+ *   - reviewer-only → `metadata` (we won't clone)
  */
 
-import type { GitHubData, RepoRef, FilterResult, AnalysisTier } from "./types.js";
+import type {
+  GitHubData,
+  RepoRef,
+  FilterResult,
+  AnalysisTier,
+  RepoRelationship,
+} from "./types.js";
 
 // ---------------------------------------------------------------------------
 // Scoring weights (for ranking within tiers)
@@ -22,6 +35,11 @@ const STAR_WEIGHT = 5;
 const RECENCY_WEIGHT = 20;
 const LANGUAGE_WEIGHT = 3;
 const PRIVATE_BONUS = 10;
+/**
+ * External contribution bonus — a merged PR to a ~thousand-star repo is
+ * more signal than most solo projects. Scaled by log2(stars).
+ */
+const EXTERNAL_STAR_WEIGHT = 8;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,9 +59,31 @@ function recencyFactor(pushedAt: string | null): number {
   return 0.05;
 }
 
-/** Estimate user commit count from PRs and push events. */
+function isExternal(rel: RepoRelationship | undefined): boolean {
+  return rel === "contributor" || rel === "reviewer";
+}
+
+function isOwnedOrMember(rel: RepoRelationship | undefined): boolean {
+  return rel === "owner" || rel === "collaborator" || rel === "org_member";
+}
+
+/**
+ * Estimate user commit count per repo. Combines:
+ *   - PR search (1 per PR regardless of merge state)
+ *   - PushEvent payload size from /events (raw commits)
+ *   - contributionsCollection commits (drive-by repos the user doesn't own)
+ *   - commit-search results (last-resort for truly external drive-bys)
+ *
+ * We take the *max* across sources because they double-count — a PR
+ * shows up in PR search AND in contributionsCollection, but represents
+ * the same underlying commit.
+ */
 function buildCommitCounts(data: GitHubData): Map<string, number> {
   const counts = new Map<string, number>();
+  const bump = (key: string, n: number) => {
+    const cur = counts.get(key) ?? 0;
+    if (n > cur) counts.set(key, n);
+  };
 
   for (const pr of data.authoredPRs) {
     const key = pr.repoFullName.toLowerCase();
@@ -57,17 +97,31 @@ function buildCommitCounts(data: GitHubData): Map<string, number> {
     counts.set(key, (counts.get(key) ?? 0) + size);
   }
 
+  // Layer in contribution signals — these are the only source for repos
+  // the user doesn't own and didn't PR to (direct-push drive-bys).
+  for (const repo of data.ownedRepos) {
+    const key = repo.fullName.toLowerCase();
+    const sig = repo.contributionSignals;
+    if (!sig) continue;
+    bump(key, sig.commits ?? 0);
+  }
+
   return counts;
 }
 
 /** Score a repo for ranking purposes. */
 function scoreRepo(repo: RepoRef, commitCount: number): number {
+  const external = isExternal(repo.relationship);
+  const externalBonus = external
+    ? EXTERNAL_STAR_WEIGHT * Math.log2(repo.stargazerCount + 1)
+    : 0;
   return (
     COMMIT_WEIGHT * commitCount +
     STAR_WEIGHT * Math.log2(repo.stargazerCount + 1) +
     RECENCY_WEIGHT * recencyFactor(repo.pushedAt) +
     LANGUAGE_WEIGHT * repo.languages.length +
-    (repo.isPrivate ? PRIVATE_BONUS : 0)
+    (repo.isPrivate ? PRIVATE_BONUS : 0) +
+    externalBonus
   );
 }
 
@@ -80,11 +134,23 @@ function scoreRepo(repo: RepoRef, commitCount: number): number {
  * The clone + pre-compute is cheap (~10s). The agent call is where cost is,
  * but that's where the value is too.
  *
- * deep:     Has a programming language + any activity signal → full clone + FIFO + agent
- * light:    Has activity but no code language (HTML-only, docs repos) → clone + inventory
- * metadata: No activity at all, or pure forks with no work
+ * External (contributor/reviewer) repos skip the full clone — we don't own
+ * them, we just want to surface the PR/commit signal for the resume. They
+ * always get `deep` so the projects/work agents see the full signal.
  */
 function assignTier(repo: RepoRef, commitCount: number): AnalysisTier {
+  const rel = repo.relationship;
+
+  // Reviewer-only → metadata. No code to show.
+  if (rel === "reviewer") return "metadata";
+
+  // Drive-by contributor repos → deep (surface external impact on resume),
+  // but inventory-runner skips cloning these. The projects agent still
+  // reads their artifacts + contribution signals.
+  if (rel === "contributor") return "deep";
+
+  // Owned / collaborator / org_member → existing activity-based tiering.
+
   // Pure fork with no visible contributions → metadata
   if (repo.isFork && commitCount < 2 && daysSince(repo.pushedAt) > 365) return "metadata";
 
@@ -95,11 +161,9 @@ function assignTier(repo: RepoRef, commitCount: number): AnalysisTier {
   if (!repo.primaryLanguage && commitCount === 0 && daysSince(repo.pushedAt) > 365) return "metadata";
 
   // Has a real programming language + pushed in last 2 years → deep
-  // We can't trust commitCount from API (direct pushes = 0), so any
-  // repo with code and recent activity gets the full treatment.
   if (repo.primaryLanguage && daysSince(repo.pushedAt) < 730) return "deep";
 
-  // Has known commits (from PRs/events) → deep regardless of language
+  // Has known commits (from PRs/events/contrib) → deep regardless of language
   if (commitCount >= 5) return "deep";
 
   // Has a language but stale → light (clone to check, but don't run agent)
@@ -122,6 +186,7 @@ export function filterRepos(data: GitHubData): FilterResult {
   const deep: RepoRef[] = [];
   const light: RepoRef[] = [];
   const metadata: RepoRef[] = [];
+  const external: RepoRef[] = [];
 
   for (const repo of data.ownedRepos) {
     const key = repo.fullName.toLowerCase();
@@ -132,6 +197,19 @@ export function filterRepos(data: GitHubData): FilterResult {
 
     const tier = assignTier(repo, commitCount);
     repo.analysisTier = tier;
+
+    // External repos live in their own bucket so agents can reason about
+    // "projects I shipped" vs "places I contributed". They may also
+    // appear in `deep` when the tier landed there, but the `external`
+    // list is the canonical source for the Projects agent's
+    // external-contribution pass.
+    if (isExternal(repo.relationship)) {
+      external.push(repo);
+      if (tier === "deep") deep.push(repo);
+      else if (tier === "light") light.push(repo);
+      else metadata.push(repo);
+      continue;
+    }
 
     switch (tier) {
       case "deep":
@@ -146,46 +224,17 @@ export function filterRepos(data: GitHubData): FilterResult {
     }
   }
 
-  // Sort each tier by significance score
-  deep.sort((a, b) => (b.significanceScore ?? 0) - (a.significanceScore ?? 0));
-  light.sort((a, b) => (b.significanceScore ?? 0) - (a.significanceScore ?? 0));
-
-  // Build external repo list — repos the user contributed to but doesn't own
-  const ownedSet = new Set(data.ownedRepos.map((r) => r.fullName.toLowerCase()));
-  const externalNames = new Set<string>();
-
-  for (const pr of data.authoredPRs) {
-    if (pr.isExternal && pr.merged) {
-      externalNames.add(pr.repoFullName.toLowerCase());
-    }
-  }
-
-  const external: RepoRef[] = [];
-  for (const fullName of externalNames) {
-    if (ownedSet.has(fullName)) continue;
-    const parts = fullName.split("/");
-    const prsForRepo = data.authoredPRs.filter(
-      (pr) => pr.repoFullName.toLowerCase() === fullName
-    );
-    external.push({
-      name: parts[1] ?? fullName,
-      owner: parts[0] ?? "",
-      fullName: prsForRepo[0]?.repoFullName ?? fullName,
-      isPrivate: false,
-      isFork: false,
-      isArchived: false,
-      description: null,
-      primaryLanguage: null,
-      languages: [],
-      stargazerCount: 0,
-      forkCount: 0,
-      pushedAt: prsForRepo[0]?.mergedAt ?? null,
-      createdAt: null,
-      userCommitCount: prsForRepo.length,
-      significanceScore: prsForRepo.length,
-      analysisTier: "deep", // external repos always get deep analysis
-    });
-  }
+  // Sort: owned/collaborator first, then by significance. This way the
+  // inventory cap (first N of `deep`) never starves owned projects.
+  const tierSort = (a: RepoRef, b: RepoRef) => {
+    const aOwned = isOwnedOrMember(a.relationship) ? 1 : 0;
+    const bOwned = isOwnedOrMember(b.relationship) ? 1 : 0;
+    if (aOwned !== bOwned) return bOwned - aOwned;
+    return (b.significanceScore ?? 0) - (a.significanceScore ?? 0);
+  };
+  deep.sort(tierSort);
+  light.sort(tierSort);
+  external.sort((a, b) => (b.significanceScore ?? 0) - (a.significanceScore ?? 0));
 
   return { deep, light, metadata, external };
 }

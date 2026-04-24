@@ -37,7 +37,7 @@ import { cloneAndInventory } from "../inventory-runner.js";
 import { normalize } from "../normalize.js";
 import { runDiscover } from "../agents/discover.js";
 import type { ScanSession } from "../schemas.js";
-import type { StructuredInventory } from "../types.js";
+import type { GitHubData, StructuredInventory } from "../types.js";
 import type { SessionUsage } from "../session.js";
 import { pickFeatured } from "./pick-featured.js";
 import { runPersonAgent } from "./agents/person.js";
@@ -83,6 +83,19 @@ export interface RunResumePipelineOptions {
    * dev runs that don't have a cloud D1 wired up.
    */
   phases?: PhaseReporter;
+  /**
+   * Callback fired right after github-fetch with the access state +
+   * data-source counts. Lets the cloud wrapper persist the snapshot onto
+   * the scans row (migration 0011) so the UI can show locked orgs +
+   * coverage before the rest of the pipeline completes.
+   */
+  onGitHubFetched?: (snapshot: {
+    accessState: {
+      orgs: GitHubData["orgAccess"];
+      privateContributionsVisible: boolean;
+    };
+    dataSources: GitHubData["fetchStats"];
+  }) => Promise<void> | void;
 }
 
 export async function runResumePipeline(
@@ -99,6 +112,27 @@ export async function runResumePipeline(
     log(`\n[pipeline] stage 1: github fetch\n`);
     return fetchGitHubData(session.handle);
   });
+
+  // Fire the post-fetch snapshot hook as early as possible so the
+  // progress UI can render locked-orgs + data-source counts while the
+  // slower stages (inventory, agent fan-out) are still running. Errors
+  // here are swallowed — persisting the snapshot is best-effort, never
+  // worth failing the whole pipeline for.
+  if (opts.onGitHubFetched) {
+    try {
+      await opts.onGitHubFetched({
+        accessState: {
+          orgs: github.orgAccess,
+          privateContributionsVisible: github.privateContributionsVisible,
+        },
+        dataSources: github.fetchStats,
+      });
+    } catch (err) {
+      log(
+        `[pipeline] onGitHubFetched hook failed (non-fatal): ${(err as Error).message.slice(0, 160)}\n`,
+      );
+    }
+  }
 
   // 2. Tier repos for inventory depth
   const filtered = await phases.phase("repo-filter", async () => {

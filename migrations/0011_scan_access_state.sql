@@ -1,0 +1,36 @@
+-- 0011: surface GitHub access state + data-source counts on the scan row.
+--
+-- The new github-fetcher enumerates /user/repos with org_member affiliation
+-- and contributionsCollection. When an org enforces SAML/SSO or has the
+-- OAuth-app policy enabled without approving gitshow, we get 0 repos back
+-- for that org. The UI needs to SHOW the user which orgs are locked +
+-- offer a one-click deep-link to fix it, so we stash the access state +
+-- data-source counts on the scan row.
+--
+-- Both columns hold JSON; D1 has no JSON type so we use TEXT. Nullable
+-- for back-compat with rows written before this migration.
+--
+-- data_sources shape:
+--   {
+--     "ownedRepos": 12,
+--     "orgRepos": 7,
+--     "contributionRepos": 4,
+--     "commitSearchRepos": 0,
+--     "orgsVisible": 2,
+--     "orgsLocked": 1,
+--     "privateContributionCount": 314,
+--     "restrictedContributionCount": 314
+--   }
+--
+-- access_state shape:
+--   {
+--     "orgs": [
+--       { "login": "acme", "displayName": "Acme Inc", "avatarUrl": "...",
+--         "state": "sso_required", "resolveUrl": "https://github.com/orgs/acme/sso",
+--         "reposVisible": 0 }
+--     ],
+--     "privateContributionsVisible": true
+--   }
+
+ALTER TABLE scans ADD COLUMN access_state TEXT;
+ALTER TABLE scans ADD COLUMN data_sources TEXT;

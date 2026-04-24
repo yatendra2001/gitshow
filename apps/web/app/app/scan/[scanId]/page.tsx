@@ -1,6 +1,6 @@
-import { notFound, redirect } from "next/navigation";
+import { notFound } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { getSession } from "@/auth";
+import { requireProPage } from "@/lib/entitlements";
 import { ScanProgress } from "./_progress";
 
 /**
@@ -24,6 +24,17 @@ interface ScanRow {
   last_heartbeat: number | null;
   created_at: number;
   completed_at: number | null;
+  access_state: string | null;
+  data_sources: string | null;
+}
+
+function safeParse<T>(raw: string | null): T | null {
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
 }
 
 export default async function ScanProgressPage({
@@ -31,15 +42,15 @@ export default async function ScanProgressPage({
 }: {
   params: Promise<{ scanId: string }>;
 }) {
-  const session = await getSession();
-  if (!session?.user?.id) redirect("/signin");
+  const session = await requireProPage();
 
   const { scanId } = await params;
   const { env } = await getCloudflareContext({ async: true });
 
   const scan = await env.DB.prepare(
     `SELECT id, user_id, handle, status, current_phase, last_completed_phase,
-            error, cost_cents, llm_calls, last_heartbeat, created_at, completed_at
+            error, cost_cents, llm_calls, last_heartbeat, created_at, completed_at,
+            access_state, data_sources
        FROM scans WHERE id = ? AND user_id = ? LIMIT 1`,
   )
     .bind(scanId, session.user.id)
@@ -63,6 +74,8 @@ export default async function ScanProgressPage({
           last_heartbeat: scan.last_heartbeat,
           created_at: scan.created_at,
           completed_at: scan.completed_at,
+          access_state: safeParse(scan.access_state),
+          data_sources: safeParse(scan.data_sources),
         }}
       />
     </main>

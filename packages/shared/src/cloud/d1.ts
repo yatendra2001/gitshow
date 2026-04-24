@@ -215,6 +215,33 @@ export class D1Client {
     );
   }
 
+  /**
+   * Write the post-github-fetch snapshot onto the scan row so the
+   * progress page + the scan-complete card can show locked orgs +
+   * data-source counts. Both fields are JSON TEXT (see migration 0011).
+   */
+  async updateScanFetchSnapshot(
+    scanId: string,
+    patch: {
+      access_state: unknown;
+      data_sources: unknown;
+    },
+  ): Promise<void> {
+    await this.query(
+      `UPDATE scans SET
+         access_state = ?,
+         data_sources = ?,
+         updated_at = ?
+       WHERE id = ?`,
+      [
+        JSON.stringify(patch.access_state),
+        JSON.stringify(patch.data_sources),
+        Date.now(),
+        scanId,
+      ],
+    );
+  }
+
   async heartbeat(scanId: string): Promise<void> {
     const now = Date.now();
     await this.query(

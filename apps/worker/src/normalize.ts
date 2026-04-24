@@ -70,7 +70,12 @@ export function normalize(input: NormalizeInput): NormalizeResult {
     if (repoFullName) (byRepo[repoFullName] ??= []).push(a.id);
   };
 
-  // ── Repos (owned) ────────────────────────────────────────────
+  // ── Repos (all — owned + contributions) ─────────────────────
+  // The `github.ownedRepos` list is now a union: owned, collaborator,
+  // org_member, and drive-by contributor repos. We emit a repo artifact
+  // for each, with `relationship` metadata so agents can tell
+  // "facebook/react — merged PRs" apart from "yatendra/my-side-project".
+  //
   // There is only ONE commit count per repo exposed to agents:
   // `user_commit_count`. Before normalize finishes, we overwrite this with
   // the authoritative git-log value from inventory when one is available.
@@ -78,6 +83,9 @@ export function normalize(input: NormalizeInput): NormalizeResult {
   // numbers for the same thing confuse agents.
   for (const repo of input.github.ownedRepos) {
     const id = repoArtifactId(repo.fullName);
+    const rel = repo.relationship ?? "owner";
+    const relationshipIsExternal =
+      rel === "contributor" || rel === "reviewer";
     push(
       {
         id,
@@ -99,13 +107,29 @@ export function normalize(input: NormalizeInput): NormalizeResult {
           created_at: repo.createdAt,
           user_commit_count: repo.userCommitCount,
           commit_count_source: "pr_estimate",
-          is_external: false,
+          is_external: relationshipIsExternal,
+          /**
+           * How the user relates to this repo:
+           *   owner        — their own repo
+           *   collaborator — personal invite on someone else's repo
+           *   org_member   — repo sits under an org they belong to
+           *   contributor  — drive-by (merged PR or commit-search hit)
+           *   reviewer     — only reviewed someone else's PR here
+           */
+          relationship: rel,
+          relationships: repo.relationships ?? [rel],
+          discovered_via: repo.discoveredVia ?? [],
+          contribution_signals: repo.contributionSignals ?? null,
         },
         recorded_at: recordedAt,
       },
       repo.fullName,
     );
-    ownedRepoIds.push(id);
+    if (relationshipIsExternal) {
+      externalRepoFullNames.add(repo.fullName);
+    } else {
+      ownedRepoIds.push(id);
+    }
   }
 
   // ── Repos (external) synthesized from external PRs ──────────
@@ -459,7 +483,28 @@ export function formatArtifactForPrompt(a: Artifact): string {
       const stars = m.stars ? `, ${m.stars} stars` : "";
       const langs = Array.isArray(m.languages) ? (m.languages as string[]).join("/") : "";
       const desc = a.excerpt ? ` — "${a.excerpt.slice(0, 120)}"` : "";
-      return `[${a.id}] repo ${m.full_name}${stars}, ${langs}${desc}${m.is_archived ? " [archived]" : ""}${m.is_external ? " [external]" : ""}`;
+      const rel = typeof m.relationship === "string" ? m.relationship : "owner";
+      // Drive-by contributions are framed as [contrib to X] so agents
+      // read "merged PR into facebook/react" as external impact, not
+      // "own project called react".
+      const relLabel =
+        rel === "contributor"
+          ? " [contrib]"
+          : rel === "collaborator"
+            ? " [collaborator]"
+            : rel === "org_member"
+              ? " [org]"
+              : rel === "reviewer"
+                ? " [reviewer]"
+                : "";
+      const sig = m.contribution_signals as
+        | { commits?: number; prsOpened?: number; reviews?: number }
+        | null
+        | undefined;
+      const sigLabel = sig
+        ? ` (${sig.commits ?? 0}c/${sig.prsOpened ?? 0}pr/${sig.reviews ?? 0}rv)`
+        : "";
+      return `[${a.id}] repo ${m.full_name}${stars}, ${langs}${desc}${m.is_archived ? " [archived]" : ""}${relLabel}${sigLabel}`;
     }
     case "pr": {
       const m = a.metadata as Record<string, unknown>;

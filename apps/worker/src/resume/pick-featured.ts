@@ -28,8 +28,17 @@ export function pickFeatured(
   // Note: the current GitHubFetcher doesn't yet surface pinned repos.
   // When it does, preserve pinned ordering here. For now we lean
   // entirely on the score heuristic.
+  //
+  // Featured = owned + collaborator only. Drive-by contributor repos
+  // (merged PRs into facebook/react, etc.) belong in the open-source
+  // contributions section / build log, not the "My Projects" grid —
+  // the user didn't build them.
   const candidates = github.ownedRepos
-    .filter((r: RepoRef) => !r.isFork && !r.isArchived)
+    .filter((r: RepoRef) => {
+      const rel = r.relationship ?? "owner";
+      if (rel === "contributor" || rel === "reviewer") return false;
+      return !r.isFork && !r.isArchived;
+    })
     .map((r: RepoRef) => ({
       repo: r,
       score: scoreRepo(r, artifacts),

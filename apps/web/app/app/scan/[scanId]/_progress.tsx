@@ -6,6 +6,11 @@ import { useRouter } from "next/navigation";
 import { Check, AlertTriangle, Circle } from "lucide-react";
 import { LogoMark } from "@/components/logo";
 import { Shimmer } from "@/components/ai-elements/shimmer";
+import {
+  AccessStateCard,
+  type AccessState,
+  type DataSources,
+} from "@/components/scan/access-state-card";
 import { cn } from "@/lib/utils";
 
 /**
@@ -31,6 +36,8 @@ interface ScanState {
   last_heartbeat: number | null;
   created_at: number;
   completed_at: number | null;
+  access_state: AccessState | null;
+  data_sources: DataSources | null;
 }
 
 interface EventRow {
@@ -234,6 +241,16 @@ export function ScanProgress({
       {scan.status === "failed" ? <FailedCard error={scan.error} /> : null}
 
       {scan.status === "cancelled" ? <CancelledCard /> : null}
+
+      {scan.access_state || scan.data_sources ? (
+        <section className="flex flex-col gap-3">
+          <h2 className="text-[14px] font-semibold">What we&apos;re reading</h2>
+          <AccessStateCard
+            accessState={scan.access_state}
+            dataSources={scan.data_sources}
+          />
+        </section>
+      ) : null}
 
       <PhaseTimeline scan={scan} events={events} now={now} />
     </div>

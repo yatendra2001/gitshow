@@ -19,6 +19,20 @@ export interface GitHubProfile {
   createdAt: string;
 }
 
+/**
+ * How the user relates to a repo. A single repo may have multiple
+ * (e.g. owner + contributor on their own fork). `primary` is the
+ * strongest one — used for sorting + UX labels.
+ *
+ * Strength order: owner > collaborator > org_member > contributor > reviewer.
+ */
+export type RepoRelationship =
+  | "owner"
+  | "collaborator"
+  | "org_member"
+  | "contributor"
+  | "reviewer";
+
 export interface RepoRef {
   name: string;
   owner: string;
@@ -33,12 +47,84 @@ export interface RepoRef {
   forkCount: number;
   pushedAt: string | null;
   createdAt: string | null;
+  /**
+   * The user's strongest relationship to this repo. Drives sorting
+   * (owner repos > contributions) and UX copy ("Contributed to X").
+   */
+  relationship?: RepoRelationship;
+  /**
+   * All relationships the user has, sortable by strength. A repo the
+   * user owns AND has PRs in will carry ["owner", "contributor"].
+   */
+  relationships?: RepoRelationship[];
+  /**
+   * How we discovered this repo. Helps us explain where the data came
+   * from ("Found via commit search on verified email") and debug
+   * fetcher gaps.
+   */
+  discoveredVia?: Array<
+    | "user-repos"             // /user/repos affiliation list
+    | "contributions-graphql"  // GraphQL contributionsCollection
+    | "commit-search"          // search/commits?q=author-email
+    | "pr-search"              // gh search prs
+    | "events"                 // /users/{h}/events
+  >;
+  /**
+   * Aggregate signals pulled from contributionsCollection. These are
+   * separate from git-log-derived counts — agents should prefer the
+   * inventory numbers when a deep clone exists, and fall back to these
+   * for metadata-tier and external repos.
+   */
+  contributionSignals?: {
+    commits?: number;
+    prsOpened?: number;
+    prsMerged?: number;
+    reviews?: number;
+    issues?: number;
+    firstContribution?: string | null;
+    lastContribution?: string | null;
+  };
   /** User's commit count in this repo (populated during filtering). */
   userCommitCount?: number;
   /** Significance score computed by repo-filter. */
   significanceScore?: number;
   /** Analysis tier assigned by repo-filter. */
   analysisTier?: AnalysisTier;
+}
+
+/**
+ * State of access to a single GitHub organisation. Surfaces in the UI
+ * so the user knows why an org's repos might be missing.
+ *
+ *   - ok: we enumerated repos successfully
+ *   - sso_required: org enforces SAML/SSO and the OAuth token hasn't
+ *     been authorized for it yet. The user can fix with a one-click
+ *     deep link to github.com/orgs/{org}/sso.
+ *   - oauth_restricted: the org has "Third-party application access
+ *     policy" enabled and the gitshow app is not approved. Needs an
+ *     org owner to approve; the user can request it in their dashboard.
+ *   - no_membership_visible: user has no verified membership (public
+ *     read) — skip entirely, don't show in the UI.
+ */
+export type OrgAccessState =
+  | "ok"
+  | "sso_required"
+  | "oauth_restricted"
+  | "no_membership_visible";
+
+export interface OrgAccess {
+  login: string;
+  displayName: string | null;
+  avatarUrl: string | null;
+  state: OrgAccessState;
+  /**
+   * Deep link the user can click to fix the issue.
+   *   - sso_required       → https://github.com/orgs/{login}/sso
+   *   - oauth_restricted   → https://github.com/orgs/{login}/oauth_application_policy
+   */
+  resolveUrl?: string;
+  /** Count of repos we *were* able to enumerate (always 0 when locked). */
+  reposVisible: number;
 }
 
 export interface GitHubPR {
@@ -75,6 +161,13 @@ export interface GitHubEvent {
 
 export interface GitHubData {
   profile: GitHubProfile;
+  /**
+   * Every repo we discovered — owned, collaborator, org-member, or
+   * external contribution. The `relationship` field on each entry
+   * tells you how the user relates to it. This replaces the old
+   * "ownedRepos only" contract; downstream code should filter by
+   * relationship instead of assuming everything here is owned.
+   */
   ownedRepos: RepoRef[];
   /** All known email addresses for the user (for identity resolution). */
   userEmails: string[];
@@ -84,6 +177,33 @@ export interface GitHubData {
   submittedReviews: GitHubReview[];
   /** Recent public events. */
   recentEvents: GitHubEvent[];
+  /**
+   * Per-org access state. Populated by the fetcher so the UI can
+   * surface locked-orgs and offer the right one-click remediation.
+   */
+  orgAccess: OrgAccess[];
+  /**
+   * Whether the user has enabled "Include private contributions on
+   * my profile" in GitHub settings. When false, contributionsCollection
+   * returns only `restrictedContributionsCount` — we can still count
+   * the user's private work but can't attribute it to specific repos.
+   * The UI nudges the user to flip this toggle.
+   */
+  privateContributionsVisible: boolean;
+  /**
+   * Data-source counters for the scan-complete UI. Tells the user
+   * exactly how much we pulled in so they can judge coverage.
+   */
+  fetchStats: {
+    ownedRepos: number;
+    orgRepos: number;
+    contributionRepos: number;
+    commitSearchRepos: number;
+    orgsVisible: number;
+    orgsLocked: number;
+    privateContributionCount: number;
+    restrictedContributionCount: number;
+  };
 }
 
 // ---------- Repo filtering ----------
