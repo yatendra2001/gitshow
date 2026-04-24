@@ -173,7 +173,7 @@ async function main() {
               claimCount: 0,
               profileUrl,
             });
-            void email.send({
+            const r = await email.send({
               to: contact.email,
               subject: tpl.subject,
               html: tpl.html,
@@ -183,7 +183,22 @@ async function main() {
                 { name: "scan_id", value: scanId },
               ],
             });
+            if (r.ok) {
+              scanLog.info(
+                { to: contact.email, from: r.from, id: r.id },
+                "scan-complete.email.sent",
+              );
+            } else {
+              scanLog.error(
+                { to: contact.email, error: r.error },
+                "scan-complete.email.failed",
+              );
+            }
+          } else {
+            scanLog.warn({ userId }, "scan-complete.email.skipped.no-address");
           }
+        } else {
+          scanLog.warn({}, "scan-complete.email.skipped.no-sender");
         }
       }
     } catch (err) {
@@ -238,7 +253,7 @@ async function main() {
         const contact = await d1.getUserContactById(userId);
         if (contact?.email) {
           const tpl = renderScanFailed({ handle, error: msg });
-          void email.send({
+          const r = await email.send({
             to: contact.email,
             subject: tpl.subject,
             html: tpl.html,
@@ -248,6 +263,17 @@ async function main() {
               { name: "scan_id", value: scanId },
             ],
           });
+          if (r.ok) {
+            scanLog.info(
+              { to: contact.email, from: r.from, id: r.id },
+              "scan-failed.email.sent",
+            );
+          } else {
+            scanLog.error(
+              { to: contact.email, error: r.error },
+              "scan-failed.email.failed",
+            );
+          }
         }
       }
     } catch (emailErr) {
