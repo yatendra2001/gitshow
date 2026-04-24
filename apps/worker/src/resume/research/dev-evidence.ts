@@ -37,6 +37,10 @@ import {
 
 // ─── Schema (what the orchestrator produces) ──────────────────────────
 
+// Cap at 5 queries so a single scan stays under TinyFish's free-tier
+// 5-searches/minute ceiling. Tighter than the article's spirit (quality
+// > quantity) but matches what we can afford to run without rate-limit
+// errors.
 const QueryPlanSchema = z.object({
   queries: z
     .array(
@@ -47,8 +51,8 @@ const QueryPlanSchema = z.object({
         ),
       }),
     )
-    .min(3)
-    .max(12),
+    .min(2)
+    .max(5),
 });
 type QueryPlan = z.infer<typeof QueryPlanSchema>;
 
@@ -117,9 +121,18 @@ export interface DevEvidenceInput {
   onProgress?: (text: string) => void;
 }
 
-const DEFAULT_MAX_URLS = 12;
+const DEFAULT_MAX_URLS = 10;
 const PER_QUERY_TOP_K = 2;
 const FETCH_CONCURRENCY = 3;
+// TinyFish free tier = 5 searches/min. Space calls at least 13s apart
+// so a single scan never trips the rate limit even if a second scan
+// fires right after. Override via TINYFISH_SEARCH_INTERVAL_MS when
+// running on a higher tier.
+const DEFAULT_SEARCH_INTERVAL_MS = 13_000;
+// Free tier = 25 fetches/min; we batch up to 10 per call, so two
+// back-to-back batches (20 URLs) still fit. No per-batch delay needed
+// as long as DEFAULT_MAX_URLS stays <= 10.
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 /**
  * Build a DevEvidence bag. Returns an empty bag if TinyFish is not
@@ -153,7 +166,16 @@ export async function runDevEvidenceResearch(
   const candidates: Array<{ url: string; hint: TinyFishSearchResult; query: string }> = [];
   let queriesRun = 0;
 
+  const searchIntervalMs = Number(
+    process.env.TINYFISH_SEARCH_INTERVAL_MS ?? DEFAULT_SEARCH_INTERVAL_MS,
+  );
+  let lastSearchAt = 0;
   for (const q of plan.queries) {
+    // Space searches out to respect TinyFish's free-tier rate limit.
+    const wait = searchIntervalMs - (Date.now() - lastSearchAt);
+    if (wait > 0 && lastSearchAt > 0) await sleep(wait);
+    lastSearchAt = Date.now();
+
     const r = await tf.search(q.query, { location: "us", language: "en" });
     if (!r.ok) {
       warnings.push(`search.failed: ${q.query.slice(0, 40)} (${r.requestError ?? "unknown"})`);
@@ -269,9 +291,9 @@ You'll receive:
 
 Guidelines:
   - Each query should probe a specific thread. Not "John Smith GitHub" — "Jane Doe Stripe payment protocol 2023" or "ai_buddy Flutter Awesome featured".
-  - Mix approaches: site-scoped (e.g. \`site:news.ycombinator.com \${project}\`), name+company, project+launch, "interview with \${name}", podcast patterns.
+  - Mix approaches: site-scoped (e.g. site:news.ycombinator.com <project>), name+company, project+launch, "interview with <name>", podcast patterns.
   - Avoid duplicates and near-duplicates.
-  - Output 6-10 queries. Quality > quantity.
+  - Output 4-5 queries. We pay per search; be deliberate. Quality over quantity.
 
 Each query MUST include a short "why" — what thread you're pulling on.
 
