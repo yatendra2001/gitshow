@@ -48,7 +48,9 @@ import { runWorkAgent } from "./agents/work.js";
 import { runEducationAgent } from "./agents/education.js";
 import { runContactAgent } from "./agents/contact.js";
 import { runBlogImportAgent } from "./agents/blog-import.js";
+import { runDevEvidenceResearch, type EvidenceBag } from "./research/dev-evidence.js";
 import { assembleResume } from "./assemble.js";
+import { evaluateResume } from "./evaluator.js";
 import { writeDraftResume } from "./persist.js";
 import { noopPhases, type PhaseReporter } from "./phases.js";
 import type { Resume } from "@gitshow/shared/resume";
@@ -195,6 +197,24 @@ export async function runResumePipeline(
   const featured = pickFeatured(github, artifacts);
   log(`[pipeline] picked ${featured.length} featured repos\n`);
 
+  // 6b. DevEvidence — orchestrator+workers web research so downstream
+  //    agents have grounded facts (interviews, talks, HN, press). No-ops
+  //    gracefully if TINYFISH_API_KEY is unset.
+  const evidence = await phases.phase("dev-evidence", async () => {
+    log(`[pipeline] stage 6b: dev-evidence research\n`);
+    return runDevEvidenceResearch({
+      session,
+      usage,
+      github,
+      discover,
+      featuredFullNames: featured,
+      onProgress,
+    });
+  });
+  log(
+    `[pipeline]   evidence: ${evidence.cards.length} cards (${evidence.queriesRun}/${evidence.queriesPlanned} queries)\n`,
+  );
+
   // 7. Parallel section agents. current_phase stays at "section-agents"
   //    for the whole block; per-agent sub-events fan out in the log.
   const [buildLog, skills, projects, work, education, blog] = await phases.phase(
@@ -220,10 +240,10 @@ export async function runResumePipeline(
           }),
         ),
         phases.subPhase("resume:work", () =>
-          runWorkAgent({ session, usage, github, artifacts, onProgress }),
+          runWorkAgent({ session, usage, github, artifacts, evidence, onProgress }),
         ),
         phases.subPhase("resume:education", () =>
-          runEducationAgent({ session, usage, github, artifacts, onProgress }),
+          runEducationAgent({ session, usage, github, artifacts, evidence, onProgress }),
         ),
         phases.subPhase("resume:blog-import", () =>
           runBlogImportAgent({
@@ -253,6 +273,7 @@ export async function runResumePipeline(
       })),
       workCompanies: work.map((w) => w.company),
       educationSchools: education.map((e) => e.school),
+      evidence,
       onProgress,
     });
   });
@@ -278,6 +299,34 @@ export async function runResumePipeline(
       blog,
     });
   });
+
+  // 10b. Evaluator — deterministic quality gate. Flags issues so we can
+  //      see in scan_events WHY an output is thin without waiting for
+  //      the user to notice. Retry loop is a v2 follow-up.
+  const evalReport = await phases.phase("evaluate", async () => {
+    const hasLinkedIn = !!session.socials.linkedin;
+    const hasIntakeSignal = !!(
+      session.context_notes && session.context_notes.trim().length > 0
+    );
+    const report = evaluateResume({
+      resume,
+      hasLinkedIn,
+      hasIntakeSignal,
+      evidence,
+    });
+    log(
+      `[pipeline] evaluator: ${report.pass ? "PASS" : "FAIL"} (${report.issues.length} issues)\n`,
+    );
+    for (const i of report.issues) {
+      log(`[pipeline]   [${i.severity}] ${i.section}: ${i.message}\n`);
+    }
+    return report;
+  });
+  if (!evalReport.pass) {
+    log(
+      `[pipeline] evaluator flagged ${evalReport.issues.filter((i) => i.severity === "error").length} error(s) — shipping anyway (v1: no retry loop yet).\n`,
+    );
+  }
 
   log(
     `[pipeline] done. ${projects.length} projects, ${buildLog.length} build-log entries, ${skills.skills.length} skills, ${blog.length} blog posts.\n`,

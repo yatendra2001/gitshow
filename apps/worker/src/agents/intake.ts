@@ -14,6 +14,7 @@
 
 import { z } from "zod/v4";
 import { runAgentWithSubmit, type AgentEventEmit } from "./base.js";
+import { modelForRole } from "@gitshow/shared/models";
 import type { ScanSession } from "../schemas.js";
 import type { SessionUsage } from "../session.js";
 
@@ -77,7 +78,7 @@ Output: call submit_intake with 3-5 questions and a one-line read_summary. Stop 
 
 export async function runIntake(input: IntakeInput): Promise<IntakeOutput> {
   const { result } = await runAgentWithSubmit({
-    model: input.session.model,
+    model: modelForRole("section"),
     systemPrompt: INTAKE_PROMPT,
     input: input.profile_summary,
     submitToolName: "submit_intake",

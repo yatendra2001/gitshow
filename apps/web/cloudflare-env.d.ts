@@ -47,6 +47,10 @@ declare global {
     VAPID_PUBLIC_KEY?: string;
     VAPID_PRIVATE_KEY?: string;
 
+    // Web scraping + search for the LinkedIn fetcher + DevEvidence
+    // research phase. Pipeline falls back gracefully when missing.
+    TINYFISH_API_KEY?: string;
+
     // Billing (Dodo Payments). The Better Auth Dodo plugin reads API
     // key + webhook secret; product ids are consumed by lib/dodo.ts to
     // map slugs ('pro-monthly' / 'pro-yearly') → Dodo product ids.

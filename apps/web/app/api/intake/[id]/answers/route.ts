@@ -232,6 +232,7 @@ function buildScanEnv(
   if (optional.RESEND_API_KEY) out.RESEND_API_KEY = optional.RESEND_API_KEY;
   if (optional.EMAIL_FROM) out.EMAIL_FROM = optional.EMAIL_FROM;
   if (optional.PUBLIC_APP_URL) out.PUBLIC_APP_URL = optional.PUBLIC_APP_URL;
+  if (optional.TINYFISH_API_KEY) out.TINYFISH_API_KEY = optional.TINYFISH_API_KEY;
   return out;
 }
 

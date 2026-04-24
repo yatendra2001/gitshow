@@ -15,6 +15,11 @@ import type { ScanSession, Artifact } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
 import type { GitHubData } from "../../types.js";
 import { fetchLinkedIn } from "../linkedin.js";
+import { modelForRole } from "@gitshow/shared/models";
+import {
+  formatEvidenceBag,
+  type EvidenceBag,
+} from "../research/dev-evidence.js";
 
 export const EducationEntryLLMSchema = z.object({
   school: z.string().max(120),
@@ -48,6 +53,7 @@ export interface EducationAgentInput {
   usage: SessionUsage;
   github: GitHubData;
   artifacts: Record<string, Artifact>;
+  evidence?: EvidenceBag;
   onProgress?: (text: string) => void;
 }
 
@@ -81,7 +87,7 @@ export async function runEducationAgent(
   }
 
   const { result } = await runAgentWithSubmit({
-    model: input.session.model,
+    model: modelForRole("section"),
     systemPrompt: SYSTEM_PROMPT,
     input: built.text,
     submitToolName: "submit_education",
@@ -118,11 +124,19 @@ async function buildInput(input: EducationAgentInput): Promise<{ text: string; h
     lines.push("");
   }
 
-  const linkedin = await fetchLinkedIn(session);
+  if (input.evidence && input.evidence.cards.length > 0) {
+    hasSource = true;
+    lines.push(formatEvidenceBag(input.evidence, 15));
+    lines.push("");
+  }
+
+  const linkedin = await fetchLinkedIn(session, { onProgress });
   if (linkedin) {
     hasSource = true;
-    (onProgress ?? (() => {}))(`\n[education] using LinkedIn content (${linkedin.text.length} chars)\n`);
-    lines.push(`## LinkedIn content`);
+    (onProgress ?? (() => {}))(
+      `\n[education] LinkedIn tier=${linkedin.tier} chars=${linkedin.text.length}\n`,
+    );
+    lines.push(`## LinkedIn content (tier=${linkedin.tier})`);
     lines.push(linkedin.text.slice(0, 8000));
     lines.push("");
   }

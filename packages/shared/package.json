@@ -19,6 +19,7 @@
     "./cloud/d1": "./src/cloud/d1.ts",
     "./cloud/r2": "./src/cloud/r2.ts",
     "./cloud/fly": "./src/cloud/fly.ts",
+    "./cloud/tinyfish": "./src/cloud/tinyfish.ts",
     "./cloud/do-client": "./src/cloud/do-client.ts",
     "./notifications/email": "./src/notifications/email.ts"
   },

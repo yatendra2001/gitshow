@@ -19,6 +19,11 @@
 
 import * as z from "zod/v4";
 import { runAgentWithSubmit } from "../../agents/base.js";
+import { modelForRole } from "@gitshow/shared/models";
+import {
+  formatEvidenceBag,
+  type EvidenceBag,
+} from "../research/dev-evidence.js";
 import type { ScanSession, Artifact } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
 import type { GitHubData } from "../../types.js";
@@ -65,6 +70,8 @@ export interface PersonAgentInput {
   workCompanies: string[];
   /** Education schools (recent-first) — used for summary grounding. */
   educationSchools: string[];
+  /** Evidence bag from DevEvidence research phase. */
+  evidence?: EvidenceBag;
   onProgress?: (text: string) => void;
 }
 
@@ -104,7 +111,7 @@ export async function runPersonAgent(
   const { result } = await runAgentWithSubmit({
     // Use the same model the session picked — the caller decides
     // whether to push this to Opus for higher-quality prose.
-    model: input.session.model,
+    model: modelForRole("orchestrator"),
     systemPrompt: SYSTEM_PROMPT,
     input: userMessage,
     submitToolName: "submit_person",
@@ -189,6 +196,11 @@ function buildInput(input: PersonAgentInput): string {
   if (educationSchools.length > 0) {
     lines.push(`## Education (reference for /#education link) — recent first`);
     for (const s of educationSchools.slice(0, 4)) lines.push(`- ${s}`);
+    lines.push("");
+  }
+
+  if (input.evidence && input.evidence.cards.length > 0) {
+    lines.push(formatEvidenceBag(input.evidence, 12));
     lines.push("");
   }
 
