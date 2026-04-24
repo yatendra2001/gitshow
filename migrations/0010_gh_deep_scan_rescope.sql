@@ -18,14 +18,11 @@ DELETE FROM notifications;
 -- Push subscriptions reference users.
 DELETE FROM push_subscriptions;
 
--- Resume/profile views were all from partial-data scans.
-DELETE FROM profile_views;
-
 -- Claim pipeline outputs (legacy).
 DELETE FROM claims;
 
 -- Intake rows for unfinished onboardings.
-DELETE FROM intakes;
+DELETE FROM intake_sessions;
 
 -- All scans — these were produced from incomplete data. New scans will
 -- be triggered after users reconnect with the expanded scope.
@@ -36,7 +33,7 @@ DELETE FROM scans;
 DELETE FROM user_profiles;
 
 -- Dodo subscription mirrors (billing work lives in 0008).
-DELETE FROM subscriptions;
+DELETE FROM subscription;
 
 -- Auth: sessions + OAuth accounts + unused verifications. This is the
 -- piece that actually forces re-consent.
