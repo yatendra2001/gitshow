@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getSession } from "@/auth";
+import { requireProApi } from "@/lib/entitlements";
 import {
   loadDraftResume,
   patchDraftResume,
@@ -40,9 +41,13 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const session = await getSession();
-  if (!session?.user?.login) {
-    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  // PATCH is Pro-gated (editing). GET stays session-only above so
+  // cancelled users can still see what they had drafted.
+  const gate = await requireProApi();
+  if (!gate.ok) return gate.response;
+  const session = gate.session;
+  if (!session.user.login) {
+    return NextResponse.json({ error: "no_handle" }, { status: 400 });
   }
 
   const { env } = await getCloudflareContext({ async: true });

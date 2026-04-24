@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
-import { getSession } from "@/auth";
+import { requireProPage } from "@/lib/entitlements";
 import { loadDraftResume, loadPublishedResume } from "@/lib/resume-io";
 import PortfolioPage from "@/components/portfolio-page";
 import { DataProvider } from "@/components/data-provider";
@@ -40,10 +40,8 @@ const geistMono = Geist_Mono({
 export const dynamic = "force-dynamic";
 
 export default async function PreviewPage() {
-  const session = await getSession();
-  if (!session?.user?.id || !session.user.login) redirect("/signin");
-
-  const handle = session.user.login;
+  const session = await requireProPage();
+  const handle = session.user.login!;
   const { env } = await getCloudflareContext({ async: true });
   const [draft, published] = await Promise.all([
     loadDraftResume(env.BUCKET, handle),

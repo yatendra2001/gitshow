@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { nanoid } from "nanoid";
-import { getSession } from "@/auth";
+import { requireProApi } from "@/lib/entitlements";
 
 /**
  * POST /api/resume/upload — multipart media upload to R2.
@@ -51,10 +51,12 @@ function extFor(contentType: string): string {
 }
 
 export async function POST(req: Request) {
-  const session = await getSession();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-  }
+  // Pro-gated: uploaded assets land in R2 under the user's id. We
+  // don't charge for storage today, but gating upload keeps the
+  // surface area consistent — editing == Pro across the board.
+  const gate = await requireProApi();
+  if (!gate.ok) return gate.response;
+  const session = gate.session;
 
   const { env } = await getCloudflareContext({ async: true });
   if (!env.BUCKET) {

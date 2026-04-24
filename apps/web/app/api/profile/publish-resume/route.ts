@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { getSession } from "@/auth";
+import { requireProApi } from "@/lib/entitlements";
 import {
   draftResumeKey,
   publishedResumeKey,
@@ -25,9 +25,14 @@ import {
  * PUT on successful GET).
  */
 export async function POST() {
-  const session = await getSession();
-  if (!session?.user?.id || !session?.user?.login) {
-    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  // Pro-gated: publishing a draft is a Pro edit operation. The public
+  // page itself stays live forever once published — this gate only
+  // controls who can CREATE/UPDATE that public artifact.
+  const gate = await requireProApi();
+  if (!gate.ok) return gate.response;
+  const session = gate.session;
+  if (!session.user.login) {
+    return NextResponse.json({ error: "no_handle" }, { status: 400 });
   }
 
   const { env } = await getCloudflareContext({ async: true });

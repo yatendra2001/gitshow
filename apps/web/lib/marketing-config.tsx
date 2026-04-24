@@ -576,7 +576,7 @@ export const siteConfig = {
             {
                 name: "Pro",
                 cadence: "Monthly",
-                href: "/signin",
+                href: "/pricing",
                 price: "$20",
                 period: "month",
                 note: "Billed monthly. Cancel anytime.",
@@ -586,7 +586,7 @@ export const siteConfig = {
             {
                 name: "Pro",
                 cadence: "Annual",
-                href: "/signin",
+                href: "/pricing",
                 price: "$12",
                 period: "month",
                 note: "Billed $144 once a year. Save 40%.",

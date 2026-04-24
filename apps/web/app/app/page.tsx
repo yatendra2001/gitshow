@@ -1,10 +1,12 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import { Check } from "lucide-react";
 import { getSession } from "@/auth";
 import { NotificationBell } from "@/components/notifications/bell";
 import { PushEnableButton } from "@/components/notifications/push-enable";
 import { Logo } from "@/components/logo";
+import { getSubscription, isActive } from "@/lib/entitlements";
 import {
   loadDraftResume,
   loadPublishedResume,
@@ -52,6 +54,47 @@ export default async function AppHomePage() {
   const githubHandle = (session.user.login ?? session.user.name ?? "").trim();
 
   const { env } = await getCloudflareContext({ async: true });
+
+  const subscription = await getSubscription(env.DB, userId);
+  const isPro = isActive(subscription);
+
+  // Non-Pro branch: lightweight showcase + CTA to /pricing. Keeps the
+  // public profile link visible if they had one (cancellation leaves
+  // /{handle} live forever), plus Billing for portal access.
+  if (!isPro) {
+    const publishedResumeNonPro = githubHandle
+      ? await loadPublishedResume(env.BUCKET, githubHandle)
+      : null;
+    return (
+      <main className="min-h-svh bg-background text-foreground">
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border/30 bg-background/80 px-4 backdrop-blur sm:px-6">
+          <div className="flex items-center gap-3">
+            <Logo href="/" size={24} />
+            <span className="hidden sm:inline font-mono text-[11px] text-muted-foreground">
+              @{githubHandle || "you"}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/app/billing"
+              className="inline-flex items-center rounded-lg px-2.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground hover:bg-card/50 transition-colors"
+            >
+              Billing
+            </Link>
+            <SignOutButton />
+          </div>
+        </header>
+        <NonProShowcase
+          handle={githubHandle}
+          hasPublished={Boolean(publishedResumeNonPro)}
+          wasCancelled={subscription?.status === "cancelled"}
+        />
+        <footer className="mx-auto w-full max-w-3xl px-4 sm:px-6 pb-12 flex items-center justify-end gap-3 text-[11px] text-muted-foreground">
+          <span className="font-mono">gitshow.io</span>
+        </footer>
+      </main>
+    );
+  }
 
   const [profileRow, latestScan, activeScan] = await Promise.all([
     env.DB.prepare(
@@ -105,6 +148,12 @@ export default async function AppHomePage() {
         <div className="flex items-center gap-2">
           <PushEnableButton />
           <NotificationBell />
+          <Link
+            href="/app/billing"
+            className="inline-flex items-center rounded-lg px-2.5 py-1.5 text-[12px] text-muted-foreground hover:text-foreground hover:bg-card/50 transition-colors"
+          >
+            Billing
+          </Link>
           <SignOutButton />
         </div>
       </header>
@@ -324,6 +373,86 @@ function PublishedState({
           </span>
           <DeleteProfileButton />
         </div>
+      </div>
+    </section>
+  );
+}
+
+// ─── Non-Pro showcase ───────────────────────────────────────────────
+
+const PRO_FEATURES = [
+  "Full GitHub analysis across public + private repos",
+  "AI-written portfolio highlighting your real work",
+  "Public profile at gitshow.io/{handle} — shareable forever",
+  "Per-section editor to refine the generated resume",
+  "Monthly refresh scans to keep your profile current",
+];
+
+function NonProShowcase({
+  handle,
+  hasPublished,
+  wasCancelled,
+}: {
+  handle: string;
+  hasPublished: boolean;
+  wasCancelled: boolean;
+}) {
+  return (
+    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
+      <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
+        {wasCancelled ? "Subscription ended" : "Welcome"}
+      </div>
+      <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
+        {wasCancelled
+          ? "Re-activate to edit your portfolio"
+          : "Your portfolio starts with Pro"}
+      </h1>
+      <p className="text-[14px] leading-relaxed text-muted-foreground mb-6">
+        {wasCancelled ? (
+          <>
+            Your public page at{" "}
+            <span className="font-mono">gitshow.io/{handle}</span> stays
+            live. Re-subscribe to run new scans, edit sections, and
+            refresh your portfolio.
+          </>
+        ) : (
+          <>
+            GitShow runs a full AI analysis of your GitHub and ships a
+            public portfolio at{" "}
+            <span className="font-mono">
+              gitshow.io/{handle || "{handle}"}
+            </span>
+            . One plan, everything included.
+          </>
+        )}
+      </p>
+
+      <ul className="mb-7 space-y-2 text-[13px] text-foreground/90">
+        {PRO_FEATURES.map((f) => (
+          <li key={f} className="flex items-start gap-2">
+            <Check className="mt-0.5 h-4 w-4 shrink-0 text-[var(--primary)]" />
+            <span>{f}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href="/pricing"
+          className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-11"
+        >
+          {wasCancelled ? "Re-subscribe →" : "See plans →"}
+        </Link>
+        {hasPublished && handle ? (
+          <Link
+            href={`/${handle}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center rounded-xl border border-border/60 bg-card/30 px-4 py-2 text-[13px] font-medium hover:bg-card/50 transition-colors min-h-11"
+          >
+            View public portfolio ↗
+          </Link>
+        ) : null}
       </div>
     </section>
   );
