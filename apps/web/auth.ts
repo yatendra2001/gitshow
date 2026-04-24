@@ -1,7 +1,15 @@
-import { betterAuth } from "better-auth";
+import { betterAuth, type BetterAuthPlugin } from "better-auth";
 import { withCloudflare } from "better-auth-cloudflare";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { headers } from "next/headers";
+import DodoPayments from "dodopayments";
+import {
+  dodopayments,
+  checkout,
+  portal,
+  webhooks,
+} from "@dodopayments/better-auth";
+import { syncSubscriptionFromWebhook } from "@/lib/billing-sync";
 
 /**
  * Better Auth wired up for OpenNext + Cloudflare D1.
@@ -49,6 +57,31 @@ async function buildAuth() {
     );
   }
 
+  // Dodo Payments client — single instance per isolate. Missing keys
+  // aren't fatal at construct time (the SDK only throws when a request
+  // is actually made), which means the auth surface stays usable for
+  // dev flows that don't hit billing. The checkout/portal endpoints
+  // below will 500 with a readable error if the key is truly absent.
+  const dodo = new DodoPayments({
+    bearerToken: env.DODO_PAYMENTS_API_KEY ?? "missing",
+    environment: env.DODO_PAYMENTS_ENVIRONMENT ?? "test_mode",
+  });
+
+  // Product slugs are the stable identifiers the pricing page passes
+  // to `authClient.dodopayments.checkoutSession({ slug })`. Actual
+  // Dodo product ids come from env so test-mode + live-mode can use
+  // the same code path with different ids.
+  const checkoutProducts = [
+    env.DODO_PRODUCT_ID_MONTHLY && {
+      productId: env.DODO_PRODUCT_ID_MONTHLY,
+      slug: "pro-monthly",
+    },
+    env.DODO_PRODUCT_ID_YEARLY && {
+      productId: env.DODO_PRODUCT_ID_YEARLY,
+      slug: "pro-yearly",
+    },
+  ].filter(Boolean) as { productId: string; slug: string }[];
+
   return betterAuth(
     withCloudflare(
       {
@@ -76,14 +109,73 @@ async function buildAuth() {
           env.NEXT_PUBLIC_APP_URL ?? "https://gitshow.io",
           "https://gitshow-web.yatendra2001kumar.workers.dev",
         ].filter(Boolean) as string[],
+        // Billing plugin. The Dodo Better Auth plugin:
+        //   - auto-creates a Dodo customer on GitHub signup (linked
+        //     via the `account` table by the plugin itself)
+        //   - exposes POST /api/auth/dodopayments/checkout for the
+        //     pricing page (`authClient.dodopayments.checkoutSession`)
+        //   - exposes GET  /api/auth/dodopayments/customer/portal
+        //     for the billing page's "Manage subscription" button
+        //   - exposes POST /api/auth/dodopayments/webhooks which
+        //     verifies signature + dispatches to our callbacks below.
+        //
+        // The webhook URL you register in the Dodo dashboard is:
+        //   {NEXT_PUBLIC_APP_URL}/api/auth/dodopayments/webhooks
+        // Cast: @dodopayments/better-auth v1.6.2 was built against a
+        // slightly older better-auth User shape than what better-auth
+        // ^1.6.5 exports. The runtime contract is compatible (plugin
+        // only reads `user.id`); the cast bridges the structural
+        // mismatch on init()'s `databaseHooks.user.create.after` type.
+        plugins: [
+          dodopayments({
+            client: dodo,
+            createCustomerOnSignUp: true,
+            // Stamp our internal user_id onto the Dodo customer as
+            // metadata. Dodo echoes this back on every webhook under
+            // `data.customer.metadata.userId` — that's how the sync
+            // function ties a subscription event to a gitshow user
+            // without a second lookup.
+            getCustomerParams: (user) => ({
+              metadata: { userId: (user as { id: string }).id },
+            }),
+            use: [
+              checkout({
+                products: checkoutProducts,
+                // Customer lands here after a successful checkout.
+                // /app reads the subscription table and flips to the
+                // Pro dashboard.
+                successUrl: "/app?checkout=success",
+                authenticatedUsersOnly: true,
+              }),
+              portal(),
+              webhooks({
+                webhookKey: env.DODO_PAYMENTS_WEBHOOK_SECRET ?? "missing",
+                // Single sync function fans out to the D1 mirror.
+                // Dedicated `onSubscription*` callbacks below handle
+                // the specific state transitions on top of the sync.
+                onPayload: async (payload) => {
+                  await syncSubscriptionFromWebhook(env.DB, payload);
+                },
+              }),
+            ],
+          }) as unknown as BetterAuthPlugin,
+        ],
         socialProviders: {
           github: {
             clientId: env.AUTH_GITHUB_ID,
             clientSecret: env.AUTH_GITHUB_SECRET,
-            // `repo` lets the worker read private repos via the
-            // user's own token (see lib/user-token.ts). Dropping it
-            // would force every scan to bot-only / public reads.
-            scope: ["read:user", "user:email", "repo"],
+            // Scope rationale:
+            //   repo       → private repos the user owns + collaborator + org-
+            //                member access under /user/repos (visibility=all).
+            //   read:org   → enumerate private org memberships so we can
+            //                detect org-level locked state and surface it in
+            //                the UI (see github-fetcher.probeOrgAccess).
+            //   read:user  → unlocks contributionsCollection private-detail
+            //                (respects the user's "Include private
+            //                contributions on my profile" setting).
+            //   user:email → verified emails used by commit-search to find
+            //                drive-by contributions to third-party repos.
+            scope: ["read:user", "user:email", "repo", "read:org"],
             mapProfileToUser(profile) {
               return {
                 login: typeof profile.login === "string" ? profile.login : null,

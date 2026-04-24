@@ -3,7 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { FlyClient } from "@gitshow/shared/cloud/fly";
-import { getSession } from "@/auth";
+import { requireProApi } from "@/lib/entitlements";
 import { createIntakeSession } from "@/lib/intake";
 import { getUserGitHubToken } from "@/lib/user-token";
 
@@ -29,10 +29,11 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const session = await getSession();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-  }
+  // Pro-gated: intake spawns a Fly machine + LLM call. Same rationale
+  // as /api/scan — never run this without a paid subscription.
+  const gate = await requireProApi();
+  if (!gate.ok) return gate.response;
+  const session = gate.session;
 
   const parse = BodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parse.success) {
@@ -44,7 +45,10 @@ export async function POST(req: Request) {
 
   const { env } = await getCloudflareContext({ async: true });
   const intakeId = `intake-${nanoid(10)}`;
-  const model = parse.data.model ?? "anthropic/claude-sonnet-4.6";
+  // Default model = openrouter/auto so the allowed-models list in our
+  // OpenRouter workspace controls which model answers. Request body
+  // still overrides when set.
+  const model = parse.data.model ?? "openrouter/auto";
 
   // The user's GitHub OAuth token is REQUIRED — it's what gives the
   // Fly worker read access to their private + org repos. If missing,

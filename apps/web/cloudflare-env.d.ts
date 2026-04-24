@@ -47,6 +47,15 @@ declare global {
     VAPID_PUBLIC_KEY?: string;
     VAPID_PRIVATE_KEY?: string;
 
+    // Billing (Dodo Payments). The Better Auth Dodo plugin reads API
+    // key + webhook secret; product ids are consumed by lib/dodo.ts to
+    // map slugs ('pro-monthly' / 'pro-yearly') → Dodo product ids.
+    DODO_PAYMENTS_API_KEY?: string;
+    DODO_PAYMENTS_WEBHOOK_SECRET?: string;
+    DODO_PAYMENTS_ENVIRONMENT?: "test_mode" | "live_mode";
+    DODO_PRODUCT_ID_MONTHLY?: string;
+    DODO_PRODUCT_ID_YEARLY?: string;
+
     // Vars from wrangler.jsonc:
     NEXT_PUBLIC_APP_URL?: string;
     PUBLIC_APP_URL?: string;

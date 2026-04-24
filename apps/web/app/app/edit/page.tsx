@@ -1,7 +1,6 @@
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { getSession } from "@/auth";
+import { requireProPage } from "@/lib/entitlements";
 import { loadDraftResume, loadPublishedResume } from "@/lib/resume-io";
 import { Editor } from "./_editor";
 
@@ -17,10 +16,8 @@ import { Editor } from "./_editor";
 export const dynamic = "force-dynamic";
 
 export default async function EditPage() {
-  const session = await getSession();
-  if (!session?.user?.id || !session.user.login) redirect("/signin");
-
-  const handle = session.user.login;
+  const session = await requireProPage();
+  const handle = session.user.login!;
   const { env } = await getCloudflareContext({ async: true });
   const [resume, published] = await Promise.all([
     loadDraftResume(env.BUCKET, handle),

@@ -3,7 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { FlyClient } from "@gitshow/shared/cloud/fly";
-import { getSession } from "@/auth";
+import { requireProApi } from "@/lib/entitlements";
 import {
   getIntakeForUser,
   saveIntakeAnswers,
@@ -48,10 +48,12 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const session = await getSession();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-  }
+  // Pro-gated: this endpoint spawns the full scan. Without this
+  // guard a cancelled user with a stale draft could still trigger
+  // an expensive generation by replaying the intake-answers call.
+  const gate = await requireProApi();
+  if (!gate.ok) return gate.response;
+  const session = gate.session;
   const { id } = await params;
 
   const parse = BodySchema.safeParse(await req.json().catch(() => ({})));
@@ -91,7 +93,8 @@ export async function POST(
   // Spawn the full scan with intake context baked in.
   const scanId = `scan-${nanoid(10)}`;
   const sessionId = `or-${nanoid(14)}`;
-  const model = "anthropic/claude-sonnet-4.6";
+  // Match /api/scan: openrouter/auto routes to the best allowed model.
+  const model = "openrouter/auto";
   const now = Date.now();
 
   const socials = parse.data.socials ?? {};

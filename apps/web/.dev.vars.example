@@ -37,3 +37,20 @@ GH_TOKEN=""
 # ── Realtime publish target (leave blank to skip DO publishing) ────
 REALTIME_ENDPOINT="https://gitshow-realtime.yatendra2001kumar.workers.dev"
 PIPELINE_SHARED_SECRET=""
+
+# ── Dodo Payments (billing) ────────────────────────────────────────
+# Dashboard: https://app.dodopayments.com  → Developer → API
+# Use test-mode creds locally; flip DODO_PAYMENTS_ENVIRONMENT in
+# wrangler.jsonc to "live_mode" for production.
+DODO_PAYMENTS_API_KEY="sk_test_..."
+
+# Dashboard → Developer → Webhooks → create an endpoint pointing at
+# http://localhost:3000/api/auth/dodopayments/webhooks (ngrok for
+# local; the deployed URL in prod). Copy the signing secret here.
+DODO_PAYMENTS_WEBHOOK_SECRET=""
+# Product ids from Dashboard → Products. Create ONE subscription
+# product with a monthly price and ONE with a yearly price:
+#   Pro Monthly — $20/mo
+#   Pro Yearly  — $144/yr  (40% off vs 12 × $20 = $240)
+DODO_PRODUCT_ID_MONTHLY=""
+DODO_PRODUCT_ID_YEARLY=""

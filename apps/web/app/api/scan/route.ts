@@ -3,7 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { nanoid } from "nanoid";
 import { z } from "zod";
 import { FlyClient } from "@gitshow/shared/cloud/fly";
-import { getSession } from "@/auth";
+import { requireProApi } from "@/lib/entitlements";
 import { getUserGitHubToken } from "@/lib/user-token";
 
 /**
@@ -56,10 +56,12 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const session = await getSession();
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
-  }
+  // Pro-gated: scan creation consumes Fly + OpenRouter credits, so it
+  // can never run without an active subscription. A cancelled user who
+  // somehow slips past the UI hits a 402 here with `upgrade_url`.
+  const gate = await requireProApi();
+  if (!gate.ok) return gate.response;
+  const session = gate.session;
 
   const parse = BodySchema.safeParse(await req.json().catch(() => ({})));
   if (!parse.success) {
@@ -74,7 +76,11 @@ export async function POST(req: Request) {
 
   const scanId = `scan-${nanoid(10)}`;
   const sessionId = `or-${nanoid(14)}`;
-  const model = body.model ?? "anthropic/claude-sonnet-4.6";
+  // `openrouter/auto` lets OpenRouter pick the best model per request
+  // from the allowed-models list configured in our OpenRouter
+  // workspace. Flip the default there without a redeploy; request
+  // body still wins when it pins an explicit model.
+  const model = body.model ?? "openrouter/auto";
   const pipeline = body.pipeline ?? "resume";
   const now = Date.now();
 
