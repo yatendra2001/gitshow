@@ -2,18 +2,22 @@
  * LinkedIn helper — fetches a user-provided LinkedIn URL and returns
  * markdown text the work/education agents feed into their LLM input.
  *
- * Fallback chain (first non-null wins):
- *   1. TinyFish Fetch (real-browser render — handles LinkedIn's JS auth-wall better)
- *   2. Jina Reader (plain scraper — works for many PUBLIC profiles)
+ * Fallback chain:
+ *   1. TinyFish Fetch (real-browser render). SKIPPED for linkedin.com/in/
+ *      URLs — those return a 145-char "Sign Up | LinkedIn" shell every
+ *      time; don't burn a TinyFish credit proving that.
+ *   2. Jina Reader (free, no key). Sometimes slips through on public
+ *      profiles LinkedIn exposes to search-engine user agents.
  *
- * Both endpoints can return login-wall HTML for signed-out viewers; we
- * reject results shorter than MIN_TEXT_CHARS AND matching login-wall
- * heuristics. Returning null is the signal "no usable LinkedIn content"
- * — agents then fall back to intake + GitHub hints.
+ * Both endpoints can return login-wall HTML; we reject via isUsable()
+ * (short + wall keywords, OR `Sign Up | LinkedIn` title regardless of
+ * length). Returning null means "no usable LinkedIn content" — agents
+ * fall back to intake + evidence bag + GitHub hints.
  */
 
 import type { ScanSession } from "../schemas.js";
 import { TinyFishClient } from "@gitshow/shared/cloud/tinyfish";
+import type { ScanTrace } from "./observability/trace.js";
 
 export interface LinkedInMaterial {
   /** Where the content came from — URL for web fetches, `"pdf"` for uploads. */
@@ -26,7 +30,10 @@ export interface LinkedInMaterial {
 
 const JINA_TIMEOUT_MS = 30_000;
 const MIN_TEXT_CHARS = 800;
-const LOGIN_WALL_PATTERN = /sign\s*in|login|authwall|members only|join (?:now|linkedin)/i;
+const LOGIN_WALL_PATTERN =
+  /sign\s*in|sign\s*up|log\s*in|login|authwall|members only|join (?:now|linkedin)|by clicking continue/i;
+/** `Sign Up | LinkedIn` title — 100% reliable login-wall signal. */
+export const LOGIN_WALL_TITLES = /^(sign up|sign in|log in|join linkedin)/i;
 
 /**
  * Attempt to fetch the user's LinkedIn profile via the best available
@@ -35,20 +42,32 @@ const LOGIN_WALL_PATTERN = /sign\s*in|login|authwall|members only|join (?:now|li
  */
 export async function fetchLinkedIn(
   session: ScanSession,
-  opts: { onProgress?: (text: string) => void } = {},
+  opts: { onProgress?: (text: string) => void; trace?: ScanTrace } = {},
 ): Promise<LinkedInMaterial | null> {
   const url = session.socials.linkedin;
   if (!url) return null;
   const log = opts.onProgress ?? (() => {});
+  const trace = opts.trace;
 
-  // Tier 1: TinyFish. Real browser renders JS, bypasses simple auth-walls.
+  const isLinkedInProfile = /\blinkedin\.com\/in\//i.test(url);
+
+  // Tier 1: TinyFish. Skipped on linkedin.com/in/ — always login-walls.
   const tf = TinyFishClient.fromEnv();
-  if (tf) {
+  if (tf && !isLinkedInProfile) {
+    const t0 = Date.now();
     const resp = await tf.fetchUrls([url], { format: "markdown" });
     if (resp.ok) {
       const first = resp.results[0];
-      if (first && isUsable(first.text)) {
+      if (first && isUsable(first.text, first.title)) {
         log(`[linkedin] tinyfish ok (${first.text.length} chars)\n`);
+        trace?.linkedInFetch({
+          url,
+          tier: "tinyfish",
+          ok: true,
+          textChars: first.text.length,
+          title: first.title,
+          durationMs: Date.now() - t0,
+        });
         return { source: url, tier: "tinyfish", text: first.text };
       }
       const tfErr = resp.errors[0]?.error;
@@ -57,12 +76,38 @@ export async function fetchLinkedIn(
           (tfErr ? ` (err: ${tfErr})` : "") +
           ` — trying jina.\n`,
       );
+      trace?.linkedInFetch({
+        url,
+        tier: "tinyfish",
+        ok: false,
+        textChars: first?.text?.length ?? 0,
+        title: first?.title,
+        reason: tfErr ?? "login-wall or thin content",
+        durationMs: Date.now() - t0,
+      });
     } else {
       log(`[linkedin] tinyfish request failed: ${resp.requestError ?? "unknown"} — trying jina.\n`);
+      trace?.linkedInFetch({
+        url,
+        tier: "tinyfish",
+        ok: false,
+        reason: resp.requestError ?? "request failed",
+        durationMs: Date.now() - t0,
+      });
     }
+  } else if (isLinkedInProfile) {
+    log(`[linkedin] skipping tinyfish — linkedin.com/in/ always login-walls; saves a credit.\n`);
+    trace?.linkedInFetch({
+      url,
+      tier: "skipped",
+      ok: false,
+      reason: "linkedin.com/in/ known to login-wall — skipping tinyfish",
+      durationMs: 0,
+    });
   }
 
   // Tier 2: Jina Reader — free, no key, decent on static linkedin pages.
+  const jinaT0 = Date.now();
   try {
     const res = await fetch(`https://r.jina.ai/${url}`, {
       redirect: "follow",
@@ -76,27 +121,59 @@ export async function fetchLinkedIn(
       const text = await res.text();
       if (isUsable(text)) {
         log(`[linkedin] jina ok (${text.length} chars)\n`);
+        trace?.linkedInFetch({
+          url,
+          tier: "jina",
+          ok: true,
+          textChars: text.length,
+          durationMs: Date.now() - jinaT0,
+        });
         return { source: url, tier: "jina", text };
       }
-      log(`[linkedin] jina returned ${text.length} chars — rejecting.\n`);
+      log(`[linkedin] jina returned ${text.length} chars — login wall / thin content, rejecting.\n`);
+      trace?.linkedInFetch({
+        url,
+        tier: "jina",
+        ok: false,
+        textChars: text.length,
+        reason: "login wall / thin content",
+        durationMs: Date.now() - jinaT0,
+      });
     } else {
       log(`[linkedin] jina http ${res.status}.\n`);
+      trace?.linkedInFetch({
+        url,
+        tier: "jina",
+        ok: false,
+        reason: `http ${res.status}`,
+        durationMs: Date.now() - jinaT0,
+      });
     }
   } catch (err) {
-    log(`[linkedin] jina threw: ${err instanceof Error ? err.message : String(err)}\n`);
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`[linkedin] jina threw: ${msg}\n`);
+    trace?.linkedInFetch({
+      url,
+      tier: "jina",
+      ok: false,
+      reason: `threw: ${msg}`,
+      durationMs: Date.now() - jinaT0,
+    });
   }
 
   return null;
 }
 
-function isUsable(text: string | null | undefined): boolean {
+function isUsable(text: string | null | undefined, title?: string): boolean {
   if (!text) return false;
+  // A "Sign Up | LinkedIn" / "Sign In | LinkedIn" title is an unmistakable
+  // wall regardless of length — reject even if the body is long (e.g.
+  // TinyFish dumping footer boilerplate).
+  if (title && LOGIN_WALL_TITLES.test(title.trim())) return false;
   if (text.length < MIN_TEXT_CHARS) {
     // Short responses are usually login walls or 404 shells.
     return !LOGIN_WALL_PATTERN.test(text);
   }
-  // Longer responses are probably real content even if they mention
-  // "sign in" somewhere in the header chrome — length is the stronger signal.
   return true;
 }
 

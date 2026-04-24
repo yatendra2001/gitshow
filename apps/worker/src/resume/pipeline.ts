@@ -51,6 +51,8 @@ import { runBlogImportAgent } from "./agents/blog-import.js";
 import { runDevEvidenceResearch, type EvidenceBag } from "./research/dev-evidence.js";
 import { assembleResume } from "./assemble.js";
 import { evaluateResume } from "./evaluator.js";
+import { ScanTrace, traceR2Key } from "./observability/trace.js";
+import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { writeDraftResume } from "./persist.js";
 import { noopPhases, type PhaseReporter } from "./phases.js";
 import type { Resume } from "@gitshow/shared/resume";
@@ -108,6 +110,16 @@ export async function runResumePipeline(
   const phases = opts.phases ?? noopPhases;
   const profileDir = opts.profileDir ?? `profiles/${session.handle}`;
   await mkdir(profileDir, { recursive: true });
+
+  // Observability: collect a full per-scan trace. Every TinyFish + LLM
+  // call emits an event via this accumulator; at the end we flush the
+  // whole packet to R2 at `debug/{scanId}/trace.json`.
+  const trace = new ScanTrace({
+    scanId: session.id,
+    handle: session.handle,
+    model: session.model,
+    worker: { version: "0.3.0" },
+  });
 
   // 1. Collect GitHub data
   const github = await phases.phase("github-fetch", async () => {
@@ -208,6 +220,7 @@ export async function runResumePipeline(
       github,
       discover,
       featuredFullNames: featured,
+      trace,
       onProgress,
     });
   });
@@ -240,10 +253,10 @@ export async function runResumePipeline(
           }),
         ),
         phases.subPhase("resume:work", () =>
-          runWorkAgent({ session, usage, github, artifacts, evidence, onProgress }),
+          runWorkAgent({ session, usage, github, artifacts, evidence, trace, onProgress }),
         ),
         phases.subPhase("resume:education", () =>
-          runEducationAgent({ session, usage, github, artifacts, evidence, onProgress }),
+          runEducationAgent({ session, usage, github, artifacts, evidence, trace, onProgress }),
         ),
         phases.subPhase("resume:blog-import", () =>
           runBlogImportAgent({
@@ -320,6 +333,15 @@ export async function runResumePipeline(
     for (const i of report.issues) {
       log(`[pipeline]   [${i.severity}] ${i.section}: ${i.message}\n`);
     }
+    trace.evaluator({
+      pass: report.pass,
+      issueCount: report.issues.length,
+      issues: report.issues.map((i) => ({
+        section: i.section,
+        severity: i.severity,
+        message: i.message,
+      })),
+    });
     return report;
   });
   if (!evalReport.pass) {
@@ -345,7 +367,52 @@ export async function runResumePipeline(
         );
       }
     });
+
+    // 11b. Persist the trace alongside the draft. Best-effort: never
+    //      fail the scan over observability.
+    await phases.phase("persist-trace", async () => {
+      try {
+        const packet = trace.finalize(resume);
+        await uploadTraceToR2(session.id, packet, log);
+      } catch (err) {
+        log(
+          `[pipeline] trace persist failed: ${(err as Error).message.slice(0, 200)}\n`,
+        );
+      }
+    });
   }
 
   return resume;
+}
+
+async function uploadTraceToR2(
+  scanId: string,
+  packet: unknown,
+  log: (t: string) => void,
+): Promise<void> {
+  const accountId = process.env.CF_ACCOUNT_ID;
+  const bucket = process.env.R2_BUCKET_NAME;
+  const accessKeyId = process.env.R2_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
+  if (!accountId || !bucket || !accessKeyId || !secretAccessKey) {
+    log(`[trace] skipping R2 upload — missing R2 env\n`);
+    return;
+  }
+  const client = new S3Client({
+    region: "auto",
+    endpoint: `https://${accountId}.r2.cloudflarestorage.com`,
+    credentials: { accessKeyId, secretAccessKey },
+  });
+  const key = traceR2Key(scanId);
+  const body = JSON.stringify(packet, null, 2);
+  await client.send(
+    new PutObjectCommand({
+      Bucket: bucket,
+      Key: key,
+      Body: body,
+      ContentType: "application/json",
+      CacheControl: "no-store",
+    }),
+  );
+  log(`[trace] uploaded ${key} (${body.length} bytes)\n`);
 }
