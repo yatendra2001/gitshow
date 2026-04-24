@@ -39,6 +39,22 @@ describe("linkedin.isUsable", () => {
     expect(long.length).toBeGreaterThan(MIN_TEXT_CHARS);
     expect(isUsable(long)).toBe(true);
   });
+
+  test('rejects anything with a "Sign Up | LinkedIn" title, regardless of length', () => {
+    // The TinyFish fetch of a logged-out linkedin.com/in/X returns a
+    // "Sign Up | LinkedIn" title with variable body length (150 chars
+    // in the observed case, but could be bigger). Title alone is the
+    // definitive signal.
+    expect(isUsable("a".repeat(MIN_TEXT_CHARS + 500), "Sign Up | LinkedIn")).toBe(false);
+    expect(isUsable("body", "Sign In | LinkedIn")).toBe(false);
+    expect(isUsable("body", "Log In | LinkedIn")).toBe(false);
+    expect(isUsable("body", "Join LinkedIn")).toBe(false);
+  });
+
+  test("accepts legit long content with a normal title", () => {
+    const long = "real content ".repeat(200);
+    expect(isUsable(long, "Jane Doe | LinkedIn")).toBe(true);
+  });
 });
 
 describe("linkedin.extractCompaniesFromNotes", () => {

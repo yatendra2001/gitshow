@@ -26,7 +26,14 @@ export interface LinkedInMaterial {
 
 const JINA_TIMEOUT_MS = 30_000;
 const MIN_TEXT_CHARS = 800;
-const LOGIN_WALL_PATTERN = /sign\s*in|login|authwall|members only|join (?:now|linkedin)/i;
+const LOGIN_WALL_PATTERN =
+  /sign\s*in|sign\s*up|log\s*in|login|authwall|members only|join (?:now|linkedin)|by clicking continue/i;
+/**
+ * LinkedIn login-wall the headless scraper routinely shows to anonymous
+ * viewers. Signature is 100% reliable: short content + auth-wall copy.
+ * Exported for testing.
+ */
+export const LOGIN_WALL_TITLES = /^(sign up|sign in|log in|join linkedin)/i;
 
 /**
  * Attempt to fetch the user's LinkedIn profile via the best available
@@ -41,13 +48,21 @@ export async function fetchLinkedIn(
   if (!url) return null;
   const log = opts.onProgress ?? (() => {});
 
+  // LinkedIn login-walls every anonymous fetcher, TinyFish included —
+  // we've observed it returning 145-char "Sign Up | LinkedIn" shells.
+  // No point spending a paid TinyFish credit on that. For canonical
+  // linkedin.com/in/ URLs we skip straight to Jina (free). TinyFish
+  // stays in the chain for other profile hosts (e.g. a user's website
+  // that mirrors their LinkedIn content) in case those render.
+  const isLinkedInProfile = /\blinkedin\.com\/in\//i.test(url);
+
   // Tier 1: TinyFish. Real browser renders JS, bypasses simple auth-walls.
   const tf = TinyFishClient.fromEnv();
-  if (tf) {
+  if (tf && !isLinkedInProfile) {
     const resp = await tf.fetchUrls([url], { format: "markdown" });
     if (resp.ok) {
       const first = resp.results[0];
-      if (first && isUsable(first.text)) {
+      if (first && isUsable(first.text, first.title)) {
         log(`[linkedin] tinyfish ok (${first.text.length} chars)\n`);
         return { source: url, tier: "tinyfish", text: first.text };
       }
@@ -60,6 +75,8 @@ export async function fetchLinkedIn(
     } else {
       log(`[linkedin] tinyfish request failed: ${resp.requestError ?? "unknown"} — trying jina.\n`);
     }
+  } else if (isLinkedInProfile) {
+    log(`[linkedin] skipping tinyfish — linkedin.com/in/ always login-walls; saves a credit.\n`);
   }
 
   // Tier 2: Jina Reader — free, no key, decent on static linkedin pages.
@@ -78,7 +95,7 @@ export async function fetchLinkedIn(
         log(`[linkedin] jina ok (${text.length} chars)\n`);
         return { source: url, tier: "jina", text };
       }
-      log(`[linkedin] jina returned ${text.length} chars — rejecting.\n`);
+      log(`[linkedin] jina returned ${text.length} chars — login wall / thin content, rejecting.\n`);
     } else {
       log(`[linkedin] jina http ${res.status}.\n`);
     }
@@ -89,8 +106,12 @@ export async function fetchLinkedIn(
   return null;
 }
 
-function isUsable(text: string | null | undefined): boolean {
+function isUsable(text: string | null | undefined, title?: string): boolean {
   if (!text) return false;
+  // A "Sign Up | LinkedIn" / "Sign In | LinkedIn" title is an unmistakable
+  // wall regardless of length — reject even if the body happens to be
+  // long (e.g. TinyFish dumping footer boilerplate).
+  if (title && LOGIN_WALL_TITLES.test(title.trim())) return false;
   if (text.length < MIN_TEXT_CHARS) {
     // Short responses are usually login walls or 404 shells.
     return !LOGIN_WALL_PATTERN.test(text);
