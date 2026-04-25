@@ -113,7 +113,28 @@ export async function runLinkedInPublicFetcher(
   }
 
   try {
-    // Tier 1: TinyFish (skipped for /in/ URLs)
+    // Tier 0: ProxyCurl (paid LinkedIn API). Best path when set —
+    // returns canonical structured JSON (positions/educations/skills)
+    // with no LLM extraction needed. Skipped if PROXYCURL_API_KEY
+    // isn't set.
+    const proxyCurlFacts = await tryProxyCurl({
+      url,
+      session: input.session,
+      label,
+      trace,
+      log,
+    });
+    if (proxyCurlFacts && proxyCurlFacts.length > 0) {
+      trace?.fetcherEnd({
+        label,
+        durationMs: Date.now() - t0,
+        factsEmitted: proxyCurlFacts.length,
+        status: "ok",
+      });
+      return proxyCurlFacts;
+    }
+
+    // Tier 1: TinyFish (now also tried on /in/ URLs)
     const tier1Text = await tryTier1({ url, trace, log });
     // Tier 2: Jina Reader
     const tier2Text = tier1Text
@@ -179,6 +200,189 @@ export async function runLinkedInPublicFetcher(
   }
 }
 
+// ─── Tier 0: ProxyCurl (paid, when configured) ──────────────────────
+//
+// LinkedIn's anti-bot is good enough that the public-side tier chain
+// (TinyFish → Jina → Playwright) frequently lands on a sign-up wall
+// no matter what UA we send. ProxyCurl runs scrapes through residential
+// proxies + maintains LinkedIn cookie pools, returning canonical
+// JSON. Costs ~$0.01/profile at the lookup endpoint — trivial at this
+// scale.
+//
+// Activation: set `PROXYCURL_API_KEY` in Fly secrets. Without it, this
+// tier is a no-op and we fall through to the existing public chain.
+
+interface ProxyCurlPosition {
+  company?: string;
+  company_linkedin_profile_url?: string;
+  title?: string;
+  description?: string;
+  location?: string;
+  starts_at?: { day?: number; month?: number; year?: number };
+  ends_at?: { day?: number; month?: number; year?: number } | null;
+}
+interface ProxyCurlEducation {
+  school?: string;
+  degree_name?: string;
+  field_of_study?: string;
+  starts_at?: { day?: number; month?: number; year?: number };
+  ends_at?: { day?: number; month?: number; year?: number } | null;
+  description?: string;
+}
+interface ProxyCurlProfile {
+  full_name?: string;
+  headline?: string;
+  summary?: string;
+  city?: string;
+  country?: string;
+  country_full_name?: string;
+  experiences?: ProxyCurlPosition[];
+  education?: ProxyCurlEducation[];
+  skills?: string[];
+}
+
+async function tryProxyCurl(args: {
+  url: string;
+  session: ScanSession;
+  label: "linkedin-public";
+  trace?: ScanTrace;
+  log: (s: string) => void;
+}): Promise<TypedFact[] | null> {
+  const { url, label, trace, log } = args;
+  const apiKey = process.env.PROXYCURL_API_KEY;
+  if (!apiKey) {
+    trace?.linkedInTierAttempt({
+      tier: 1, // ProxyCurl claims the "tier 1" slot from a UI POV
+      method: "tinyfish",
+      ok: false,
+      durationMs: 0,
+      reason: "proxycurl-no-api-key",
+    });
+    return null;
+  }
+
+  const isProfile = /\blinkedin\.com\/in\//i.test(url);
+  if (!isProfile) {
+    // ProxyCurl's profile endpoint is /in/ only; for company URLs
+    // there's a separate API we don't need yet.
+    return null;
+  }
+
+  const t0 = Date.now();
+  log(`[${label}] tier 0 — ProxyCurl /linkedin/profile\n`);
+
+  try {
+    const apiUrl = new URL("https://nubela.co/proxycurl/api/v2/linkedin");
+    apiUrl.searchParams.set("url", url);
+    apiUrl.searchParams.set("skills", "include");
+    apiUrl.searchParams.set("use_cache", "if-recent");
+    apiUrl.searchParams.set("fallback_to_cache", "on-error");
+
+    const res = await fetch(apiUrl, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      // No AbortSignal — let it run; outer pipeline cap is the safety net.
+    });
+    const ms = Date.now() - t0;
+    if (!res.ok) {
+      const body = await res.text();
+      log(
+        `[${label}] proxycurl http ${res.status}: ${body.slice(0, 240)}\n`,
+      );
+      trace?.linkedInTierAttempt({
+        tier: 1,
+        method: "tinyfish",
+        ok: false,
+        durationMs: ms,
+        reason: `proxycurl-${res.status}`,
+      });
+      return null;
+    }
+    const data = (await res.json()) as ProxyCurlProfile;
+    const facts = proxyCurlToFacts(data, url);
+    trace?.linkedInTierAttempt({
+      tier: 1,
+      method: "tinyfish",
+      ok: facts.length > 0,
+      durationMs: ms,
+      reason: facts.length > 0 ? undefined : "proxycurl-empty",
+    });
+    trace?.linkedInFactsEmitted({
+      tier: 0 as 0 | 1 | 2 | 3 | 4,
+      positions: data.experiences?.length ?? 0,
+      educations: data.education?.length ?? 0,
+      skills: data.skills?.length ?? 0,
+    });
+    log(
+      `[${label}] proxycurl ok — ${data.experiences?.length ?? 0} positions, ${data.education?.length ?? 0} educations, ${data.skills?.length ?? 0} skills\n`,
+    );
+    return facts;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    log(`[${label}] proxycurl error: ${msg.slice(0, 240)}\n`);
+    trace?.linkedInTierAttempt({
+      tier: 1,
+      method: "tinyfish",
+      ok: false,
+      durationMs: Date.now() - t0,
+      reason: "proxycurl-exception",
+    });
+    return null;
+  }
+}
+
+function fmtProxyCurlDate(
+  d: { day?: number; month?: number; year?: number } | null | undefined,
+): string | undefined {
+  if (!d?.year) return undefined;
+  const y = String(d.year);
+  if (!d.month) return y;
+  const m = String(d.month).padStart(2, "0");
+  if (!d.day) return `${y}-${m}`;
+  return `${y}-${m}-${String(d.day).padStart(2, "0")}`;
+}
+
+function proxyCurlToFacts(data: ProxyCurlProfile, url: string): TypedFact[] {
+  const positions = (data.experiences ?? []).map((e) => ({
+    company: e.company ?? "",
+    title: e.title ?? "",
+    description: e.description ?? "",
+    location: e.location ?? "",
+    start: fmtProxyCurlDate(e.starts_at),
+    end: fmtProxyCurlDate(e.ends_at),
+    present: !e.ends_at,
+  }));
+  const educations = (data.education ?? []).map((e) => ({
+    school: e.school ?? "",
+    degree: e.degree_name ?? "",
+    field: e.field_of_study ?? "",
+    start: fmtProxyCurlDate(e.starts_at),
+    end: fmtProxyCurlDate(e.ends_at),
+    description: e.description ?? "",
+  }));
+  const skills = (data.skills ?? []).slice(0, 30);
+  const location =
+    [data.city, data.country_full_name ?? data.country]
+      .filter((p): p is string => typeof p === "string" && p.length > 0)
+      .join(", ") || undefined;
+
+  const extraction: LinkedInExtraction = {
+    positions: positions.filter((p) => p.company),
+    educations: educations.filter((e) => e.school),
+    skills,
+    bio: data.summary ?? data.headline ?? "",
+    location: location ?? "",
+  };
+
+  // ProxyCurl returns canonical structured data — bump confidence to
+  // "high" so these facts land on the verified band.
+  return buildFacts({
+    extraction,
+    url,
+    label: "linkedin-public",
+    confidence: "high",
+  });
+}
+
 // ─── Tier 1: TinyFish ────────────────────────────────────────────────
 
 async function tryTier1(args: {
@@ -187,18 +391,13 @@ async function tryTier1(args: {
   log: (s: string) => void;
 }): Promise<string | null> {
   const { url, trace, log } = args;
-  const isProfile = /\blinkedin\.com\/in\//i.test(url);
-  if (isProfile) {
-    log(`[linkedin-public] skip tier1 — linkedin.com/in/ always walls.\n`);
-    trace?.linkedInTierAttempt({
-      tier: 1,
-      method: "tinyfish",
-      ok: false,
-      durationMs: 0,
-      reason: "skipped-in-path",
-    });
-    return null;
-  }
+  // We used to skip TinyFish on /in/ URLs based on an early-run
+  // observation that it always returned the wall. That was stale —
+  // TinyFish is a proxy-rotating headless service designed for
+  // exactly this case, and skipping it left the only working
+  // public-side option on the table. We let it run on every
+  // LinkedIn URL now and gate the result on the actual content
+  // (`looksLikeLinkedinWall()` below).
 
   const tf = TinyFishClient.fromEnv();
   if (!tf) {

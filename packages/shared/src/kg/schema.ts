@@ -76,6 +76,7 @@ export const FetcherSchema = z.enum([
   "semantic-scholar",
   "arxiv",
   "stackoverflow",
+  "youtube",
   "evidence-search",
   "repo-judge",
   "intake",

@@ -113,6 +113,7 @@ const PHASE_COPY: Record<string, string> = {
   "fetch:semantic-scholar": "Searching Semantic Scholar",
   "fetch:arxiv": "Searching arXiv",
   "fetch:stackoverflow": "Reading your Stack Overflow",
+  "fetch:youtube": "Reading your YouTube channel",
   "blog-import": "Importing your blog posts",
 };
 
@@ -148,6 +149,7 @@ const SECTION_AGENT_CHILDREN = [
   "fetch:semantic-scholar",
   "fetch:arxiv",
   "fetch:stackoverflow",
+  "fetch:youtube",
   "blog-import",
 ];
 

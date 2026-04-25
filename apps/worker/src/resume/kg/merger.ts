@@ -86,6 +86,7 @@ const SOURCE_PRIORITY: Record<string, number> = {
   "github-fetcher": 45,
   "evidence-search": 40,
   twitter: 35,
+  youtube: 30,
   hn: 30,
   devto: 30,
   medium: 30,

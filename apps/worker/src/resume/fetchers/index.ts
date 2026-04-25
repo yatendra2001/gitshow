@@ -35,4 +35,5 @@ export { runOrcidFetcher } from "./orcid.js";
 export { runSemanticScholarFetcher } from "./semantic-scholar.js";
 export { runArxivFetcher } from "./arxiv.js";
 export { runStackoverflowFetcher } from "./stackoverflow.js";
+export { runYoutubeChannelFetcher } from "./youtube-channel.js";
 export { emitGithubFacts } from "./github-facts.js";

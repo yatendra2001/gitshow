@@ -77,6 +77,7 @@ export const PHASE_COPY: Record<string, PhaseCopy> = {
       "fetch:semantic-scholar",
       "fetch:arxiv",
       "fetch:stackoverflow",
+      "fetch:youtube",
       "blog-import",
     ],
   },
@@ -223,6 +224,10 @@ export const WORKER_COPY: Record<string, { in_flight: string; done: string; subt
   "fetch:stackoverflow": {
     in_flight: "Reading your Stack Overflow",
     done: "Read your Stack Overflow",
+  },
+  "fetch:youtube": {
+    in_flight: "Reading your YouTube channel",
+    done: "Read your YouTube channel",
   },
   "blog-import": {
     in_flight: "Importing your blog posts",

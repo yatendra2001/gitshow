@@ -95,9 +95,18 @@ export async function runTwitterBioFetcher(
       return [];
     }
 
+    // Try a small fan of URL patterns via TinyFish. X redirects /handle
+    // to its login wall on most user-agents; the nitter mirrors that
+    // still serve the public bio change weekly. We try the official
+    // `x.com` first because TinyFish's residential-proxy path can
+    // occasionally land the unauthenticated bio, then walk through
+    // surviving nitter instances. First non-empty page wins.
     const urls = [
+      `https://x.com/${handle}`,
       `https://twitter.com/${handle}`,
       `https://nitter.net/${handle}`,
+      `https://nitter.poast.org/${handle}`,
+      `https://nitter.privacydev.net/${handle}`,
     ];
     let winner: { text: string; url: string } | null = null;
     for (const u of urls) {
