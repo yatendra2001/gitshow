@@ -97,9 +97,14 @@ Produce submit_blog_post with:
       * the author's exact wording
     Do NOT rewrite, paraphrase, or compress. If the post is 3000 words, the body is 3000 words.
 
-If the Jina output looks like a login wall or an empty page (< 300 words of real content), still submit with your best-effort slug + title and a short summary saying "preview only — visit the source for full post".
+If the Jina output looks like a login wall, a 4xx error page, or an
+empty page (< 300 words of real content), DO NOT call
+submit_blog_post. Instead end your turn without calling any tool —
+the import will be skipped for that URL. Surfacing a "preview only"
+or "403 Forbidden" entry on the user's portfolio looks broken and is
+worse than simply not having that post.
 
-Call submit_blog_post exactly once.`;
+Call submit_blog_post exactly once when the page parsed correctly.`;
 
 export async function runBlogImportAgent(
   input: BlogImportAgentInput,
@@ -162,6 +167,18 @@ async function importOne(args: {
     return null;
   }
 
+  // Skip pages that obviously won't yield a useful post — saves a
+  // Sonnet call AND prevents 403 / paywall debris from reaching the
+  // user's portfolio. The `< 600 chars` floor catches Medium's
+  // unauthenticated paywall (delivers ~200 chars), dev.to's deleted
+  // posts (one-line title), and Jina's plain "fetch failed" responses.
+  if (looksLikeWallOrError(fetched)) {
+    log(
+      `[blog-import] ${url} — Jina returned wall/error content; skipping\n`,
+    );
+    return null;
+  }
+
   try {
     const { result } = await runAgentWithSubmit({
       // Use the `section` model (Sonnet 4.6) — `bulk` (Kimi K2.6) was
@@ -197,6 +214,39 @@ async function importOne(args: {
     log(`[blog-import] ${url} — agent failed: ${(err as Error).message.slice(0, 120)}\n`);
     return null;
   }
+}
+
+/**
+ * Heuristic: does this Jina output look like the upstream blew up on
+ * us — paywall, anti-bot wall, 4xx body, deleted/empty post? The
+ * checks are intentionally simple and precise; we'd rather miss a
+ * legitimate short post than ship a "403 Forbidden" entry.
+ */
+function looksLikeWallOrError(text: string): boolean {
+  if (text.trim().length < 600) return true;
+  // Drop the standard Jina/title/url header (first 5 lines) before
+  // counting body words — Jina prepends "Title: ...\nURL Source:
+  // ..." which inflates short payloads.
+  const body = text.split("\n").slice(5).join("\n").toLowerCase();
+  const wallMarkers = [
+    "403 forbidden",
+    "404 not found",
+    "access denied",
+    "you have been blocked",
+    "sign in to read",
+    "sign up to continue",
+    "this story is no longer available",
+    "page not found",
+    "checking your browser",
+    "please enable javascript",
+  ];
+  for (const m of wallMarkers) {
+    if (body.includes(m)) return true;
+  }
+  // Real-content floor: any post worth importing has at least a
+  // couple of paragraphs of prose.
+  const wordCount = body.split(/\s+/).filter(Boolean).length;
+  return wordCount < 200;
 }
 
 async function fetchJinaReader(url: string): Promise<string | null> {

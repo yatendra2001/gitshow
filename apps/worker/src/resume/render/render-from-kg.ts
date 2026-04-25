@@ -254,6 +254,13 @@ function projectEducation(opts: {
   return out;
 }
 
+/** How many projects to show in the curated grid. The rest get
+ * surfaced via the chronological Build Log section, so nothing the
+ * user shipped goes missing — but the portfolio isn't a wall of 22
+ * tiles either. 6 is the sweet spot for a 3×2 grid that scans well
+ * on mobile + desktop. */
+const PROJECTS_GRID_CAP = 6;
+
 function projectProjects(opts: {
   kg: KnowledgeGraph;
   projectById: Map<string, KgProject>;
@@ -265,7 +272,8 @@ function projectProjects(opts: {
 
   const featured = kg.entities.projects
     .filter((p) => p.shouldFeature && !NOISE_PROJECT_KINDS.has(p.kind))
-    .sort(byProjectScore(repoById));
+    .sort(byProjectScore(repoById))
+    .slice(0, PROJECTS_GRID_CAP);
 
   const heroByProject = collectMediaByEntity(kg.edges, mediaById, "hero");
   const thumbByProject = collectMediaByEntity(kg.edges, mediaById, "thumbnail");
@@ -464,9 +472,27 @@ function projectPublications(opts: {
   const { kg, trace } = opts;
   const out: PublicationEntry[] = [];
 
+  // Only include publications that have at least one AUTHORED edge in
+  // verified|likely band — anything in `suggested` (single low-confidence
+  // source like Semantic-Scholar name match) is too risky to surface
+  // publicly. We saw this pull in 29 papers by a different "Yatendra
+  // Singh" because the user has the same first name as a pharmacology
+  // researcher.
+  const authoredByPubId = new Map<string, "verified" | "likely">();
+  for (const e of kg.edges) {
+    if (e.type !== "AUTHORED") continue;
+    if (e.band !== "verified" && e.band !== "likely") continue;
+    const existing = authoredByPubId.get(e.to);
+    // Keep the strongest band if multiple edges land on the same pub.
+    if (!existing || (existing === "likely" && e.band === "verified")) {
+      authoredByPubId.set(e.to, e.band);
+    }
+  }
+
   for (const p of kg.entities.publications) {
     const kind = mapPublicationKind(p.kind);
     if (!kind) continue;
+    if (!authoredByPubId.has(p.id)) continue;
     out.push({
       id: p.id,
       title: p.title,
@@ -486,7 +512,7 @@ function projectPublications(opts: {
     label: "render.publications",
     section: "publications",
     entityCount: out.length,
-    filter: "Publication.kind ∈ {paper,preprint,talk,podcast,video}",
+    filter: "AUTHORED edge band ∈ {verified, likely}",
   });
   return out;
 }
@@ -803,15 +829,38 @@ function repoUrl(fullName?: string): string | undefined {
 }
 
 function formatProjectDates(p: KgProject, repo: Repository | undefined): string {
-  const start = p.dates?.start;
-  const end = p.dates?.end ?? (p.dates?.active ? "Present" : undefined);
-  if (start && end) return `${start} - ${end}`;
+  const start = humanDate(p.dates?.start);
+  const end =
+    humanDate(p.dates?.end) ?? (p.dates?.active ? "Present" : undefined);
+  if (start && end) return start === end ? start : `${start} – ${end}`;
   if (start) return start;
   if (repo?.pushedAt) {
     const d = new Date(repo.pushedAt);
     return formatYearMonth(d);
   }
   return "";
+}
+
+/**
+ * Coerce whatever date string the KG carries into "Mon YYYY". Handles:
+ *   - bare year ("2024")             → "2024"
+ *   - YYYY-MM ("2024-02")             → "Feb 2024"
+ *   - ISO timestamp                   → "Feb 2024"
+ *   - already-human ("Present")       → "Present"
+ *   - the literal string "Present"    → "Present"
+ *
+ * Drops the day-of-month deliberately — projects span months/years,
+ * not days, and "Feb 4, 2024" looks like a calendar event.
+ */
+function humanDate(raw: string | undefined): string | undefined {
+  if (!raw) return undefined;
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (/^present$/i.test(trimmed)) return "Present";
+  if (/^\d{4}$/.test(trimmed)) return trimmed;
+  const parsed = new Date(trimmed);
+  if (!Number.isNaN(parsed.getTime())) return formatYearMonth(parsed);
+  return trimmed;
 }
 
 function formatYearMonth(d: Date): string {

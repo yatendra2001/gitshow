@@ -309,22 +309,42 @@ export async function runResumePipeline(
       safeFetch("fetch:orcid", FETCHER_TIMEOUTS_MS.orcid, () =>
         runOrcidFetcher({ session, usage, trace, onProgress }),
       ),
+      // Researcher-only fetchers. Semantic Scholar and arXiv match by
+      // author NAME, which surfaces papers by anyone with the same
+      // first name as the user (e.g. "Yatendra Singh" pharmacology
+      // papers attached to a Flutter developer named "Yatendra
+      // Kumar" — observed in the wild). Gate them on a user-provided
+      // ORCID iD so we have at least one identifier strong enough to
+      // disambiguate; without it, skip the body. Better to have an
+      // empty Publications section than someone else's research on
+      // your portfolio. We still go through `safeFetch` so the
+      // subphase shows up in the timeline as a fast no-op rather
+      // than dangling at "pending" forever.
       safeFetch(
         "fetch:semantic-scholar",
         FETCHER_TIMEOUTS_MS["semantic-scholar"],
-        () =>
-          runSemanticScholarFetcher({
+        () => {
+          if (!session.socials.orcid) {
+            log(`[pipeline] fetch:semantic-scholar — no ORCID; skipping name-only match\n`);
+            return Promise.resolve([] as TypedFact[]);
+          }
+          return runSemanticScholarFetcher({
             session,
             usage,
             trace,
             onProgress,
             personName,
             affiliationGuess: github.profile.bio ?? undefined,
-          }),
+          });
+        },
       ),
-      safeFetch("fetch:arxiv", FETCHER_TIMEOUTS_MS.arxiv, () =>
-        runArxivFetcher({ session, usage, trace, onProgress, personName }),
-      ),
+      safeFetch("fetch:arxiv", FETCHER_TIMEOUTS_MS.arxiv, () => {
+        if (!session.socials.orcid) {
+          log(`[pipeline] fetch:arxiv — no ORCID; skipping name-only match\n`);
+          return Promise.resolve([] as TypedFact[]);
+        }
+        return runArxivFetcher({ session, usage, trace, onProgress, personName });
+      }),
       safeFetch("fetch:stackoverflow", FETCHER_TIMEOUTS_MS.stackoverflow, () =>
         runStackoverflowFetcher({ session, usage, trace, onProgress }),
       ),
