@@ -7,6 +7,7 @@ import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useData } from "@/components/data-provider";
 import { CodeBlock } from "@/components/mdx/code-block";
+import { formatHumanDate as formatDate } from "@/lib/format-date";
 
 /**
  * `/{handle}/blog/{slug}` — individual post renderer.
@@ -21,18 +22,9 @@ import { CodeBlock } from "@/components/mdx/code-block";
  * canonical source so SEO + attribution stay correct.
  */
 
-function formatDate(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return d.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-  } catch {
-    return iso;
-  }
-}
+// `formatDate` is imported from `@/lib/format-date` at the top —
+// we share one humanisation rule across blog index, blog post, and
+// publications surfaces.
 
 export default function BlogPost() {
   const DATA = useData();

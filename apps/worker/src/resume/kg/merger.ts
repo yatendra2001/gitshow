@@ -506,7 +506,88 @@ function deterministicMerge(kg: KnowledgeGraph): { merged: number; retained: num
   }
   kg.entities.schools = [...sSeen.values()];
 
-  return { merged, retained: kg.entities.companies.length + kg.entities.schools.length };
+  // ── Project dedupe ──────────────────────────────────────────────
+  // Personal-site fetcher emits BUILT facts without a repoFullName,
+  // so the project's id is `proj:{slug(title)}`. github-fetcher
+  // emits BUILT for the same conceptual project but WITH a
+  // repoFullName, giving id `proj:{slug(owner-name)}`. Different
+  // ids, same project — both rendered, twitterGPT/aimuse/pikc/tevo
+  // appeared in BOTH My Projects and Build Log.
+  //
+  // Heuristic: when a project has no repoFullName and its slugged
+  // title matches the LAST PATH SEGMENT of any other project that
+  // does have a repoFullName, merge the standalone into the
+  // repo-tied one (the repo-tied carries more signal — Judge
+  // verdict, languages, dates).
+  const projects = kg.entities.projects;
+  const repoTied = projects.filter((p) => p.repoFullName);
+  const standalone = projects.filter((p) => !p.repoFullName);
+  // index repo-tied by normalised "name part" for quick lookup
+  const byNamePart = new Map<string, typeof repoTied[number]>();
+  for (const p of repoTied) {
+    const repoName = (p.repoFullName ?? "").split("/").pop() ?? "";
+    const k = slug(repoName);
+    if (!byNamePart.has(k)) byNamePart.set(k, p);
+    // Also key by normalised display title so e.g. "Aimuse Ethforall
+    // 2023 Winner" still matches a personal-site "aimuse" entry.
+    const tk = slug(p.title);
+    if (!byNamePart.has(tk)) byNamePart.set(tk, p);
+  }
+  const projDropIds = new Set<string>();
+  for (const sp of standalone) {
+    const k = slug(sp.title);
+    if (!k) continue;
+    let target = byNamePart.get(k);
+    if (!target) {
+      // Fallback: prefix match — "aimuse" vs "aimuse-ethforall-2023"
+      for (const [key, p] of byNamePart) {
+        if (key.startsWith(k + "-") || k.startsWith(key + "-")) {
+          target = p;
+          break;
+        }
+      }
+    }
+    if (!target) continue;
+    // Merge: keep the repo-tied project's id; promote any richer
+    // copy from the standalone (e.g. cleaner purpose text from the
+    // user's own site) when the repo-tied entry lacks it.
+    if (!target.purpose && sp.purpose) target.purpose = sp.purpose;
+    if (!target.homepageUrl && sp.homepageUrl) target.homepageUrl = sp.homepageUrl;
+    projDropIds.add(sp.id);
+    merged++;
+  }
+  if (projDropIds.size > 0) {
+    kg.entities.projects = projects.filter((p) => !projDropIds.has(p.id));
+    // Redirect any edges that pointed at the dropped IDs to their
+    // canonical target so we don't dangle.
+    const standaloneToTarget = new Map<string, string>();
+    for (const sp of standalone) {
+      if (!projDropIds.has(sp.id)) continue;
+      const k = slug(sp.title);
+      let t = byNamePart.get(k);
+      if (!t) {
+        for (const [key, p] of byNamePart) {
+          if (key.startsWith(k + "-") || k.startsWith(key + "-")) {
+            t = p;
+            break;
+          }
+        }
+      }
+      if (t) standaloneToTarget.set(sp.id, t.id);
+    }
+    for (const e of kg.edges) {
+      const remap = standaloneToTarget.get(e.to);
+      if (remap) e.to = remap;
+    }
+  }
+
+  return {
+    merged,
+    retained:
+      kg.entities.companies.length +
+      kg.entities.schools.length +
+      kg.entities.projects.length,
+  };
 }
 
 function mergeCompanyInto(into: Company, from: Company): void {

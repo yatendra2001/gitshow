@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { PublicationEntry } from "@gitshow/shared/resume";
 import { BookOpen, FileText, Mic, Podcast, PlayCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { formatHumanDate } from "@/lib/format-date";
 
 /**
  * Publications section (researcher persona). Projected from
@@ -57,7 +58,7 @@ export default function PublicationsSection({
                   </h3>
                   {p.publishedAt && (
                     <time className="ml-auto text-xs text-muted-foreground tabular-nums">
-                      {p.publishedAt}
+                      {formatHumanDate(p.publishedAt)}
                     </time>
                   )}
                 </header>

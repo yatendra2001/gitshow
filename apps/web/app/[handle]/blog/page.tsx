@@ -4,6 +4,7 @@ import BlurFade from "@/components/magicui/blur-fade";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { paginate, normalizePage } from "@/lib/pagination";
+import { formatHumanDate } from "@/lib/format-date";
 import { useData } from "@/components/data-provider";
 import { ChevronRight } from "lucide-react";
 
@@ -82,7 +83,7 @@ export default function BlogPage() {
                           </span>
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {post.publishedAt}
+                          {formatHumanDate(post.publishedAt)}
                           {post.sourcePlatform ? ` · ${post.sourcePlatform}` : ""}
                         </p>
                       </div>
