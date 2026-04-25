@@ -392,6 +392,18 @@ export const ScanSessionSchema = z.object({
     .max(5)
     .optional()
     .describe("User-provided blog URLs to import verbatim into Resume.blog"),
+  /**
+   * Repo full names ("owner/name") the user picked from the intake's
+   * "Repos to skip" multi-select. The pipeline filters these out of
+   * github.ownedRepos / contributionRepos / commitSearchRepos before
+   * any downstream stage sees them — so they never get judged,
+   * featured, or sent to the LLM.
+   */
+  skip_repos: z
+    .array(z.string())
+    .max(100)
+    .optional()
+    .describe("User-skipped repos: pipeline drops these before tiering"),
   started_at: z.string(),
   dashboard_url: z.string().describe("OpenRouter session dashboard URL"),
   model: z.string().describe("Default model, e.g. 'anthropic/claude-sonnet-4.6'"),

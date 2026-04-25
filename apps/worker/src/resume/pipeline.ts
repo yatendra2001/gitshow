@@ -154,10 +154,24 @@ export async function runResumePipeline(
   });
 
   // 1. GitHub fetch
-  const github = await phases.phase("github-fetch", async () => {
+  const githubRaw = await phases.phase("github-fetch", async () => {
     log(`\n[pipeline] stage 1: github fetch\n`);
     return fetchGitHubData(session.handle);
   });
+
+  // 1b. Apply user-skipped repos. The intake's "Repos to skip" multi-
+  // select gives us a set of full names ("owner/name"); strip them
+  // out of every repo array on GitHubData before any downstream
+  // stage runs. This is the single chokepoint — once filtered, the
+  // judge / fetchers / merger / render layers all see a consistent
+  // universe and no clever re-introduction is possible.
+  const github = applyRepoSkipList(githubRaw, session.skip_repos ?? []);
+  if (session.skip_repos && session.skip_repos.length > 0) {
+    log(
+      `[pipeline]   skipping ${session.skip_repos.length} user-excluded repos\n`,
+    );
+  }
+
   if (opts.onGitHubFetched) {
     try {
       await opts.onGitHubFetched({
@@ -643,6 +657,33 @@ function projectIntakeFacts(
     facts.push({ kind: "PERSON", person: personPatch, source: src });
   }
   return facts;
+}
+
+// ─── Repo skip-list filter ─────────────────────────────────────────
+
+/**
+ * Strip user-skipped repos from every repo array on `GitHubData`.
+ * Match is by full name ("owner/name"), case-insensitive.
+ *
+ * The PR-author / PR-review arrays carry their own `RepoRef` so we
+ * filter those too — otherwise a skipped repo could resurface as
+ * "contributed to" in the KG via the github-facts fetcher.
+ */
+function applyRepoSkipList(github: GitHubData, skip: string[]): GitHubData {
+  if (skip.length === 0) return github;
+  const skipSet = new Set(skip.map((s) => s.toLowerCase()));
+  const allowRepo = (r: { fullName: string }) =>
+    !skipSet.has(r.fullName.toLowerCase());
+  return {
+    ...github,
+    ownedRepos: github.ownedRepos.filter(allowRepo),
+    authoredPRs: github.authoredPRs.filter((pr) =>
+      allowRepo({ fullName: pr.repoFullName }),
+    ),
+    submittedReviews: github.submittedReviews.filter((rv) =>
+      allowRepo({ fullName: rv.repoFullName }),
+    ),
+  };
 }
 
 // ─── R2 helpers ─────────────────────────────────────────────────────
