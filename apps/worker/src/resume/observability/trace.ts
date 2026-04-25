@@ -157,6 +157,16 @@ export interface LinkedInFactsEmittedEvent extends TraceEventBase {
   positions: number;
   educations: number;
   skills: number;
+  /**
+   * Counts emitted from the rich EnrichLayer payload (Tier 0 only).
+   * The public-tier path leaves these undefined since TinyFish/Jina
+   * extraction doesn't carry these structured fields.
+   */
+  projects?: number;
+  awards?: number;
+  certifications?: number;
+  publications?: number;
+  volunteerWork?: number;
 }
 
 export interface FetcherStartEvent extends TraceEventBase {
