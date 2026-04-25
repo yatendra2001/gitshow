@@ -380,9 +380,14 @@ async function tryProxyCurl(args: {
       positions: data.experiences?.length ?? 0,
       educations: data.education?.length ?? 0,
       skills: data.skills?.length ?? 0,
+      projects: data.accomplishment_projects?.length ?? 0,
+      awards: data.accomplishment_honors_awards?.length ?? 0,
+      certifications: data.certifications?.length ?? 0,
+      publications: data.accomplishment_publications?.length ?? 0,
+      volunteerWork: data.volunteer_work?.length ?? 0,
     });
     log(
-      `[${label}] proxycurl ok — ${data.experiences?.length ?? 0} positions, ${data.education?.length ?? 0} educations, ${data.skills?.length ?? 0} skills\n`,
+      `[${label}] proxycurl ok — ${data.experiences?.length ?? 0} positions, ${data.education?.length ?? 0} educations, ${data.skills?.length ?? 0} skills, ${data.accomplishment_projects?.length ?? 0} projects, ${data.accomplishment_honors_awards?.length ?? 0} awards, ${data.certifications?.length ?? 0} certs, ${data.accomplishment_publications?.length ?? 0} pubs, ${data.volunteer_work?.length ?? 0} volunteer\n`,
     );
     return facts;
   } catch (err) {

@@ -178,6 +178,58 @@ export async function runResumePipeline(
     worker: { version: "0.4.0-kg" },
   });
 
+  // The persist-trace phase at the end runs trace.finalize + R2
+  // upload on the success path. If the pipeline throws BEFORE
+  // reaching that phase, we still want the partial trace on R2 —
+  // it's how every post-mortem ("why did the scan crash in
+  // merge?") starts. Wrap the whole pipeline body in try/catch:
+  // the success path persists via the phase as before, the error
+  // path persists inline and rethrows.
+  let resumePersisted = false;
+  try {
+    return await runPipelineBody({
+      session,
+      usage,
+      log,
+      onProgress,
+      phases,
+      profileDir,
+      trace,
+      opts,
+      markPersisted: () => {
+        resumePersisted = true;
+      },
+    });
+  } catch (err) {
+    if (!resumePersisted && (opts.writeToR2 || process.env.R2_BUCKET_NAME)) {
+      try {
+        const packet = trace.finalize();
+        await uploadTraceToR2(session.id, packet, log);
+        log(`[pipeline] partial trace persisted after error\n`);
+      } catch (innerErr) {
+        log(
+          `[pipeline] partial trace persist failed: ${(innerErr as Error).message.slice(0, 200)}\n`,
+        );
+      }
+    }
+    throw err;
+  }
+}
+
+interface PipelineBodyArgs {
+  session: ScanSession;
+  usage: SessionUsage;
+  log: (t: string) => void;
+  onProgress?: (t: string) => void;
+  phases: PhaseReporter;
+  profileDir: string;
+  trace: ScanTrace;
+  opts: RunResumePipelineOptions;
+  markPersisted: () => void;
+}
+
+async function runPipelineBody(args: PipelineBodyArgs): Promise<Resume> {
+  const { session, usage, log, onProgress, phases, profileDir, trace, opts, markPersisted } = args;
   // 1. GitHub fetch
   const githubRaw = await phases.phase("github-fetch", async () => {
     log(`\n[pipeline] stage 1: github fetch\n`);
@@ -270,6 +322,33 @@ export async function runResumePipeline(
           }
         }),
       ),
+    );
+
+    // Snapshot the per-repo blame stats into the trace so a future
+    // post-mortem can answer "why did the ranker pick X over Y?"
+    // without needing the original clone tree on disk.
+    trace?.note(
+      "repo-study:summary",
+      `studied ${Object.keys(studies).length}/${toInventory.length} cloned repos`,
+      {
+        cloned: Object.keys(cloned).length,
+        attempted: toInventory.length,
+        perRepo: Object.fromEntries(
+          Object.entries(studies).map(([fullName, s]) => [
+            fullName,
+            {
+              userShare: s.userShare,
+              userLines: s.userLines,
+              totalLines: s.totalLines,
+              userCommits: s.userCommits,
+              totalCommits: s.totalCommits,
+              manifestDeps: s.manifestDeps.length,
+              firstUserCommit: s.firstUserCommit?.slice(0, 10),
+              lastUserCommit: s.lastUserCommit?.slice(0, 10),
+            },
+          ]),
+        ),
+      },
     );
     return cloned;
   });
@@ -526,6 +605,15 @@ export async function runResumePipeline(
       .map((s) => `${s.name}@${s.score}`)
       .join(", ")})\n`,
   );
+  trace?.note(
+    "manifest-skills:summary",
+    `${manifestSkills.facts.length} skills aggregated from ${Object.keys(studies).length} studied repos`,
+    {
+      totalSkills: manifestSkills.facts.length,
+      totalStudies: Object.keys(studies).length,
+      top10: manifestSkills.ranked.slice(0, 10),
+    },
+  );
 
   const allFacts: TypedFact[] = [
     ...fetchersResult.githubFacts,
@@ -686,6 +774,7 @@ export async function runResumePipeline(
       try {
         const packet = trace.finalize(resume);
         await uploadTraceToR2(session.id, packet, log);
+        markPersisted();
       } catch (err) {
         log(
           `[pipeline] trace persist failed: ${(err as Error).message.slice(0, 200)}\n`,
