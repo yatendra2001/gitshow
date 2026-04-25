@@ -164,7 +164,12 @@ async function importOne(args: {
 
   try {
     const { result } = await runAgentWithSubmit({
-      model: modelForRole("bulk"),
+      // Use the `section` model (Sonnet 4.6) — `bulk` (Kimi K2.6) was
+      // observed entering a degenerate generation loop on this prompt
+      // that produced thousands of gibberish reasoning-delta events
+      // and ultimately killed the worker. Sonnet's structured-output
+      // reliability is worth the per-token cost on a max-5-URL stage.
+      model: modelForRole("section"),
       systemPrompt: SYSTEM_PROMPT,
       input: buildInput(url, fetched),
       submitToolName: "submit_blog_post",
