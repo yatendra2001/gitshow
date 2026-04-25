@@ -38,10 +38,15 @@ const JINA_MAX_BYTES = 40_000;
  * on — one bad blog must NOT block the rest of the pipeline.
  */
 const PER_URL_BUDGET_MS = 3 * 60_000;
-/** OpenRouter HTTP timeout for the extractor. Kimi handles a typical
- * post in ~30s; 90s is a generous ceiling so a single slow call still
- * fails fast enough that retries (3×) stay inside PER_URL_BUDGET_MS. */
-const LLM_HTTP_TIMEOUT_MS = 90_000;
+// Note: we deliberately don't set an inner OpenRouter HTTP timeout
+// anymore. AbortSignal.timeout() inside the SDK throws a DOMException
+// that Bun treats as an unhandled rejection from sibling streaming
+// tasks — and Bun's default behaviour is to exit the process on
+// unhandled rejections (#98 incident). The `withTimeout` wrapper
+// around `importOne` (PER_URL_BUDGET_MS, 3 min) is the only timeout
+// we rely on; it short-circuits the await without aborting the
+// underlying request, but `process.on('unhandledRejection')` in
+// run-scan.ts prevents stray rejections from killing the worker.
 
 export const BlogPostLLMSchema = z.object({
   slug: z
@@ -167,7 +172,6 @@ async function importOne(args: {
         "Submit the extracted blog post. Call exactly once.",
       submitSchema: BlogPostLLMSchema,
       reasoning: { effort: "low" },
-      timeoutMs: LLM_HTTP_TIMEOUT_MS,
       session,
       usage,
       label: `resume:blog-import`,
