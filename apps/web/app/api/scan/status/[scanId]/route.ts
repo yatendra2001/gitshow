@@ -10,7 +10,17 @@ import { getSession } from "@/auth";
  * own the scan (user_id match); anyone else gets 404.
  */
 
-const EVENT_LIMIT = 200;
+/**
+ * Two-tier event fetch so the timeline never goes stale: stage events
+ * (start/end/error) get a high cap on their own — they're the source
+ * of truth for "is this phase done" — and the rich events (reasoning-
+ * delta / tool-start/end / source-added) get a separate cap, so a
+ * thousand reasoning chunks during repo-judge can't push a stage-end
+ * row off the page and make the UI think github-fetch is still
+ * pending.
+ */
+const STAGE_EVENT_LIMIT = 500;
+const RICH_EVENT_LIMIT = 400;
 
 interface ScanRow {
   id: string;
@@ -72,16 +82,38 @@ export async function GET(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  const events = await env.DB.prepare(
-    `SELECT id, kind, stage, worker, status, duration_ms, message,
-            data_json, parent_id, message_id, at
-       FROM scan_events
-       WHERE scan_id = ?
-       ORDER BY at DESC, id DESC
-       LIMIT ?`,
-  )
-    .bind(scanId, EVENT_LIMIT)
-    .all<EventRow>();
+  const [stageEvents, richEvents] = await Promise.all([
+    env.DB.prepare(
+      `SELECT id, kind, stage, worker, status, duration_ms, message,
+              data_json, parent_id, message_id, at
+         FROM scan_events
+         WHERE scan_id = ?
+           AND kind IN ('stage-start','stage-end','error','stage-warn')
+         ORDER BY at DESC, id DESC
+         LIMIT ?`,
+    )
+      .bind(scanId, STAGE_EVENT_LIMIT)
+      .all<EventRow>(),
+    env.DB.prepare(
+      `SELECT id, kind, stage, worker, status, duration_ms, message,
+              data_json, parent_id, message_id, at
+         FROM scan_events
+         WHERE scan_id = ?
+           AND kind IN ('reasoning-delta','reasoning-end',
+                        'tool-start','tool-end','source-added')
+         ORDER BY at DESC, id DESC
+         LIMIT ?`,
+    )
+      .bind(scanId, RICH_EVENT_LIMIT)
+      .all<EventRow>(),
+  ]);
+
+  // Merge + sort ascending by id so reasoning-delta concatenation
+  // happens in emission order on the client.
+  const merged = [
+    ...(stageEvents.results ?? []),
+    ...(richEvents.results ?? []),
+  ].sort((a, b) => a.id - b.id);
 
   return NextResponse.json({
     scan: {
@@ -99,7 +131,7 @@ export async function GET(
       access_state: safeParse(scan.access_state),
       data_sources: safeParse(scan.data_sources),
     },
-    events: (events.results ?? []).reverse(),
+    events: merged,
   });
 }
 
