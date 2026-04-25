@@ -217,33 +217,93 @@ export async function runLinkedInPublicFetcher(
 // Activation: set `PROXYCURL_API_KEY` in Fly secrets. Without it, this
 // tier is a no-op and we fall through to the public chain.
 
+interface ProxyCurlDate {
+  day?: number;
+  month?: number;
+  year?: number;
+}
 interface ProxyCurlPosition {
   company?: string;
   company_linkedin_profile_url?: string;
   title?: string;
   description?: string;
   location?: string;
-  starts_at?: { day?: number; month?: number; year?: number };
-  ends_at?: { day?: number; month?: number; year?: number } | null;
+  logo_url?: string;
+  starts_at?: ProxyCurlDate;
+  ends_at?: ProxyCurlDate | null;
 }
 interface ProxyCurlEducation {
   school?: string;
+  school_linkedin_profile_url?: string;
   degree_name?: string;
   field_of_study?: string;
-  starts_at?: { day?: number; month?: number; year?: number };
-  ends_at?: { day?: number; month?: number; year?: number } | null;
+  starts_at?: ProxyCurlDate;
+  ends_at?: ProxyCurlDate | null;
   description?: string;
+  grade?: string;
+  activities_and_societies?: string;
+  logo_url?: string;
+}
+interface ProxyCurlAccomplishmentProject {
+  title?: string;
+  description?: string;
+  url?: string;
+  starts_at?: ProxyCurlDate;
+  ends_at?: ProxyCurlDate | null;
+}
+interface ProxyCurlHonor {
+  title?: string;
+  issuer?: string;
+  description?: string;
+  issued_on?: ProxyCurlDate;
+}
+interface ProxyCurlPublication {
+  name?: string;
+  publisher?: string;
+  description?: string;
+  url?: string;
+  published_on?: ProxyCurlDate;
+}
+interface ProxyCurlCertification {
+  name?: string;
+  authority?: string;
+  url?: string;
+  display_source?: string;
+  license_number?: string;
+  starts_at?: ProxyCurlDate;
+  ends_at?: ProxyCurlDate | null;
+}
+interface ProxyCurlVolunteerWork {
+  title?: string;
+  cause?: string;
+  company?: string;
+  company_linkedin_profile_url?: string;
+  description?: string;
+  starts_at?: ProxyCurlDate;
+  ends_at?: ProxyCurlDate | null;
+  logo_url?: string;
 }
 interface ProxyCurlProfile {
   full_name?: string;
+  first_name?: string;
+  last_name?: string;
   headline?: string;
+  occupation?: string;
   summary?: string;
+  profile_pic_url?: string;
+  background_cover_image_url?: string;
   city?: string;
+  state?: string;
   country?: string;
   country_full_name?: string;
   experiences?: ProxyCurlPosition[];
   education?: ProxyCurlEducation[];
   skills?: string[];
+  accomplishment_projects?: ProxyCurlAccomplishmentProject[];
+  accomplishment_honors_awards?: ProxyCurlHonor[];
+  accomplishment_publications?: ProxyCurlPublication[];
+  certifications?: ProxyCurlCertification[];
+  volunteer_work?: ProxyCurlVolunteerWork[];
 }
 
 async function tryProxyCurl(args: {
@@ -340,7 +400,7 @@ async function tryProxyCurl(args: {
 }
 
 function fmtProxyCurlDate(
-  d: { day?: number; month?: number; year?: number } | null | undefined,
+  d: ProxyCurlDate | null | undefined,
 ): string | undefined {
   if (!d?.year) return undefined;
   const y = String(d.year);
@@ -350,46 +410,199 @@ function fmtProxyCurlDate(
   return `${y}-${m}-${String(d.day).padStart(2, "0")}`;
 }
 
+/** Strip the `<br>` / `<br/>` HTML breaks EnrichLayer leaves in summary
+ *  text so they render as paragraphs in our markdown rather than
+ *  literal "<br>" strings. */
+function htmlBreaksToNewlines(s: string | undefined): string | undefined {
+  if (!s) return undefined;
+  return s.replace(/<br\s*\/?>/gi, "\n").trim();
+}
+
 function proxyCurlToFacts(data: ProxyCurlProfile, url: string): TypedFact[] {
-  const positions = (data.experiences ?? []).map((e) => ({
-    company: e.company ?? "",
-    title: e.title ?? "",
-    description: e.description ?? "",
-    location: e.location ?? "",
-    start: fmtProxyCurlDate(e.starts_at),
-    end: fmtProxyCurlDate(e.ends_at),
-    present: !e.ends_at,
-  }));
-  const educations = (data.education ?? []).map((e) => ({
-    school: e.school ?? "",
-    degree: e.degree_name ?? "",
-    field: e.field_of_study ?? "",
-    start: fmtProxyCurlDate(e.starts_at),
-    end: fmtProxyCurlDate(e.ends_at),
-    description: e.description ?? "",
-  }));
-  const skills = (data.skills ?? []).slice(0, 30);
+  const facts: TypedFact[] = [];
+  const src = (snippet?: string) =>
+    makeSource({
+      fetcher: "linkedin-public",
+      method: "scrape",
+      confidence: "high",
+      url,
+      snippet,
+    });
+
+  // ── Identity / bio (PERSON + LIVES_IN) ────────────────────────────
   const location =
-    [data.city, data.country_full_name ?? data.country]
+    [data.city, data.state, data.country_full_name ?? data.country]
       .filter((p): p is string => typeof p === "string" && p.length > 0)
       .join(", ") || undefined;
+  const bio =
+    htmlBreaksToNewlines(data.summary) ?? data.headline ?? data.occupation;
+  const personPatch: Record<string, unknown> = {};
+  if (data.full_name) personPatch.name = data.full_name;
+  if (bio) personPatch.bio = bio;
+  if (data.profile_pic_url) personPatch.avatarUrl = data.profile_pic_url;
+  if (location) personPatch.location = location;
+  if (Object.keys(personPatch).length > 0) {
+    facts.push({
+      kind: "PERSON",
+      person: personPatch as Parameters<typeof Object>[0],
+      source: src(bio?.slice(0, 300) ?? data.full_name),
+    } as TypedFact);
+  }
+  if (location) {
+    facts.push({
+      kind: "LIVES_IN",
+      location,
+      source: src(location),
+    });
+  }
 
-  const extraction: LinkedInExtraction = {
-    positions: positions.filter((p) => p.company),
-    educations: educations.filter((e) => e.school),
-    skills,
-    bio: data.summary ?? data.headline ?? "",
-    location: location ?? "",
-  };
+  // ── Work history (WORKED_AT) ──────────────────────────────────────
+  for (const e of data.experiences ?? []) {
+    if (!e.company) continue;
+    const start = fmtProxyCurlDate(e.starts_at);
+    const end = fmtProxyCurlDate(e.ends_at ?? null);
+    facts.push({
+      kind: "WORKED_AT",
+      company: { canonicalName: e.company },
+      attrs: {
+        role: e.title ?? "",
+        start,
+        end,
+        present: !e.ends_at,
+        location: e.location ?? undefined,
+        description: e.description ?? undefined,
+      },
+      source: src(e.description?.slice(0, 300) ?? `${e.title ?? ""} at ${e.company}`),
+    });
+  }
 
-  // ProxyCurl returns canonical structured data — bump confidence to
-  // "high" so these facts land on the verified band.
-  return buildFacts({
-    extraction,
-    url,
-    label: "linkedin-public",
-    confidence: "high",
-  });
+  // ── Education (STUDIED_AT) ────────────────────────────────────────
+  for (const e of data.education ?? []) {
+    if (!e.school) continue;
+    facts.push({
+      kind: "STUDIED_AT",
+      school: { canonicalName: e.school },
+      attrs: {
+        degree: e.degree_name ?? "",
+        start: fmtProxyCurlDate(e.starts_at),
+        end: fmtProxyCurlDate(e.ends_at ?? null),
+        field: e.field_of_study ?? undefined,
+      },
+      source: src(`${e.degree_name ?? ""} at ${e.school}`),
+    });
+  }
+
+  // ── Skills (HAS_SKILL) ────────────────────────────────────────────
+  for (const skill of (data.skills ?? []).slice(0, 30)) {
+    if (!skill.trim()) continue;
+    facts.push({
+      kind: "HAS_SKILL",
+      skill: { canonicalName: skill },
+      attrs: {},
+      source: src(skill),
+    });
+  }
+
+  // ── Self-listed projects (BUILT) ──────────────────────────────────
+  // These often have github.com URLs. The KG merger will dedupe by
+  // homepageUrl + slug so a LinkedIn-listed project that already
+  // exists as an owned repo gets folded in (with the user-written
+  // description winning over the auto-generated one).
+  for (const p of data.accomplishment_projects ?? []) {
+    if (!p.title) continue;
+    facts.push({
+      kind: "BUILT",
+      project: {
+        title: p.title,
+        purpose: p.description?.slice(0, 280) ?? p.title,
+        kind: "product",
+        polish: "shipped",
+        homepageUrl: p.url || undefined,
+        dates: {
+          start: fmtProxyCurlDate(p.starts_at),
+          end: fmtProxyCurlDate(p.ends_at ?? null),
+          active: !p.ends_at,
+        },
+      },
+      attrs: {
+        start: fmtProxyCurlDate(p.starts_at),
+        end: fmtProxyCurlDate(p.ends_at ?? null),
+        active: !p.ends_at,
+      },
+      source: src(p.description?.slice(0, 300) ?? p.title),
+    });
+  }
+
+  // ── Honors / awards (WON kind=award) ──────────────────────────────
+  for (const h of data.accomplishment_honors_awards ?? []) {
+    if (!h.title) continue;
+    facts.push({
+      kind: "WON",
+      achievement: {
+        title: h.title,
+        kind: "award",
+        date: fmtProxyCurlDate(h.issued_on),
+        description: h.description?.slice(0, 400) ?? undefined,
+      },
+      attrs: {},
+      source: src(h.description?.slice(0, 300) ?? h.title),
+    });
+  }
+
+  // ── Certifications (WON kind=certification) ───────────────────────
+  for (const c of data.certifications ?? []) {
+    if (!c.name) continue;
+    facts.push({
+      kind: "WON",
+      achievement: {
+        title: c.name,
+        kind: "certification",
+        date: fmtProxyCurlDate(c.starts_at),
+        description: [c.authority, c.license_number].filter(Boolean).join(" · "),
+        url: c.url,
+      },
+      attrs: {},
+      source: src(`${c.name}${c.authority ? ` — ${c.authority}` : ""}`),
+    });
+  }
+
+  // ── Publications (AUTHORED) ───────────────────────────────────────
+  for (const p of data.accomplishment_publications ?? []) {
+    if (!p.name || !p.url) continue;
+    facts.push({
+      kind: "AUTHORED",
+      publication: {
+        title: p.name,
+        url: p.url,
+        kind: "blog",
+        publishedAt: fmtProxyCurlDate(p.published_on),
+        venue: p.publisher,
+        summary: p.description?.slice(0, 600) ?? undefined,
+      },
+      attrs: { role: "author" },
+      source: src(p.description?.slice(0, 300) ?? p.name),
+    });
+  }
+
+  // ── Volunteer work (WORKED_AT, employmentType=volunteer) ──────────
+  for (const v of data.volunteer_work ?? []) {
+    if (!v.company || !v.title) continue;
+    facts.push({
+      kind: "WORKED_AT",
+      company: { canonicalName: v.company },
+      attrs: {
+        role: v.title,
+        start: fmtProxyCurlDate(v.starts_at),
+        end: fmtProxyCurlDate(v.ends_at ?? null),
+        present: !v.ends_at,
+        description: v.description ?? undefined,
+        employmentType: "volunteer",
+      },
+      source: src(v.description?.slice(0, 300) ?? `${v.title} (volunteer)`),
+    });
+  }
+
+  return facts;
 }
 
 // ─── Tier 1: TinyFish ────────────────────────────────────────────────

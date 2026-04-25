@@ -387,13 +387,32 @@ function upsertRepositories(kg: KnowledgeGraph, facts: ContributedToFact[]): voi
 function upsertSkills(kg: KnowledgeGraph, facts: HasSkillFact[]): void {
   for (const f of facts) {
     const id = skillId(f.skill.canonicalName);
-    if (!kg.entities.skills.find((s) => s.id === id)) {
-      kg.entities.skills.push({
+    let existing = kg.entities.skills.find((s) => s.id === id);
+    if (!existing) {
+      existing = {
         id,
         canonicalName: f.skill.canonicalName,
         category: f.skill.category,
         iconKey: f.skill.iconKey,
-      });
+      };
+      kg.entities.skills.push(existing);
+    }
+    // The manifest-skills aggregator emits HAS_SKILL facts with
+    // usageCount + score precomputed. When that fact wins (via the
+    // sources priority order — github-fetcher is high), promote the
+    // numeric fields onto the Skill entity so the renderer can sort
+    // and the UI can render bars.
+    if (
+      f.skill.usageCount !== undefined &&
+      (existing.usageCount === undefined || f.skill.usageCount > existing.usageCount)
+    ) {
+      existing.usageCount = f.skill.usageCount;
+    }
+    if (
+      f.skill.score !== undefined &&
+      (existing.score === undefined || f.skill.score > existing.score)
+    ) {
+      existing.score = f.skill.score;
     }
   }
 }

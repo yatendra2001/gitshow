@@ -138,18 +138,44 @@ export default function PortfolioPage() {
             <h2 className="text-xl font-bold">Skills</h2>
           </BlurFade>
           <div className="flex flex-wrap gap-2">
-            {DATA.skills.map((skill, id) => (
-              <BlurFade key={skill.name} delay={BLUR_FADE_DELAY * 10 + id * 0.05}>
-                <div className="border bg-background border-border ring-2 ring-border/20 rounded-xl h-8 w-fit px-4 flex items-center gap-2">
-                  {skill.icon && (
-                    <skill.icon className="size-4 rounded overflow-hidden object-contain" />
-                  )}
-                  <span className="text-foreground text-sm font-medium">
-                    {skill.name}
-                  </span>
-                </div>
-              </BlurFade>
-            ))}
+            {DATA.skills.map((skill, id) => {
+              // Skills with manifest-aggregator scoring get a tiny
+              // mini-bar inside the chip — pure visual cue at the
+              // pill's right edge, doesn't change layout. Skills
+              // that landed via legacy paths (no score) render as
+              // before.
+              const score =
+                typeof skill.score === "number" ? skill.score : null;
+              return (
+                <BlurFade
+                  key={skill.name}
+                  delay={BLUR_FADE_DELAY * 10 + id * 0.05}
+                >
+                  <div
+                    className="relative border bg-background border-border ring-2 ring-border/20 rounded-xl h-8 w-fit px-4 flex items-center gap-2 overflow-hidden"
+                    title={
+                      skill.usageCount
+                        ? `Used in ${skill.usageCount} repo${skill.usageCount === 1 ? "" : "s"}${score !== null ? ` · score ${score}/100` : ""}`
+                        : undefined
+                    }
+                  >
+                    {skill.icon && (
+                      <skill.icon className="size-4 rounded overflow-hidden object-contain" />
+                    )}
+                    <span className="relative z-[1] text-foreground text-sm font-medium">
+                      {skill.name}
+                    </span>
+                    {score !== null && score > 0 && (
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute inset-y-0 left-0 bg-primary/[0.07] dark:bg-primary/[0.18]"
+                        style={{ width: `${Math.max(8, score)}%` }}
+                      />
+                    )}
+                  </div>
+                </BlurFade>
+              );
+            })}
           </div>
         </div>
       </section>

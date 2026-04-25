@@ -96,6 +96,7 @@ const PHASE_COPY: Record<string, string> = {
   inventory: "Studying your top repos",
   "repo-judge": "Spotting what's distinctive",
   "project-ranker": "Picking your top projects",
+  "project-search": "Searching the web for project mentions",
   fetchers: "Gathering context from across the web",
   merge: "Organising the pieces",
   media: "Finding cover images",
@@ -108,7 +109,6 @@ const PHASE_COPY: Record<string, string> = {
   // Sub-phases under fetchers — shown as children of that row.
   "fetch:linkedin": "Reading your LinkedIn",
   "fetch:personal-site": "Reading your personal site",
-  "fetch:twitter": "Reading your Twitter bio",
   "fetch:hn": "Checking Hacker News",
   "fetch:devto": "Checking dev.to",
   "fetch:medium": "Checking Medium",
@@ -131,6 +131,7 @@ const PHASE_ORDER = [
   "inventory",
   "repo-judge",
   "project-ranker",
+  "project-search",
   "fetchers",
   "merge",
   "media",
@@ -145,7 +146,6 @@ const PHASE_ORDER = [
 const SECTION_AGENT_CHILDREN = [
   "fetch:linkedin",
   "fetch:personal-site",
-  "fetch:twitter",
   "fetch:hn",
   "fetch:devto",
   "fetch:medium",

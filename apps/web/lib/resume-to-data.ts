@@ -158,7 +158,14 @@ export interface TemplateData {
   description: string;
   summary: string;
   avatarUrl: string;
-  skills: { name: string; icon?: IconComp }[];
+  skills: {
+    name: string;
+    icon?: IconComp;
+    /** 0..100 — drives the score bar inside the chip. */
+    score?: number;
+    /** Number of owned repos that declared this dep. Tooltip copy. */
+    usageCount?: number;
+  }[];
   navbar: { href: string; icon: IconComp; label: string }[];
   contact: {
     email: string;
@@ -197,6 +204,10 @@ export interface TemplateData {
     links: { type: string; href: string; icon: React.ReactNode }[];
     image?: string;
     video?: string;
+    /** 0..1 — fraction of repo authored by the user. */
+    userShare?: number;
+    /** Press / community mentions, populated for the 6 grid picks. */
+    webMentions?: { title: string; url: string; source: string; snippet?: string }[];
   }[];
   hackathons: {
     title: string;
@@ -254,6 +265,8 @@ export function resumeToTemplateData(
     skills: resume.skills.map((s) => ({
       name: s.name,
       icon: iconForSkill(s),
+      score: s.score,
+      usageCount: s.usageCount,
     })),
     navbar: [
       { href: `/${handle}`, icon: HomeIcon, label: "Home" },
@@ -299,6 +312,8 @@ export function resumeToTemplateData(
       })),
       image: p.image,
       video: p.video,
+      userShare: p.userShare,
+      webMentions: p.webMentions,
     })),
     hackathons: resume.buildLog.map((b) => ({
       title: b.title,

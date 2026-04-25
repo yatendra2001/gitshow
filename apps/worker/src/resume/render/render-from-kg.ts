@@ -323,6 +323,9 @@ function projectProjects(opts: {
       href: p.homepageUrl ?? repoUrl(repo?.fullName) ?? undefined,
       kind: "code",
       media,
+      userShare: p.userShare,
+      userCommits: p.userCommits,
+      webMentions: p.webMentions?.slice(0, 3),
     });
 
     void builtEdges;
@@ -410,21 +413,46 @@ function projectSkills(opts: {
 }): ResumeSkill[] {
   const { kg, skillById, trace } = opts;
 
+  // Two ranking signals — we prefer the manifest-aggregator score
+  // when available (computed once per scan from every studied repo
+  // and already reflects usage frequency × recency × volume), and
+  // fall back to edge-band counts for skills that came in via other
+  // fetchers (LinkedIn, GitHub topics) where no precomputed score
+  // exists.
   const counts = new Map<string, number>();
   for (const e of kg.edges) {
     if (e.type !== "HAS_SKILL") continue;
     const score = bandWeight(e.band);
     counts.set(e.to, (counts.get(e.to) ?? 0) + score);
   }
-  const ordered = [...counts.entries()].sort((a, b) => b[1] - a[1]);
+
+  type Ranked = {
+    skill: KgSkill;
+    primary: number;
+    secondary: number;
+  };
+  const ranked: Ranked[] = [];
+  for (const skill of kg.entities.skills) {
+    const edgeWeight = counts.get(skill.id) ?? 0;
+    if (edgeWeight === 0 && skill.usageCount === undefined) continue;
+    ranked.push({
+      skill,
+      primary: skill.score ?? 0,
+      secondary: edgeWeight,
+    });
+  }
+  ranked.sort((a, b) => {
+    if (b.primary !== a.primary) return b.primary - a.primary;
+    return b.secondary - a.secondary;
+  });
 
   const out: ResumeSkill[] = [];
-  for (const [skillId] of ordered) {
-    const skill = skillById.get(skillId);
-    if (!skill) continue;
+  for (const { skill } of ranked) {
     out.push({
       name: skill.canonicalName,
       iconKey: guessSkillIconKey(skill.canonicalName, skill.iconKey),
+      score: skill.score,
+      usageCount: skill.usageCount,
     });
     if (out.length >= 30) break;
   }
@@ -433,7 +461,7 @@ function projectSkills(opts: {
     label: "render.skills",
     section: "skills",
     entityCount: out.length,
-    filter: "HAS_SKILL ranked",
+    filter: "HAS_SKILL ranked by manifest score",
   });
   return out;
 }
