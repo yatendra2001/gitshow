@@ -24,7 +24,6 @@ export {
   LinkedInExtractionSchema,
 } from "./linkedin-public.js";
 
-export { runLinkedInPlaywrightFetcher } from "./linkedin-playwright.js";
 export { runLinkedInPdfFetcher } from "./linkedin-pdf.js";
 export { runPersonalSiteFetcher } from "./personal-site.js";
 export { runTwitterBioFetcher } from "./twitter-bio.js";

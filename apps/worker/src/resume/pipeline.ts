@@ -37,9 +37,12 @@ import type { SessionUsage } from "../session.js";
 
 import { judgeAllRepos, type RepoJudgeOutput } from "./judge/repo-judge.js";
 import {
+  runProjectRanker,
+  type ProjectRankerOutput,
+} from "./judge/project-ranker.js";
+import {
   emitGithubFacts,
   runLinkedInPublicFetcher,
-  runLinkedInPlaywrightFetcher,
   runLinkedInPdfFetcher,
   runPersonalSiteFetcher,
   runTwitterBioFetcher,
@@ -74,9 +77,16 @@ import { withTimeout, TimeoutError } from "../util/timeout.js";
 import type { AgentEventEmit } from "../agents/base.js";
 import type { Resume } from "@gitshow/shared/resume";
 
-const INVENTORY_CAP = 30;
+/**
+ * Defensive ceiling on how many owned repos we clone + judge. Set to
+ * 200 because no normal user has more than that — but a typo'd handle
+ * pointing at a bot account with 5000 repos shouldn't burn $250 of
+ * Kimi credits. Below this threshold the pipeline studies EVERY owned
+ * repo so the Sonnet ranker has full context to pick the top 6 from.
+ */
+const INVENTORY_CAP = 200;
 const INVENTORY_CONCURRENCY = 3;
-const JUDGE_MAX_CANDIDATES = 30;
+const JUDGE_MAX_CANDIDATES = 200;
 
 /**
  * Hard wall-clock caps for each fetcher subPhase. The fan-out is a
@@ -240,6 +250,9 @@ export async function runResumePipeline(
   });
 
   // 4. Repo Judge (Kimi K2.6) — produces shouldFeature/kind/polish per repo.
+  //    Runs over EVERY successfully-cloned owned repo (cap=200 is a
+  //    defensive ceiling, not the working limit) so the downstream
+  //    Sonnet ranker has full per-repo context to pick from.
   const judgments = await phases.phase("repo-judge", async () => {
     log(`[pipeline] stage 4: repo-judge (max ${JUDGE_MAX_CANDIDATES})\n`);
     return judgeAllRepos({
@@ -254,6 +267,32 @@ export async function runResumePipeline(
     });
   });
   log(`[pipeline]   judged ${Object.keys(judgments).length} repos\n`);
+
+  // 4b. Project Ranker (Sonnet 4.6) — single comparative pick over
+  //     ALL judgments. Sonnet's picks become the My Projects grid;
+  //     everything else falls through to the build-log timeline.
+  //     This decouples "study each repo" (Kimi, per-repo) from
+  //     "decide which 6 to feature" (Sonnet, global comparison) so
+  //     a single Kimi flake on one repo can't take a real project
+  //     out of the grid.
+  const ranking = await phases.phase("project-ranker", async () => {
+    log(`[pipeline] stage 4b: project-ranker (Sonnet)\n`);
+    if (Object.keys(judgments).length === 0) {
+      return { picks: [], rationale: "no judgments to rank" } as ProjectRankerOutput;
+    }
+    const r = await runProjectRanker({
+      session,
+      usage,
+      judgments,
+      trace,
+      onProgress,
+      emit: opts.emit,
+    });
+    log(
+      `[pipeline]   ranker picked ${r.picks.length} project(s) for grid\n`,
+    );
+    return r;
+  });
 
   // 5. Fetcher fan-out (parallel). Each fetcher returns TypedFact[].
   //    LinkedIn is internally tiered (1+2 → 3 → 4 PDF). Every fetcher
@@ -454,10 +493,13 @@ export async function runResumePipeline(
     });
   });
 
-  // 8. Apply judgments to Project nodes. The judgment is the source of
-  //    truth on shouldFeature/kind/polish/purpose/reason for repo-backed
-  //    projects.
-  applyJudgmentsToKg(kg, judgments);
+  // 8. Apply judgments + ranker picks to Project nodes.
+  //    - Per-repo judgments (Kimi) write kind/polish/purpose/reason/tags.
+  //    - The Sonnet ranker is the source of truth for shouldFeature +
+  //      featureRank: ONLY the projects in `ranking.picks` get
+  //      shouldFeature=true; everything else (including repos Kimi
+  //      thought were featurable) falls through to the build-log.
+  applyJudgmentsToKg(kg, judgments, ranking);
 
   // 9. Media fetch (og → README → YouTube → Gemini gen / Clearbit logos).
   const r2 = r2ClientFromEnv();
@@ -581,6 +623,17 @@ export async function runResumePipeline(
 }
 
 // ─── LinkedIn tier chain ────────────────────────────────────────────
+//
+// Tier 0: ProxyCurl/EnrichLayer (paid, canonical JSON) — runs INSIDE
+//         runLinkedInPublicFetcher when PROXYCURL_API_KEY is set.
+// Tier 1: TinyFish (proxy-rotating headless) — also inside
+//         runLinkedInPublicFetcher.
+// Tier 2: Jina Reader markdown — inside the same fetcher.
+// Tier 4: uploaded PDF salvage (separate fetcher, last resort).
+//
+// (Tier 3 — Playwright Googlebot UA — was removed once Tier 0
+// went first-class; the headless Chromium dependency cost more in
+// image size + cold start than it returned in usable facts.)
 
 async function runLinkedInTierChain(opts: {
   session: ScanSession;
@@ -595,18 +648,9 @@ async function runLinkedInTierChain(opts: {
     return [];
   }
 
-  // Tier 1 + Tier 2 (TinyFish + Jina).
-  const t12 = await runLinkedInPublicFetcher({ session, usage, trace, onProgress });
-  if (t12.length > 0) return t12;
-
-  // Tier 3 — Playwright with Googlebot UA.
-  const t3 = await runLinkedInPlaywrightFetcher({
-    session,
-    usage,
-    trace,
-    onProgress,
-  });
-  if (t3.length > 0) return t3;
+  // Tier 0 (ProxyCurl) + Tier 1 (TinyFish) + Tier 2 (Jina) — in cascade.
+  const t012 = await runLinkedInPublicFetcher({ session, usage, trace, onProgress });
+  if (t012.length > 0) return t012;
 
   // Tier 4 — uploaded PDF salvage.
   if (pdfText) {
@@ -676,7 +720,15 @@ function friendlyTitleFromFullName(fullName: string, description?: string | null
 function applyJudgmentsToKg(
   kg: KnowledgeGraph,
   judgments: Record<string, RepoJudgeOutput>,
+  ranking: ProjectRankerOutput,
 ): void {
+  // Pre-build the Sonnet pick map so we can stamp featureRank in one
+  // pass below. Pick index = featureRank (0 = best).
+  const rankByFullName = new Map<string, number>();
+  ranking.picks.forEach((pick, i) => {
+    rankByFullName.set(pick.repoFullName, i);
+  });
+
   for (const [fullName, j] of Object.entries(judgments)) {
     const expectedId = kgProjectId({
       repoFullName: fullName,
@@ -688,10 +740,22 @@ function applyJudgmentsToKg(
     if (!project) continue;
     project.kind = j.judgment.kind;
     project.polish = j.judgment.polish;
-    project.shouldFeature = j.judgment.shouldFeature;
     project.purpose = j.judgment.purpose;
     project.reason = j.judgment.reason;
     project.tags = uniqStrings([...(project.tags ?? []), ...j.judgment.technologies]);
+
+    // Sonnet ranker is the source of truth for the My Projects grid.
+    // Repos in `ranking.picks` get shouldFeature=true + featureRank;
+    // everything else falls through to the build-log/timeline.
+    const rank = rankByFullName.get(fullName);
+    if (rank !== undefined) {
+      project.shouldFeature = true;
+      project.featureRank = rank;
+    } else {
+      project.shouldFeature = false;
+      project.featureRank = undefined;
+    }
+
     kg.judgments[project.id] = j.judgment;
   }
 }

@@ -200,17 +200,22 @@ export async function runLinkedInPublicFetcher(
   }
 }
 
-// ─── Tier 0: ProxyCurl (paid, when configured) ──────────────────────
+// ─── Tier 0: ProxyCurl / EnrichLayer (paid, when configured) ────────
 //
-// LinkedIn's anti-bot is good enough that the public-side tier chain
-// (TinyFish → Jina → Playwright) frequently lands on a sign-up wall
-// no matter what UA we send. ProxyCurl runs scrapes through residential
-// proxies + maintains LinkedIn cookie pools, returning canonical
-// JSON. Costs ~$0.01/profile at the lookup endpoint — trivial at this
-// scale.
+// LinkedIn's anti-bot is good enough that public-side scraping
+// (TinyFish → Jina) frequently lands on a sign-up wall. ProxyCurl
+// (now operating as EnrichLayer at enrichlayer.com) runs scrapes
+// through residential proxies + maintains LinkedIn cookie pools,
+// returning canonical JSON with experiences/education/skills/etc.
+// Costs 1–2 credits/profile — trivial at this scale.
+//
+// Migration note: the `nubela.co/proxycurl/api/v2/linkedin` endpoint
+// returns 410 Gone — they migrated to `enrichlayer.com/api/v2/profile`
+// and the URL param renamed from `url` to `profile_url`. Same API key
+// works on both. We point at the new endpoint here.
 //
 // Activation: set `PROXYCURL_API_KEY` in Fly secrets. Without it, this
-// tier is a no-op and we fall through to the existing public chain.
+// tier is a no-op and we fall through to the public chain.
 
 interface ProxyCurlPosition {
   company?: string;
@@ -252,8 +257,8 @@ async function tryProxyCurl(args: {
   const apiKey = process.env.PROXYCURL_API_KEY;
   if (!apiKey) {
     trace?.linkedInTierAttempt({
-      tier: 1, // ProxyCurl claims the "tier 1" slot from a UI POV
-      method: "tinyfish",
+      tier: 0,
+      method: "proxycurl",
       ok: false,
       durationMs: 0,
       reason: "proxycurl-no-api-key",
@@ -263,17 +268,21 @@ async function tryProxyCurl(args: {
 
   const isProfile = /\blinkedin\.com\/in\//i.test(url);
   if (!isProfile) {
-    // ProxyCurl's profile endpoint is /in/ only; for company URLs
+    // EnrichLayer's profile endpoint is /in/ only; for company URLs
     // there's a separate API we don't need yet.
     return null;
   }
 
   const t0 = Date.now();
-  log(`[${label}] tier 0 — ProxyCurl /linkedin/profile\n`);
+  log(`[${label}] tier 0 — EnrichLayer /api/v2/profile\n`);
 
   try {
-    const apiUrl = new URL("https://nubela.co/proxycurl/api/v2/linkedin");
-    apiUrl.searchParams.set("url", url);
+    // EnrichLayer (formerly ProxyCurl/Nubela). The old
+    // nubela.co/proxycurl/api/v2/linkedin endpoint returns 410 Gone;
+    // the new endpoint takes `profile_url` instead of `url`. Same API
+    // key works on both.
+    const apiUrl = new URL("https://enrichlayer.com/api/v2/profile");
+    apiUrl.searchParams.set("profile_url", url);
     apiUrl.searchParams.set("skills", "include");
     apiUrl.searchParams.set("use_cache", "if-recent");
     apiUrl.searchParams.set("fallback_to_cache", "on-error");
@@ -289,8 +298,8 @@ async function tryProxyCurl(args: {
         `[${label}] proxycurl http ${res.status}: ${body.slice(0, 240)}\n`,
       );
       trace?.linkedInTierAttempt({
-        tier: 1,
-        method: "tinyfish",
+        tier: 0,
+        method: "proxycurl",
         ok: false,
         durationMs: ms,
         reason: `proxycurl-${res.status}`,
@@ -300,14 +309,14 @@ async function tryProxyCurl(args: {
     const data = (await res.json()) as ProxyCurlProfile;
     const facts = proxyCurlToFacts(data, url);
     trace?.linkedInTierAttempt({
-      tier: 1,
-      method: "tinyfish",
+      tier: 0,
+      method: "proxycurl",
       ok: facts.length > 0,
       durationMs: ms,
       reason: facts.length > 0 ? undefined : "proxycurl-empty",
     });
     trace?.linkedInFactsEmitted({
-      tier: 0 as 0 | 1 | 2 | 3 | 4,
+      tier: 0,
       positions: data.experiences?.length ?? 0,
       educations: data.education?.length ?? 0,
       skills: data.skills?.length ?? 0,
@@ -320,8 +329,8 @@ async function tryProxyCurl(args: {
     const msg = err instanceof Error ? err.message : String(err);
     log(`[${label}] proxycurl error: ${msg.slice(0, 240)}\n`);
     trace?.linkedInTierAttempt({
-      tier: 1,
-      method: "tinyfish",
+      tier: 0,
+      method: "proxycurl",
       ok: false,
       durationMs: Date.now() - t0,
       reason: "proxycurl-exception",
@@ -565,7 +574,7 @@ async function extract(args: {
 export function buildFacts(args: {
   extraction: LinkedInExtraction;
   url?: string;
-  label: "linkedin-public" | "linkedin-playwright" | "linkedin-pdf";
+  label: "linkedin-public" | "linkedin-pdf";
   confidence?: "high" | "medium" | "low";
 }): TypedFact[] {
   const { extraction, url, label } = args;

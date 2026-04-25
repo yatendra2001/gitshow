@@ -138,8 +138,15 @@ export interface LinkedInFetchEvent extends TraceEventBase {
 }
 export interface LinkedInTierAttemptEvent extends TraceEventBase {
   kind: "linkedin.tier.attempt";
-  tier: 1 | 2 | 3 | 4;
-  method: "tinyfish" | "jina" | "playwright" | "pdf";
+  /**
+   * 0 = ProxyCurl/EnrichLayer (paid API, canonical JSON)
+   * 1 = TinyFish (proxy-rotating headless)
+   * 2 = Jina Reader (markdown of public page)
+   * 3 = (retired — was Playwright Googlebot UA)
+   * 4 = uploaded PDF salvage
+   */
+  tier: 0 | 1 | 2 | 3 | 4;
+  method: "proxycurl" | "tinyfish" | "jina" | "pdf";
   ok: boolean;
   durationMs: number;
   reason?: string;

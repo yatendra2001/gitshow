@@ -45,6 +45,7 @@ import type {
 import { guessSkillIconKey } from "@gitshow/shared/skill-icon-slugs";
 import { colorForLanguage } from "../language-colors.js";
 import type { ScanTrace } from "../observability/trace.js";
+import { PROJECT_FEATURE_CAP } from "../judge/project-ranker.js";
 
 export interface RenderInput {
   kg: KnowledgeGraph;
@@ -267,8 +268,10 @@ function projectEducation(opts: {
  * surfaced via the chronological Build Log section, so nothing the
  * user shipped goes missing — but the portfolio isn't a wall of 22
  * tiles either. 6 is the sweet spot for a 3×2 grid that scans well
- * on mobile + desktop. */
-const PROJECTS_GRID_CAP = 6;
+ * on mobile + desktop. Source of truth lives in the project-ranker
+ * — the renderer's slice is a defensive ceiling so a malformed KG
+ * still can't blow up the grid. */
+const PROJECTS_GRID_CAP = PROJECT_FEATURE_CAP;
 
 function projectProjects(opts: {
   kg: KnowledgeGraph;
@@ -709,6 +712,18 @@ function byEndDescending(a: Edge, b: Edge): number {
 
 function byProjectScore(repoById: Map<string, Repository>) {
   return (a: KgProject, b: KgProject) => {
+    // The Sonnet ranker writes featureRank when it picks a project
+    // for the My Projects grid (0 = best). When BOTH projects have
+    // a rank, that ordering is authoritative — beats any local
+    // stars/polish heuristic. When only one has a rank, that one
+    // sorts first. When neither has a rank we fall back to the
+    // local heuristic (used elsewhere — e.g., un-judged scaffolds).
+    const ra = a.featureRank;
+    const rb = b.featureRank;
+    if (ra !== undefined && rb !== undefined) return ra - rb;
+    if (ra !== undefined) return -1;
+    if (rb !== undefined) return 1;
+
     const repoA = a.repoFullName
       ? findRepoByFullName(repoById, a.repoFullName)
       : undefined;

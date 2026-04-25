@@ -76,7 +76,6 @@ const SOURCE_PRIORITY: Record<string, number> = {
   intake: 100,
   "linkedin-pdf": 90,
   "personal-site": 80,
-  "linkedin-playwright": 70,
   "linkedin-public": 60,
   orcid: 55,
   "semantic-scholar": 50,

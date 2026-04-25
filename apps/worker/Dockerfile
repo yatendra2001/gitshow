@@ -8,10 +8,6 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends \
        git ca-certificates curl gnupg \
        libvips-dev \
-       libnss3 libnspr4 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
-       libdrm2 libdbus-1-3 libatspi2.0-0 libx11-6 libxcomposite1 \
-       libxdamage1 libxext6 libxfixes3 libxrandr2 libgbm1 libxkbcommon0 \
-       libpango-1.0-0 libcairo2 libasound2 libxshmfence1 \
   && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
        | tee /usr/share/keyrings/githubcli-archive-keyring.gpg > /dev/null \
   && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -36,11 +32,6 @@ COPY packages/shared/package.json ./packages/shared/package.json
 # `--production` skips devDependencies; `--frozen-lockfile` aborts if the
 # lockfile would mutate. Intentional for reproducible builds.
 RUN bun install --frozen-lockfile --production
-
-# Playwright Chromium browser — needed for the LinkedIn Tier-3 fetcher.
-# We install only Chromium (not Firefox/Webkit) to keep the image small.
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN cd apps/worker && bunx playwright install chromium --with-deps
 
 # Now bring in source for both the worker and the shared package. Other
 # workspaces stay as install-only stubs to keep this image lean.
