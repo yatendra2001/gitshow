@@ -1,17 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, Wrench } from "lucide-react";
+import { ChevronDown, Check, AlertTriangle, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ShimmeringText } from "@/components/ui/shimmering-text";
+import { Matrix, loader } from "@/components/ui/matrix";
 
 /**
- * Tool — per-invocation card showing one tool call.
+ * Tool — per-invocation row showing one tool call.
  *
- * Header: icon · tool name · status badge · chevron
- * Body (open): parameters JSON + result preview
- *
- * Status enum mirrors AI Elements' ToolUIPart state:
- *   pending | running | completed | error | awaiting-approval | denied
+ * Subtle vibe to match Reasoning: hairline left rule (not a card),
+ * tiny dot-matrix loader as the running indicator, ShimmeringText
+ * on the active label, monospace display name. Click to expand
+ * input/output inline if either was emitted.
  */
 
 export type ToolStatus =
@@ -25,43 +26,15 @@ export type ToolStatus =
 export interface ToolProps extends React.HTMLAttributes<HTMLDivElement> {
   name: string;
   status: ToolStatus;
-  /** Shown in monospace inside a fenced block; we stringify objects. */
+  /** Stringified or stringifiable input — JSON in the expanded panel. */
   input?: unknown;
   output?: unknown;
   /** Error message when status === "error". */
   error?: string;
-  /** Shown after the tool name (e.g. a brief purpose). */
+  /** Friendly purpose line, shown next to the tool name when present. */
   subtitle?: string;
-  icon?: React.ReactNode;
   defaultOpen?: boolean;
 }
-
-const STATUS_STYLES: Record<ToolStatus, { label: string; cls: string }> = {
-  pending: {
-    label: "Pending",
-    cls: "border-muted-foreground/30 bg-muted/40 text-muted-foreground",
-  },
-  running: {
-    label: "Running",
-    cls: "border-blue-500/40 bg-blue-500/15 text-blue-300",
-  },
-  completed: {
-    label: "Completed",
-    cls: "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
-  },
-  error: {
-    label: "Error",
-    cls: "border-red-500/40 bg-red-500/15 text-red-300",
-  },
-  "awaiting-approval": {
-    label: "Awaiting Approval",
-    cls: "border-amber-500/40 bg-amber-500/15 text-amber-300",
-  },
-  denied: {
-    label: "Denied",
-    cls: "border-red-500/40 bg-red-500/10 text-red-400",
-  },
-};
 
 export function Tool({
   name,
@@ -70,18 +43,22 @@ export function Tool({
   output,
   error,
   subtitle,
-  icon,
   defaultOpen = false,
   className,
   ...props
 }: ToolProps) {
   const [open, setOpen] = React.useState(defaultOpen);
   const hasBody = input !== undefined || output !== undefined || error;
+  const running = status === "running";
 
   return (
     <div
       className={cn(
-        "gs-enter rounded-lg border border-border bg-card/70 backdrop-blur-sm",
+        // Hairline left rule, no card. Stays out of the way of the
+        // surrounding phase row visually.
+        "gs-enter relative pl-4 border-l border-border/40",
+        running && "border-l-foreground/30",
+        status === "error" && "border-l-[var(--destructive)]/50",
         className,
       )}
       {...props}
@@ -90,36 +67,43 @@ export function Tool({
         type="button"
         onClick={() => hasBody && setOpen((v) => !v)}
         className={cn(
-          "flex w-full items-center gap-2 px-3 py-2 text-left",
-          hasBody && "transition-colors hover:bg-accent/40",
+          "flex w-full items-center gap-2.5 py-1.5 text-left",
           !hasBody && "cursor-default",
         )}
       >
-        <span
-          className={cn(
-            "flex size-6 shrink-0 items-center justify-center rounded-md border",
-            status === "running"
-              ? "border-blue-500/30 bg-blue-500/10 text-blue-300"
-              : "border-border bg-muted/40 text-muted-foreground",
-          )}
-        >
-          {icon ?? <Wrench className="size-3" />}
-        </span>
-        <span className="flex-1 min-w-0">
-          <span className="flex items-center gap-1.5 truncate font-mono text-[12.5px] font-medium text-foreground">
-            {name}
+        <StatusGlyph status={status} />
+        <span className="flex-1 min-w-0 flex flex-col">
+          <span className="flex items-center gap-2 truncate text-[12.5px] font-medium tracking-tight">
+            {running ? (
+              <ShimmeringText
+                text={subtitle || name}
+                duration={2.4}
+                spread={1.4}
+                className="text-foreground/55"
+              />
+            ) : (
+              <span
+                className={cn(
+                  "truncate",
+                  status === "completed" && "text-foreground/85",
+                  status === "error" && "text-[var(--destructive)]",
+                  status === "pending" && "text-muted-foreground/70",
+                )}
+              >
+                {subtitle || name}
+              </span>
+            )}
           </span>
-          {subtitle && (
-            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-              {subtitle}
+          {subtitle && subtitle !== name ? (
+            <span className="block truncate font-mono text-[10.5px] text-muted-foreground/60">
+              {name}
             </span>
-          )}
+          ) : null}
         </span>
-        <StatusBadge status={status} />
         {hasBody && (
           <ChevronDown
             className={cn(
-              "size-4 shrink-0 text-muted-foreground transition-transform duration-200",
+              "size-3.5 shrink-0 text-muted-foreground/60 transition-transform duration-200",
               open ? "rotate-0" : "-rotate-90",
             )}
           />
@@ -134,7 +118,7 @@ export function Tool({
           )}
         >
           <div className="min-h-0">
-            <div className="space-y-3 border-t border-border/60 px-3 py-3">
+            <div className="space-y-2 pb-2 pr-1">
               {input !== undefined && (
                 <ToolPanel label="Parameters" value={input} />
               )}
@@ -152,20 +136,52 @@ export function Tool({
   );
 }
 
-function StatusBadge({ status }: { status: ToolStatus }) {
-  const s = STATUS_STYLES[status];
+/**
+ * Status glyph — running uses the dot-matrix loader, completed shows
+ * a small check, error shows a triangle, denied shows a lock. Pending
+ * is a faint dot. All sized to ~10px so they sit politely next to
+ * the body text.
+ */
+function StatusGlyph({ status }: { status: ToolStatus }) {
+  if (status === "running") {
+    return (
+      <Matrix
+        rows={6}
+        cols={6}
+        frames={loader}
+        fps={14}
+        size={2}
+        gap={1}
+        ariaLabel="Running"
+        className="shrink-0 opacity-60"
+      />
+    );
+  }
+  if (status === "completed") {
+    return (
+      <span className="flex size-3 shrink-0 items-center justify-center rounded-full bg-emerald-500/80">
+        <Check className="size-2 text-white" strokeWidth={3.5} />
+      </span>
+    );
+  }
+  if (status === "error") {
+    return (
+      <AlertTriangle
+        className="size-3 shrink-0 text-[var(--destructive)]"
+        strokeWidth={2}
+      />
+    );
+  }
+  if (status === "denied") {
+    return (
+      <Lock
+        className="size-3 shrink-0 text-muted-foreground/70"
+        strokeWidth={2}
+      />
+    );
+  }
   return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase tracking-wider",
-        s.cls,
-      )}
-    >
-      {status === "running" && (
-        <span className="size-1 rounded-full bg-current gs-pulse" />
-      )}
-      {s.label}
-    </span>
+    <span className="size-2.5 shrink-0 rounded-full bg-muted-foreground/30" />
   );
 }
 
@@ -188,18 +204,20 @@ function ToolPanel({
     <div>
       <div
         className={cn(
-          "mb-1 font-mono text-[10px] uppercase tracking-wider",
-          variant === "error" ? "text-red-400" : "text-muted-foreground",
+          "mb-1 font-mono text-[9.5px] uppercase tracking-[0.08em]",
+          variant === "error"
+            ? "text-[var(--destructive)]/80"
+            : "text-muted-foreground/55",
         )}
       >
         {label}
       </div>
       <pre
         className={cn(
-          "rounded-md border border-border/70 bg-background/60 px-2.5 py-2 font-mono text-[11.5px] leading-relaxed",
+          "rounded-md bg-foreground/[0.04] px-2.5 py-2 font-mono text-[11px] leading-relaxed",
           variant === "error"
-            ? "text-red-300"
-            : "text-foreground/90",
+            ? "text-[var(--destructive)]/90"
+            : "text-foreground/75",
           "overflow-x-auto whitespace-pre-wrap break-all",
         )}
       >

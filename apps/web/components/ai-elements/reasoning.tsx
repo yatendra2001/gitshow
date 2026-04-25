@@ -1,8 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Brain, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ShimmeringText } from "@/components/ui/shimmering-text";
+import { Matrix, loader } from "@/components/ui/matrix";
 
 /**
  * Reasoning — the "Thought for Xs" collapsible. Streams text in while
@@ -69,7 +71,11 @@ export function Reasoning({
   return (
     <div
       className={cn(
-        "gs-enter rounded-xl border border-border bg-card/70 backdrop-blur-sm",
+        // Subtle hairline left rule instead of a heavy bordered card.
+        // Pulls the eye into the indented body without competing
+        // visually with the surrounding phase rows.
+        "gs-enter relative pl-4 border-l border-border/40",
+        streaming && "border-l-foreground/30",
         className,
       )}
       {...props}
@@ -77,23 +83,42 @@ export function Reasoning({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className={cn(
-          "flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors",
-          "hover:bg-accent/40",
-        )}
+        className="flex w-full items-center gap-2 py-1.5 text-left group"
       >
-        <Brain
-          className={cn(
-            "size-4 text-blue-400",
-            streaming && "gs-pulse",
+        {streaming ? (
+          // Tiny dot-matrix loader as the "thinking" indicator. Lives
+          // in 6×6 SVG cells, ~10px, animates at 14fps. Subtle enough
+          // to sit next to body text without screaming.
+          <Matrix
+            rows={6}
+            cols={6}
+            frames={loader}
+            fps={14}
+            size={2}
+            gap={1}
+            ariaLabel="Thinking"
+            className="shrink-0 opacity-60"
+          />
+        ) : (
+          <span className="size-2.5 rounded-full bg-muted-foreground/40 shrink-0" />
+        )}
+        <span className="flex-1 text-[12.5px] font-medium tracking-tight">
+          {streaming ? (
+            <ShimmeringText
+              text={label}
+              duration={2.4}
+              spread={1.4}
+              className="text-foreground/55"
+            />
+          ) : (
+            <span className="text-muted-foreground">
+              Thought for {seconds}s
+            </span>
           )}
-        />
-        <span className="flex-1 text-sm font-medium text-foreground/90">
-          {headerLabel}
         </span>
         <ChevronDown
           className={cn(
-            "size-4 text-muted-foreground transition-transform duration-200",
+            "size-3.5 text-muted-foreground/60 transition-transform duration-200",
             open ? "rotate-0" : "-rotate-90",
           )}
         />
@@ -107,12 +132,9 @@ export function Reasoning({
         <div className="min-h-0">
           <div
             className={cn(
-              "gs-pane-scroll max-h-64 overflow-y-auto border-t border-border/60 px-4 py-3",
-              // Sans at [13px]/1.65 matches chatbot's reasoning rhythm —
-              // serif felt out of place for an agent scratchpad. Markdown
-              // goes through Streamdown so **bold**, lists, and code
-              // blocks render as you'd expect.
-              "font-sans text-[13px] leading-[1.65] text-foreground/85",
+              "gs-pane-scroll max-h-64 overflow-y-auto pb-2 pr-1",
+              // Smaller, lower-contrast text for a "scratchpad" feel.
+              "font-sans text-[12.5px] leading-[1.7] text-foreground/70",
             )}
           >
             <ReasoningBody text={text} streaming={streaming} />
@@ -154,7 +176,7 @@ function ReasoningBody({
     <div className="gs-stream">
       {blocks.map((b, i) => renderBlock(b, i))}
       {streaming ? (
-        <span className="gs-caret ml-[2px] inline-block h-[0.9em] w-[2px] translate-y-[2px] bg-blue-400" />
+        <span className="gs-caret ml-[2px] inline-block h-[0.9em] w-[2px] translate-y-[2px] bg-foreground/40" />
       ) : null}
     </div>
   );
