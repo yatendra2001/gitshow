@@ -69,6 +69,7 @@ import {
 import { ScanTrace, traceR2Key } from "./observability/trace.js";
 import { writeDraftResume } from "./persist.js";
 import { noopPhases, type PhaseReporter } from "./phases.js";
+import type { AgentEventEmit } from "../agents/base.js";
 import type { Resume } from "@gitshow/shared/resume";
 
 const INVENTORY_CAP = 30;
@@ -99,6 +100,13 @@ export interface RunResumePipelineOptions {
   linkedinPdfText?: string;
   /** User-supplied email captured at intake (overrides anything we infer). */
   intakeEmail?: string;
+  /**
+   * Structured event emitter. When provided, the LLM stages (Repo Judge,
+   * KG merger, hero-prose, blog-import) stream reasoning-delta and
+   * tool-start/end events through it so the progress page can render
+   * Reasoning + Tool cards in real time.
+   */
+  emit?: AgentEventEmit;
 }
 
 export async function runResumePipeline(
@@ -189,6 +197,7 @@ export async function runResumePipeline(
       maxCandidates: JUDGE_MAX_CANDIDATES,
       trace,
       onProgress,
+      emit: opts.emit,
     });
   });
   log(`[pipeline]   judged ${Object.keys(judgments).length} repos\n`);
@@ -257,6 +266,7 @@ export async function runResumePipeline(
           usage,
           urls: session.blog_urls ?? [],
           onProgress,
+          emit: opts.emit,
         }),
       ),
     ]);
@@ -313,6 +323,7 @@ export async function runResumePipeline(
       },
       trace,
       onProgress,
+      emit: opts.emit,
     });
   });
 
@@ -372,7 +383,14 @@ export async function runResumePipeline(
   // 12. Hero prose (single Opus call).
   const prose = await phases.phase("hero-prose", async () => {
     log(`[pipeline] stage 10: hero-prose\n`);
-    return generateHeroProse({ session, usage, kg, trace, onProgress });
+    return generateHeroProse({
+      session,
+      usage,
+      kg,
+      trace,
+      onProgress,
+      emit: opts.emit,
+    });
   });
 
   // 13. Render Resume from KG (zero LLM).

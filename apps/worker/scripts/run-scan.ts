@@ -23,6 +23,7 @@ import { randomUUID } from "node:crypto";
 
 import { runResumePipeline } from "../src/resume/pipeline.js";
 import { createD1Phases } from "../src/resume/phases.js";
+import { createPipelineEmit } from "../src/resume/event-emit.js";
 import { SessionUsage } from "../src/session.js";
 import { D1Client } from "../src/cloud/d1.js";
 import { DOPublishClient } from "@gitshow/shared/cloud/do-client";
@@ -126,6 +127,7 @@ async function main() {
       profileDir: `/tmp/gitshow/${scanId}`,
       writeToR2: true,
       phases: createD1Phases(d1, scanId),
+      emit: createPipelineEmit(d1, scanId),
       onGitHubFetched: async ({ accessState, dataSources }) => {
         try {
           await d1.updateScanFetchSnapshot(scanId, {

@@ -13,7 +13,7 @@
 
 import * as z from "zod/v4";
 
-import { runAgentWithSubmit } from "../../agents/base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "../../agents/base.js";
 import type { ScanSession } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
 import { modelForRole } from "@gitshow/shared/models";
@@ -116,6 +116,8 @@ export interface MergeOptions {
   /** Cap on ambiguous pairs sent to the LLM. */
   pairCap?: number;
   onProgress?: (text: string) => void;
+  /** Optional structured emit (reasoning + tool events). */
+  emit?: AgentEventEmit;
 }
 
 export async function mergeFactsIntoKG(
@@ -165,6 +167,7 @@ export async function mergeFactsIntoKG(
         usage: opts.usage,
         trace: opts.trace,
         onProgress: opts.onProgress,
+        emit: opts.emit,
       });
       kg.resolved.pairs.push(...decisions);
       applyPairDecisions(kg, decisions);
@@ -621,7 +624,13 @@ Output ONLY by calling submit_decisions.`;
 
 async function runPairResolution(
   pairs: AmbiguousPair[],
-  opts: { session: ScanSession; usage: SessionUsage; trace?: ScanTrace; onProgress?: (text: string) => void },
+  opts: {
+    session: ScanSession;
+    usage: SessionUsage;
+    trace?: ScanTrace;
+    onProgress?: (text: string) => void;
+    emit?: AgentEventEmit;
+  },
 ): Promise<PairResolution[]> {
   if (pairs.length === 0) return [];
   const input = pairs
@@ -648,6 +657,7 @@ async function runPairResolution(
     usage: opts.usage,
     onProgress: opts.onProgress,
     trace: opts.trace,
+    emit: opts.emit,
     label: "kg:pair-resolve",
   });
   return res.result.decisions;

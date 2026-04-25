@@ -9,7 +9,7 @@
  */
 
 import * as z from "zod/v4";
-import { runAgentWithSubmit } from "../../agents/base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "../../agents/base.js";
 import { modelForRole } from "@gitshow/shared/models";
 import type {
   KnowledgeGraph,
@@ -47,6 +47,8 @@ export interface HeroProseInput {
   kg: KnowledgeGraph;
   trace?: ScanTrace;
   onProgress?: (text: string) => void;
+  /** Optional structured emit (reasoning + tool events). */
+  emit?: AgentEventEmit;
 }
 
 const SYSTEM_PROMPT = `You write the identity block for an engineering portfolio. You produce exactly two pieces:
@@ -91,6 +93,7 @@ export async function generateHeroProse(input: HeroProseInput): Promise<HeroPros
       label: "render:hero-prose",
       onProgress: input.onProgress,
       trace: input.trace,
+      emit: input.emit,
     });
 
     input.trace?.renderHeroProseCall({
