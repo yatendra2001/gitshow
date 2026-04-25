@@ -3,17 +3,23 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 /**
  * GET /r2/[...path] — proxy reads from the R2 bucket by key.
  *
- * The upload endpoint (`POST /api/resume/upload`) returns a URL under
- * `/r2/assets/{userId}/{id}.ext`. In production the caller can set
- * `ASSETS_PUBLIC_BASE_URL` to point directly at a public R2 / CDN
- * origin and bypass this route entirely — but when that's unset
- * (dev, early deploys) the uploaded object was just 404'ing because
- * no route actually served `/r2/*`. This handler closes that gap.
+ * Serves two key spaces:
+ *   - `assets/{userId}/{nanoid}.ext` — user-uploaded media (cover
+ *     images, video clips). Returned by `/api/resume/upload`.
+ *   - `media/{handle}/{kind}/{entityId}/{file}.webp` — pipeline-
+ *     generated media (project hero banners, company/school logos
+ *     fetched by the media stage). Written by the worker, embedded
+ *     in `Resume.projects[].image`. Without this prefix being
+ *     allowed, every generated banner 404'd and the project grid
+ *     showed grey placeholders.
  *
- * Public read: keys are `assets/{userId}/{nanoid(16)}.ext`; without
- * the exact randomised suffix you can't guess a URL, and portfolio
- * pages are public so the assets they embed must be fetchable
- * unauthenticated anyway.
+ * In production callers can set `ASSETS_PUBLIC_BASE_URL` to point
+ * directly at a public R2 / CDN origin and bypass this route — but
+ * when that's unset (dev, early deploys) this handler closes the gap.
+ *
+ * Public read: keys are unguessable (nanoid suffix on uploads, KG
+ * entity IDs that include scan-bound prefixes on pipeline media), and
+ * portfolio pages are public anyway.
  */
 
 const ALLOWED_CONTENT_TYPES = new Set<string>([
@@ -33,7 +39,7 @@ export async function GET(
   const { path } = await params;
   const key = path.join("/");
 
-  if (!key.startsWith("assets/")) {
+  if (!key.startsWith("assets/") && !key.startsWith("media/")) {
     return new Response("not found", { status: 404 });
   }
 
