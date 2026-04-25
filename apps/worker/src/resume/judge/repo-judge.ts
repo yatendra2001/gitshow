@@ -14,7 +14,7 @@
 import * as z from "zod/v4";
 import pLimit from "p-limit";
 
-import { runAgentWithSubmit } from "../../agents/base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "../../agents/base.js";
 import type { ScanSession } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
 import type { RepoRef, GitHubData } from "../../types.js";
@@ -50,6 +50,8 @@ export interface RepoJudgeInput {
   repoPath: string;
   trace?: ScanTrace;
   onProgress?: (text: string) => void;
+  /** Optional structured emit — streams reasoning/tool events. */
+  emit?: AgentEventEmit;
 }
 
 export interface RepoJudgeOutput {
@@ -123,7 +125,7 @@ Output ONLY by calling submit_judgment.`;
 const REASONING_EFFORT = "medium" as const;
 
 export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput> {
-  const { repo, repoPath, session, usage, trace, onProgress } = input;
+  const { repo, repoPath, session, usage, trace, onProgress, emit } = input;
   const t0 = Date.now();
   const sample = await sampleRepo(repoPath);
   const formatted = formatSample(sample);
@@ -152,6 +154,7 @@ export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput>
       usage,
       onProgress,
       trace,
+      emit,
       label: `judge:${repo.fullName}`,
     });
     judgment = res.result;
@@ -195,6 +198,7 @@ export interface JudgeAllOptions {
   maxCandidates?: number;
   trace?: ScanTrace;
   onProgress?: (text: string) => void;
+  emit?: AgentEventEmit;
 }
 
 export async function judgeAllRepos(
@@ -214,6 +218,7 @@ export async function judgeAllRepos(
             repoPath: c.repoPath,
             trace: opts.trace,
             onProgress: opts.onProgress,
+            emit: opts.emit,
           });
           out[c.repo.fullName] = judged;
         } catch (err) {

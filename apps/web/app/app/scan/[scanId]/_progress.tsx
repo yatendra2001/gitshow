@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { Check, AlertTriangle, Circle } from "lucide-react";
 import { LogoMark } from "@/components/logo";
 import { Shimmer } from "@/components/ai-elements/shimmer";
+import { Reasoning } from "@/components/ai-elements/reasoning";
+import { Tool, type ToolStatus } from "@/components/ai-elements/tool";
 import {
   AccessStateCard,
   type AccessState,
@@ -44,11 +46,44 @@ interface EventRow {
   id: number;
   kind: string;
   stage: string | null;
+  /** Agent label for reasoning/tool events: "judge:owner/repo", "kg:pair-resolve", etc. */
   worker: string | null;
   status: string | null;
   duration_ms: number | null;
   message: string | null;
+  data_json: string | null;
+  parent_id: string | null;
+  message_id: string | null;
   at: number;
+}
+
+/** One streaming reasoning block emitted by an agent. */
+interface ReasoningTrace {
+  reasoningId: string;
+  text: string;
+  startedAt: number;
+  endedAt: number | null;
+}
+
+/** One tool invocation emitted by an agent. */
+interface ToolTrace {
+  toolId: string;
+  toolName: string;
+  displayLabel: string;
+  status: ToolStatus;
+  startedAt: number;
+  durationMs: number | null;
+  inputPreview?: string;
+  outputPreview?: string;
+  errorMessage?: string;
+}
+
+/** One agent run inside a phase — collects all reasoning + tool calls. */
+interface AgentRun {
+  agent: string;
+  reasonings: ReasoningTrace[];
+  tools: ToolTrace[];
+  hasActivity: boolean;
 }
 
 const POLL_MS = 2000;
@@ -126,6 +161,119 @@ interface PhaseNode {
   durationMs: number | null;
   errorMessage: string | null;
   children?: PhaseNode[];
+  /** Agent runs that landed in this phase (Judge per repo, hero-prose, etc.). */
+  agents?: AgentRun[];
+}
+
+/**
+ * Map an agent label (events.worker) to the phase it runs under.
+ * Anything not matched here floats up to the closest containing phase
+ * via the catch-all in agentToPhase().
+ */
+const AGENT_TO_PHASE: Array<{ match: (a: string) => boolean; phase: string }> = [
+  { match: (a) => a.startsWith("judge:"), phase: "repo-judge" },
+  { match: (a) => a === "kg:pair-resolve", phase: "merge" },
+  { match: (a) => a.startsWith("render:hero-prose"), phase: "hero-prose" },
+  { match: (a) => a === "resume:blog-import" || a.startsWith("resume:blog-import:"), phase: "blog-import" },
+];
+
+function agentToPhase(agent: string): string | null {
+  for (const m of AGENT_TO_PHASE) if (m.match(agent)) return m.phase;
+  return null;
+}
+
+/**
+ * Build per-phase agent activity from raw events. We bucket by
+ * `worker` (agent label) and reconstruct reasoning blocks (one per
+ * reasoning_id) and tool calls (one per tool_id). The output is a
+ * flat list of AgentRun per phase that the UI renders below the
+ * phase title.
+ */
+function buildAgentActivity(events: EventRow[], now: number): Map<string, AgentRun[]> {
+  const byAgent = new Map<string, AgentRun>();
+
+  const safeJson = (raw: string | null): Record<string, unknown> | null => {
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      return null;
+    }
+  };
+
+  for (const ev of events) {
+    const agent = ev.worker;
+    if (!agent) continue;
+    let run = byAgent.get(agent);
+    if (!run) {
+      run = { agent, reasonings: [], tools: [], hasActivity: false };
+      byAgent.set(agent, run);
+    }
+    if (ev.kind === "reasoning-delta") {
+      const rid = ev.parent_id ?? `rsn:${ev.id}`;
+      let block = run.reasonings.find((b) => b.reasoningId === rid);
+      if (!block) {
+        block = { reasoningId: rid, text: "", startedAt: ev.at, endedAt: null };
+        run.reasonings.push(block);
+      }
+      if (ev.message) block.text += ev.message;
+      run.hasActivity = true;
+    } else if (ev.kind === "reasoning-end") {
+      const rid = ev.parent_id ?? "";
+      const block = run.reasonings.find((b) => b.reasoningId === rid);
+      if (block) {
+        block.endedAt = ev.at;
+      }
+    } else if (ev.kind === "tool-start") {
+      const data = safeJson(ev.data_json);
+      const toolId = (data?.tool_id as string | undefined) ?? `t:${ev.id}`;
+      const toolName = (data?.tool_name as string | undefined) ?? "tool";
+      const inputPreview = (data?.input_preview as string | undefined) ?? undefined;
+      run.tools.push({
+        toolId,
+        toolName,
+        displayLabel: ev.message ?? toolName,
+        status: "running",
+        startedAt: ev.at,
+        durationMs: null,
+        inputPreview,
+      });
+      run.hasActivity = true;
+    } else if (ev.kind === "tool-end") {
+      const data = safeJson(ev.data_json);
+      const toolId = (data?.tool_id as string | undefined) ?? "";
+      const tool = run.tools.find((t) => t.toolId === toolId);
+      const outputPreview = (data?.output_preview as string | undefined) ?? undefined;
+      if (tool) {
+        tool.status = ev.status === "ok" ? "completed" : ev.status === "err" ? "error" : "completed";
+        tool.durationMs = ev.duration_ms ?? null;
+        tool.outputPreview = outputPreview;
+        if (ev.status === "err") tool.errorMessage = ev.message ?? "Tool failed";
+      }
+    }
+  }
+
+  // Stamp running durations on still-open tool calls so the UI can show elapsed.
+  for (const run of byAgent.values()) {
+    for (const t of run.tools) {
+      if (t.status === "running" && t.durationMs == null) {
+        t.durationMs = Math.max(0, now - t.startedAt);
+      }
+    }
+  }
+
+  // Group runs by phase, keeping insertion order so the UI renders
+  // judge:repo-A above judge:repo-B as they arrive.
+  const byPhase = new Map<string, AgentRun[]>();
+  for (const run of byAgent.values()) {
+    const phase = agentToPhase(run.agent);
+    if (!phase) continue;
+    if (!run.hasActivity) continue;
+    const list = byPhase.get(phase) ?? [];
+    list.push(run);
+    byPhase.set(phase, list);
+  }
+  return byPhase;
 }
 
 function phaseLabel(phase: string | null | undefined): string {
@@ -329,6 +477,8 @@ function buildPhaseTree(
     byStage.set(key, entry);
   }
 
+  const activityByPhase = buildAgentActivity(events, now);
+
   const resolve = (id: string, considerCurrent: boolean): PhaseNode => {
     const bucket = byStage.get(id);
     const isCurrent = considerCurrent && scan.current_phase === id;
@@ -369,6 +519,7 @@ function buildPhaseTree(
       durationMs,
       errorMessage: bucket?.error?.message ?? null,
       children: undefined,
+      agents: activityByPhase.get(id),
     };
   };
 
@@ -402,6 +553,7 @@ function buildPhaseTree(
       durationMs,
       errorMessage: bucket?.error?.message ?? null,
       children,
+      agents: activityByPhase.get(id),
     };
   });
 }
@@ -418,6 +570,9 @@ function PhaseRow({
   const hasChildren = node.children && node.children.length > 0;
   const showChildren =
     hasChildren && (node.status === "running" || node.status === "done" || node.status === "failed");
+  const showAgents =
+    !!node.agents && node.agents.length > 0 &&
+    (node.status === "running" || node.status === "done" || node.status === "failed");
 
   return (
     <li className="gs-enter relative flex gap-3">
@@ -449,9 +604,91 @@ function PhaseRow({
             ))}
           </ol>
         ) : null}
+        {showAgents && node.agents ? (
+          <AgentActivity agents={node.agents} parentRunning={node.status === "running"} />
+        ) : null}
       </div>
     </li>
   );
+}
+
+/**
+ * The per-phase agent panel: streaming reasoning blocks + tool cards.
+ * Shows up to two open reasonings at once; older ones collapse but
+ * remain visible. For repo-judge we may have 30 runs — render them
+ * all but cap each one's text height via the Reasoning component.
+ */
+function AgentActivity({
+  agents,
+  parentRunning,
+}: {
+  agents: AgentRun[];
+  parentRunning: boolean;
+}) {
+  return (
+    <div className="mt-3 flex flex-col gap-2">
+      {agents.map((run) => (
+        <AgentRunBlock key={run.agent} run={run} parentRunning={parentRunning} />
+      ))}
+    </div>
+  );
+}
+
+function AgentRunBlock({
+  run,
+  parentRunning,
+}: {
+  run: AgentRun;
+  parentRunning: boolean;
+}) {
+  const lastReasoning = run.reasonings[run.reasonings.length - 1];
+  const stillStreaming = parentRunning && lastReasoning?.endedAt == null;
+  const friendly = friendlyAgentLabel(run.agent);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
+        <span className="font-mono text-foreground/80">{friendly}</span>
+      </div>
+      {lastReasoning && lastReasoning.text.trim().length > 0 ? (
+        <Reasoning
+          text={lastReasoning.text}
+          streaming={stillStreaming}
+          elapsedMs={
+            lastReasoning.endedAt
+              ? lastReasoning.endedAt - lastReasoning.startedAt
+              : undefined
+          }
+          label={friendly}
+        />
+      ) : null}
+      {run.tools.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          {run.tools.map((t) => (
+            <Tool
+              key={t.toolId}
+              name={t.toolName}
+              status={t.status}
+              subtitle={t.displayLabel !== t.toolName ? t.displayLabel : undefined}
+              input={t.inputPreview}
+              output={t.outputPreview}
+              error={t.errorMessage}
+            />
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function friendlyAgentLabel(agent: string): string {
+  if (agent.startsWith("judge:")) {
+    return `Judging ${agent.slice("judge:".length)}`;
+  }
+  if (agent === "kg:pair-resolve") return "Reconciling duplicate companies + schools";
+  if (agent.startsWith("render:hero-prose")) return "Writing your About paragraph";
+  if (agent === "resume:blog-import" || agent.startsWith("resume:blog-import:"))
+    return "Importing a blog post";
+  return agent;
 }
 
 function PhaseHeader({ node, now }: { node: PhaseNode; now: number }) {

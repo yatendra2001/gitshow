@@ -10,7 +10,7 @@ import { getSession } from "@/auth";
  * own the scan (user_id match); anyone else gets 404.
  */
 
-const EVENT_LIMIT = 50;
+const EVENT_LIMIT = 200;
 
 interface ScanRow {
   id: string;
@@ -39,6 +39,12 @@ interface EventRow {
   status: string | null;
   duration_ms: number | null;
   message: string | null;
+  /** Rich payload for reasoning-delta / tool-* / source-added — JSON string. */
+  data_json: string | null;
+  /** Foreign key into reasoning_id or tool_id depending on event kind. */
+  parent_id: string | null;
+  /** Bounds a user-initiated turn — currently unused by the resume flow. */
+  message_id: string | null;
   at: number;
 }
 
@@ -67,7 +73,8 @@ export async function GET(
   }
 
   const events = await env.DB.prepare(
-    `SELECT id, kind, stage, worker, status, duration_ms, message, at
+    `SELECT id, kind, stage, worker, status, duration_ms, message,
+            data_json, parent_id, message_id, at
        FROM scan_events
        WHERE scan_id = ?
        ORDER BY at DESC, id DESC

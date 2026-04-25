@@ -22,7 +22,7 @@
 
 import * as z from "zod/v4";
 import pLimit from "p-limit";
-import { runAgentWithSubmit } from "../../agents/base.js";
+import { runAgentWithSubmit, type AgentEventEmit } from "../../agents/base.js";
 import { modelForRole } from "@gitshow/shared/models";
 import type { ScanSession } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
@@ -57,6 +57,8 @@ export interface BlogImportAgentInput {
   /** URLs the user entered during intake. Up to 5 honoured. */
   urls: string[];
   onProgress?: (text: string) => void;
+  /** Optional structured emit (reasoning + tool events). */
+  emit?: AgentEventEmit;
 }
 
 const SYSTEM_PROMPT = `You extract one blog post from a fetched web page into structured JSON.
@@ -97,7 +99,15 @@ export async function runBlogImportAgent(
   const limit = pLimit(BLOG_IMPORT_CONCURRENCY);
   const imported = await Promise.all(
     urls.map((url) =>
-      limit(() => importOne({ url, session: input.session, usage: input.usage, log })),
+      limit(() =>
+        importOne({
+          url,
+          session: input.session,
+          usage: input.usage,
+          log,
+          emit: input.emit,
+        }),
+      ),
     ),
   );
   return imported.filter((p): p is BlogPost => !!p);
@@ -108,8 +118,9 @@ async function importOne(args: {
   session: ScanSession;
   usage: SessionUsage;
   log: (text: string) => void;
+  emit?: AgentEventEmit;
 }): Promise<BlogPost | null> {
-  const { url, session, usage, log } = args;
+  const { url, session, usage, log, emit } = args;
   log(`[blog-import] → ${url}\n`);
 
   const fetched = await fetchJinaReader(url);
@@ -132,6 +143,7 @@ async function importOne(args: {
       usage,
       label: `resume:blog-import`,
       onProgress: log,
+      emit,
     });
 
     return {
