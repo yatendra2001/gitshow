@@ -157,7 +157,7 @@ function StatusGlyph({ status }: { status: ToolStatus }) {
         rows={5}
         cols={5}
         frames={breathingDot}
-        fps={10}
+        fps={6}
         size={3}
         gap={1}
         palette={{ on: "var(--foreground)", off: "transparent" }}

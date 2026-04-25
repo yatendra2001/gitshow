@@ -794,7 +794,7 @@ function PhaseDot({ status }: { status: NodeStatus }) {
           rows={5}
           cols={5}
           frames={concentricBreath}
-          fps={10}
+          fps={6}
           size={3}
           gap={1}
           palette={{ on: "var(--foreground)", off: "transparent" }}
@@ -873,7 +873,7 @@ function SubDot({ status }: { status: NodeStatus }) {
           rows={5}
           cols={5}
           frames={breathingDot}
-          fps={10}
+          fps={6}
           size={2}
           gap={0}
           palette={{ on: "var(--foreground)", off: "transparent" }}
