@@ -27,10 +27,21 @@ import { modelForRole } from "@gitshow/shared/models";
 import type { ScanSession } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
 import type { BlogPost } from "@gitshow/shared/resume";
+import { withTimeout, TimeoutError } from "../../util/timeout.js";
 
 const BLOG_IMPORT_CONCURRENCY = 3;
 const JINA_TIMEOUT_MS = 45_000;
 const JINA_MAX_BYTES = 40_000;
+/**
+ * Hard wall-clock cap per URL: Jina (45s) + LLM call (90s) + retries.
+ * If we can't extract a post in this window we drop the URL and move
+ * on — one bad blog must NOT block the rest of the pipeline.
+ */
+const PER_URL_BUDGET_MS = 3 * 60_000;
+/** OpenRouter HTTP timeout for the extractor. Kimi handles a typical
+ * post in ~30s; 90s is a generous ceiling so a single slow call still
+ * fails fast enough that retries (3×) stay inside PER_URL_BUDGET_MS. */
+const LLM_HTTP_TIMEOUT_MS = 90_000;
 
 export const BlogPostLLMSchema = z.object({
   slug: z
@@ -99,15 +110,32 @@ export async function runBlogImportAgent(
   const limit = pLimit(BLOG_IMPORT_CONCURRENCY);
   const imported = await Promise.all(
     urls.map((url) =>
-      limit(() =>
-        importOne({
-          url,
-          session: input.session,
-          usage: input.usage,
-          log,
-          emit: input.emit,
-        }),
-      ),
+      limit(async () => {
+        try {
+          return await withTimeout(
+            importOne({
+              url,
+              session: input.session,
+              usage: input.usage,
+              log,
+              emit: input.emit,
+            }),
+            PER_URL_BUDGET_MS,
+            `blog-import:${url}`,
+          );
+        } catch (err) {
+          if (err instanceof TimeoutError) {
+            log(
+              `[blog-import] ${url} — timed out after ${PER_URL_BUDGET_MS / 1000}s; skipping\n`,
+            );
+            return null;
+          }
+          log(
+            `[blog-import] ${url} — unexpected error: ${(err as Error).message.slice(0, 120)}\n`,
+          );
+          return null;
+        }
+      }),
     ),
   );
   return imported.filter((p): p is BlogPost => !!p);
@@ -139,6 +167,7 @@ async function importOne(args: {
         "Submit the extracted blog post. Call exactly once.",
       submitSchema: BlogPostLLMSchema,
       reasoning: { effort: "low" },
+      timeoutMs: LLM_HTTP_TIMEOUT_MS,
       session,
       usage,
       label: `resume:blog-import`,
