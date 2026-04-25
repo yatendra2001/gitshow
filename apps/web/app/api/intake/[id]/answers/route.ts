@@ -5,26 +5,20 @@ import { z } from "zod";
 import { FlyClient } from "@gitshow/shared/cloud/fly";
 import { DEFAULT_SCAN_MODEL } from "@gitshow/shared/models";
 import { requireProApi } from "@/lib/entitlements";
-import {
-  getIntakeForUser,
-  saveIntakeAnswers,
-  markIntakeConsumed,
-  buildContextFromIntake,
-} from "@/lib/intake";
+import { getIntakeForUser, markIntakeConsumed } from "@/lib/intake";
 import { getUserGitHubToken } from "@/lib/user-token";
 
 /**
  * POST /api/intake/[id]/answers
  *
- * Body: { answers: { [question_id]: string } }
+ * Body: { socials?, blog_urls?, skip_repos? }
  *
- * Saves the user's answers, spawns the full scan with the answers
- * folded into context_notes, and marks the intake as consumed.
- * Returns { scanId } for the client to redirect to.
+ * Spawns the full scan with the user-supplied URLs threaded through
+ * as worker env vars and marks the intake row as consumed. Returns
+ * { scanId } for the client to redirect to.
  */
 
 const BodySchema = z.object({
-  answers: z.record(z.string(), z.string().max(1000)),
   /**
    * Structured social links supplied by the user up-front. These are
    * propagated to the worker as LINKEDIN/TWITTER/WEBSITE env vars — the
@@ -92,21 +86,7 @@ export async function POST(
     );
   }
 
-  const ok = await saveIntakeAnswers(
-    env.DB,
-    id,
-    session.user.id,
-    parse.data.answers,
-  );
-  if (!ok) {
-    return NextResponse.json({ error: "save_failed" }, { status: 500 });
-  }
-
-  // Refresh to fold answers into context_notes for the scan.
-  const refreshed = await getIntakeForUser(env.DB, id, session.user.id);
-  const contextNotes = refreshed ? buildContextFromIntake(refreshed) : null;
-
-  // Spawn the full scan with intake context baked in.
+  // Spawn the full scan.
   const scanId = `scan-${nanoid(10)}`;
   const sessionId = `or-${nanoid(14)}`;
   // Default lives in @gitshow/shared/models — change it there and all
@@ -122,9 +102,9 @@ export async function POST(
     await env.DB.prepare(
       `INSERT INTO scans
          (id, user_id, handle, session_id, model, status, current_phase,
-          cost_cents, llm_calls, socials_json, context_notes,
+          cost_cents, llm_calls, socials_json,
           created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, 'queued', NULL, 0, 0, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, 'queued', NULL, 0, 0, ?, ?, ?)`,
     )
       .bind(
         scanId,
@@ -133,7 +113,6 @@ export async function POST(
         sessionId,
         model,
         Object.keys(socials).length > 0 ? JSON.stringify(socials) : null,
-        contextNotes,
         now,
         now,
       )
@@ -165,7 +144,6 @@ export async function POST(
         scanId,
         handle: intake.handle,
         model,
-        contextNotes: contextNotes ?? undefined,
         linkedin: socials.linkedin || undefined,
         twitter: socials.twitter || undefined,
         website: socials.website || undefined,
@@ -209,7 +187,6 @@ function buildScanEnv(
     scanId: string;
     handle: string;
     model: string;
-    contextNotes?: string;
     linkedin?: string;
     twitter?: string;
     website?: string;
@@ -240,7 +217,6 @@ function buildScanEnv(
     // User's OAuth access_token — `repo` scope covers private + org repos.
     GH_TOKEN: s.userGhToken,
   };
-  if (s.contextNotes) out.CONTEXT_NOTES = s.contextNotes;
   if (s.linkedin) out.LINKEDIN = s.linkedin;
   if (s.twitter) out.TWITTER = s.twitter;
   if (s.website) out.WEBSITE = s.website;

@@ -27,7 +27,7 @@ import { LinkedInUploadCard } from "@/components/app/linkedin-upload-card";
  * /app — the authenticated home. Single-person model.
  *
  * States (resume pipeline era):
- *   - No scan ever → "Get started" CTA → /api/intake flow
+ *   - No scan ever → "Get started" CTA → URL-collection intake flow
  *   - Scan running/queued → "Working on it" + email-when-ready copy
  *   - Scan succeeded, draft exists, nothing published → "Review draft" +
  *     "Publish" action (calls /api/profile/publish-resume)
@@ -245,9 +245,9 @@ function EmptyState({ handle }: { handle: string }) {
         Build your portfolio
       </h1>
       <p className="text-[14px] leading-relaxed text-muted-foreground mb-6">
-        We&apos;ll read your GitHub, ask a few quick questions, then run a full
-        analysis. Close the tab whenever — we&apos;ll email you when
-        it&apos;s live at{" "}
+        We&apos;ll read your GitHub, pull in any links you share (LinkedIn,
+        blog, personal site), then run a full analysis. Close the tab
+        whenever — we&apos;ll email you when it&apos;s live at{" "}
         <span className="font-mono">gitshow.io/{handle || "{handle}"}</span>.
       </p>
 
