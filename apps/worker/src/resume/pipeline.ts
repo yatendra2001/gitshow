@@ -69,12 +69,36 @@ import {
 import { ScanTrace, traceR2Key } from "./observability/trace.js";
 import { writeDraftResume } from "./persist.js";
 import { noopPhases, type PhaseReporter } from "./phases.js";
+import { withTimeout, TimeoutError } from "../util/timeout.js";
 import type { AgentEventEmit } from "../agents/base.js";
 import type { Resume } from "@gitshow/shared/resume";
 
 const INVENTORY_CAP = 30;
 const INVENTORY_CONCURRENCY = 3;
 const JUDGE_MAX_CANDIDATES = 30;
+
+/**
+ * Hard wall-clock caps for each fetcher subPhase. The fan-out is a
+ * `Promise.all`, so any single hung fetcher stalls the entire scan.
+ * These caps are well above the 95th-percentile happy-path duration
+ * — they exist purely so a stuck remote service can't wedge us.
+ *
+ * On timeout the fetcher returns []; the scan continues with whatever
+ * facts the other fetchers produced.
+ */
+const FETCHER_TIMEOUTS_MS = {
+  linkedin: 4 * 60_000, // Playwright tier 3 alone can take 60–90s
+  "personal-site": 90_000,
+  twitter: 60_000,
+  hn: 60_000,
+  devto: 60_000,
+  medium: 60_000,
+  orcid: 30_000,
+  "semantic-scholar": 60_000,
+  arxiv: 60_000,
+  stackoverflow: 30_000,
+  "blog-import": 10 * 60_000, // n × 3min internal cap; outer ceiling
+} as const;
 
 export interface RunResumePipelineOptions {
   session: ScanSession;
@@ -203,8 +227,29 @@ export async function runResumePipeline(
   log(`[pipeline]   judged ${Object.keys(judgments).length} repos\n`);
 
   // 5. Fetcher fan-out (parallel). Each fetcher returns TypedFact[].
-  //    LinkedIn is internally tiered (1+2 → 3 → 4 PDF).
+  //    LinkedIn is internally tiered (1+2 → 3 → 4 PDF). Every fetcher
+  //    runs under a hard wall-clock cap (FETCHER_TIMEOUTS_MS) so a
+  //    single stuck remote service can't wedge the whole scan; on
+  //    timeout the fetcher contributes [] and the scan continues.
   const personName = github.profile.name ?? session.handle;
+  const safeFetch = <T>(
+    name: string,
+    capMs: number,
+    fn: () => Promise<T[]>,
+  ): Promise<T[]> =>
+    phases.subPhase(name, async () => {
+      try {
+        return await withTimeout(fn(), capMs, name);
+      } catch (err) {
+        if (err instanceof TimeoutError) {
+          log(
+            `[pipeline] ${name} timed out after ${capMs / 1000}s — skipping (returning 0 facts).\n`,
+          );
+          return [] as T[];
+        }
+        throw err;
+      }
+    });
   const fetchersResult = await phases.phase("fetchers", async () => {
     log(`[pipeline] stage 5: fetcher fan-out\n`);
     const githubFacts = emitGithubFacts({ github, trace });
@@ -223,44 +268,47 @@ export async function runResumePipeline(
       stackoverflowFacts,
       blog,
     ] = await Promise.all([
-      phases.subPhase("fetch:linkedin", () =>
+      safeFetch("fetch:linkedin", FETCHER_TIMEOUTS_MS.linkedin, () =>
         runLinkedInTierChain({ session, usage, trace, onProgress, pdfText: opts.linkedinPdfText }),
       ),
-      phases.subPhase("fetch:personal-site", () =>
+      safeFetch("fetch:personal-site", FETCHER_TIMEOUTS_MS["personal-site"], () =>
         runPersonalSiteFetcher({ session, usage, trace, onProgress }),
       ),
-      phases.subPhase("fetch:twitter", () =>
+      safeFetch("fetch:twitter", FETCHER_TIMEOUTS_MS.twitter, () =>
         runTwitterBioFetcher({ session, usage, trace, onProgress }),
       ),
-      phases.subPhase("fetch:hn", () =>
+      safeFetch("fetch:hn", FETCHER_TIMEOUTS_MS.hn, () =>
         runHnProfileFetcher({ session, usage, trace, onProgress }),
       ),
-      phases.subPhase("fetch:devto", () =>
+      safeFetch("fetch:devto", FETCHER_TIMEOUTS_MS.devto, () =>
         runDevtoProfileFetcher({ session, usage, trace, onProgress }),
       ),
-      phases.subPhase("fetch:medium", () =>
+      safeFetch("fetch:medium", FETCHER_TIMEOUTS_MS.medium, () =>
         runMediumProfileFetcher({ session, usage, trace, onProgress }),
       ),
-      phases.subPhase("fetch:orcid", () =>
+      safeFetch("fetch:orcid", FETCHER_TIMEOUTS_MS.orcid, () =>
         runOrcidFetcher({ session, usage, trace, onProgress }),
       ),
-      phases.subPhase("fetch:semantic-scholar", () =>
-        runSemanticScholarFetcher({
-          session,
-          usage,
-          trace,
-          onProgress,
-          personName,
-          affiliationGuess: github.profile.bio ?? undefined,
-        }),
+      safeFetch(
+        "fetch:semantic-scholar",
+        FETCHER_TIMEOUTS_MS["semantic-scholar"],
+        () =>
+          runSemanticScholarFetcher({
+            session,
+            usage,
+            trace,
+            onProgress,
+            personName,
+            affiliationGuess: github.profile.bio ?? undefined,
+          }),
       ),
-      phases.subPhase("fetch:arxiv", () =>
+      safeFetch("fetch:arxiv", FETCHER_TIMEOUTS_MS.arxiv, () =>
         runArxivFetcher({ session, usage, trace, onProgress, personName }),
       ),
-      phases.subPhase("fetch:stackoverflow", () =>
+      safeFetch("fetch:stackoverflow", FETCHER_TIMEOUTS_MS.stackoverflow, () =>
         runStackoverflowFetcher({ session, usage, trace, onProgress }),
       ),
-      phases.subPhase("blog-import", () =>
+      safeFetch("blog-import", FETCHER_TIMEOUTS_MS["blog-import"], () =>
         runBlogImportAgent({
           session,
           usage,
