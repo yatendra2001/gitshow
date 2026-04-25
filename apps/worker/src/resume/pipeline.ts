@@ -50,6 +50,7 @@ import {
   runSemanticScholarFetcher,
   runArxivFetcher,
   runStackoverflowFetcher,
+  runYoutubeChannelFetcher,
 } from "./fetchers/index.js";
 import { runBlogImportAgent } from "./agents/blog-import.js";
 import { mergeFactsIntoKG } from "./kg/merger.js";
@@ -86,31 +87,32 @@ const JUDGE_MAX_CANDIDATES = 30;
  * On timeout the fetcher returns []; the scan continues with whatever
  * facts the other fetchers produced.
  */
+/**
+ * One uniform safety-net cap. Used to be per-fetcher and tight; that
+ * cost us real data when a fetcher legitimately took 110s and we'd
+ * cut it off at 90s. Treat fetchers as best-effort: let them run
+ * until they finish, only abort when something is truly stuck (15 min
+ * is well past every observed real-world successful run).
+ *
+ * Inside-the-fetcher caps still apply — blog-import enforces 3 min
+ * per URL because Kimi degeneracy is a real failure mode. But the
+ * outer cap is no longer the silent-data-loss footgun it was.
+ */
+const FETCHER_HARD_CAP_MS = 15 * 60_000;
+
 const FETCHER_TIMEOUTS_MS = {
-  // Heads-up: caps that are too tight cause SILENT data loss. When
-  // withTimeout fires, safeFetch returns [] but the inner fetcher
-  // keeps running and writes a misleading "success" trace event.
-  // Real-world run: personal-site took 109s → 90s cap dropped 6
-  // legitimate work positions on the floor while logging
-  // status=ok. Sized these on the conservative side; the worker
-  // has a 4 GB heap (#103) so leaving slack is cheap.
-  linkedin: 4 * 60_000,
-  /** LLM extraction over up to 40 KB of personal-site text — needs
-   * room. Observed 95p ≈ 110 s. */
-  "personal-site": 4 * 60_000,
-  /** LLM-extraction fetchers over a profile page each. */
-  twitter: 2 * 60_000,
-  hn: 2 * 60_000,
-  devto: 2 * 60_000,
-  medium: 2 * 60_000,
-  /** Pure HTTP, single API call, JSON. */
-  orcid: 60_000,
-  "semantic-scholar": 90_000,
-  arxiv: 90_000,
-  stackoverflow: 60_000,
-  /** Blog import: per-URL cap is 3 min (see agents/blog-import.ts).
-   * Outer ceiling at 5 min so 1–5 URLs all fit in one cycle. */
-  "blog-import": 5 * 60_000,
+  linkedin: FETCHER_HARD_CAP_MS,
+  "personal-site": FETCHER_HARD_CAP_MS,
+  twitter: FETCHER_HARD_CAP_MS,
+  hn: FETCHER_HARD_CAP_MS,
+  devto: FETCHER_HARD_CAP_MS,
+  medium: FETCHER_HARD_CAP_MS,
+  orcid: FETCHER_HARD_CAP_MS,
+  "semantic-scholar": FETCHER_HARD_CAP_MS,
+  arxiv: FETCHER_HARD_CAP_MS,
+  stackoverflow: FETCHER_HARD_CAP_MS,
+  youtube: FETCHER_HARD_CAP_MS,
+  "blog-import": FETCHER_HARD_CAP_MS,
 } as const;
 
 export interface RunResumePipelineOptions {
@@ -306,6 +308,7 @@ export async function runResumePipeline(
       semanticScholarFacts,
       arxivFacts,
       stackoverflowFacts,
+      youtubeFacts,
     ] = await Promise.all([
       safeFetch("fetch:linkedin", FETCHER_TIMEOUTS_MS.linkedin, () =>
         runLinkedInTierChain({ session, usage, trace, onProgress, pdfText: opts.linkedinPdfText }),
@@ -367,6 +370,9 @@ export async function runResumePipeline(
       safeFetch("fetch:stackoverflow", FETCHER_TIMEOUTS_MS.stackoverflow, () =>
         runStackoverflowFetcher({ session, usage, trace, onProgress }),
       ),
+      safeFetch("fetch:youtube", FETCHER_TIMEOUTS_MS.youtube, () =>
+        runYoutubeChannelFetcher({ session, usage, trace, onProgress }),
+      ),
     ]);
 
     // blog-import runs SEQUENTIALLY after the parallel fan-out. It
@@ -402,6 +408,7 @@ export async function runResumePipeline(
       semanticScholarFacts,
       arxivFacts,
       stackoverflowFacts,
+      youtubeFacts,
       blog,
     };
   });
@@ -422,6 +429,7 @@ export async function runResumePipeline(
     ...fetchersResult.semanticScholarFacts,
     ...fetchersResult.arxivFacts,
     ...fetchersResult.stackoverflowFacts,
+    ...fetchersResult.youtubeFacts,
     ...judgmentFacts,
     ...intakeFacts,
   ];
