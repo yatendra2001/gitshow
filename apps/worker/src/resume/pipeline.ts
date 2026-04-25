@@ -97,7 +97,11 @@ const FETCHER_TIMEOUTS_MS = {
   "semantic-scholar": 60_000,
   arxiv: 60_000,
   stackoverflow: 30_000,
-  "blog-import": 10 * 60_000, // n × 3min internal cap; outer ceiling
+  // Blog import: per-URL cap is 3min (see agents/blog-import.ts).
+  // Outer ceiling kept tight because Kimi has been observed entering
+  // a degenerate generation loop on certain pages (#prev incident),
+  // and waiting 10 min before bailing burns OpenRouter credits.
+  "blog-import": 4 * 60_000,
 } as const;
 
 export interface RunResumePipelineOptions {
