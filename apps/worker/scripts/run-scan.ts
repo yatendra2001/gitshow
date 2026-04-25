@@ -40,6 +40,39 @@ import type { ScanSession, ScanSocials } from "../src/schemas.js";
 
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
+/**
+ * Catch unhandled promise rejections so a stray TimeoutError or
+ * AbortError from one of the SDK's background streams can't crash
+ * the bun process. Bun's default behaviour on unhandled rejection
+ * is to exit (unlike Node's "warn-only" default) — that bit us in
+ * scan-jEnrtZPDjJ where a blog-import HTTP timeout's DOMException
+ * killed the worker mid-fetchers-fan-out.
+ *
+ * The pipeline's own try/catch wraps every fetcher subPhase and
+ * the four LLM stages, so any rejection that escapes here is
+ * already either:
+ *   - a background SDK retry that resolved on the foreground attempt
+ *   - or an abandoned stream from a fetcher that's already returned []
+ * Both are safe to log and drop.
+ */
+process.on("unhandledRejection", (reason) => {
+  const err = reason as Error & { code?: number; name?: string };
+  logger.warn(
+    {
+      err_name: err?.name ?? "unknown",
+      err_message: (err?.message ?? String(reason)).slice(0, 240),
+      err_code: err?.code,
+    },
+    "run-scan: unhandledRejection — logged and ignored",
+  );
+});
+process.on("uncaughtException", (err) => {
+  logger.error(
+    { err_name: err.name, err_message: err.message.slice(0, 240) },
+    "run-scan: uncaughtException — logged and ignored",
+  );
+});
+
 async function main() {
   if (process.env.GITSHOW_CLOUD_MODE !== "1") {
     logger.error(
