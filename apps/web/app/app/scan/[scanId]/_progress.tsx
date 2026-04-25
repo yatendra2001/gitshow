@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check, AlertTriangle, Circle } from "lucide-react";
 import { LogoMark } from "@/components/logo";
-import { Shimmer } from "@/components/ai-elements/shimmer";
+import { ShimmeringText } from "@/components/ui/shimmering-text";
 import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Tool, type ToolStatus } from "@/components/ai-elements/tool";
 import {
@@ -386,7 +386,11 @@ export function ScanProgress({
         </div>
         <h1 className="font-[var(--font-serif)] text-[32px] leading-tight">
           {scan.status === "running" || scan.status === "queued" ? (
-            <Shimmer>{titleForStatus(scan)}</Shimmer>
+            <ShimmeringText
+              text={titleForStatus(scan)}
+              duration={3.4}
+              spread={1}
+            />
           ) : (
             titleForStatus(scan)
           )}
@@ -671,11 +675,11 @@ function AgentRunBlock({
   const lastReasoning = run.reasonings[run.reasonings.length - 1];
   const stillStreaming = parentRunning && lastReasoning?.endedAt == null;
   const friendly = friendlyAgentLabel(run.agent);
+  // No standalone label row — the friendly label is already used as
+  // the streaming Reasoning header. Leaves a single visual element
+  // per agent run instead of stacking three.
   return (
     <div className="gs-enter flex flex-col gap-1.5">
-      <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-        <span className="font-mono text-foreground/80">{friendly}</span>
-      </div>
       {lastReasoning && lastReasoning.text.trim().length > 0 ? (
         <Reasoning
           text={lastReasoning.text}
@@ -689,7 +693,7 @@ function AgentRunBlock({
         />
       ) : null}
       {run.tools.length > 0 ? (
-        <div className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-1">
           {run.tools.map((t) => (
             <Tool
               key={t.toolId}
@@ -735,7 +739,7 @@ function PhaseHeader({ node, now }: { node: PhaseNode; now: number }) {
         )}
       >
         {node.status === "running" ? (
-          <Shimmer>{node.title}</Shimmer>
+          <ShimmeringText text={node.title} duration={2.8} spread={1.2} />
         ) : (
           node.title
         )}
@@ -805,7 +809,7 @@ function SubPhaseRow({ node }: { node: PhaseNode }) {
         )}
       >
         {node.status === "running" ? (
-          <Shimmer>{node.title}</Shimmer>
+          <ShimmeringText text={node.title} duration={2.4} spread={1} />
         ) : (
           node.title
         )}
