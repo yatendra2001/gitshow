@@ -43,7 +43,6 @@ import {
 import {
   emitGithubFacts,
   runLinkedInPublicFetcher,
-  runLinkedInPlaywrightFetcher,
   runLinkedInPdfFetcher,
   runPersonalSiteFetcher,
   runTwitterBioFetcher,
@@ -624,6 +623,17 @@ export async function runResumePipeline(
 }
 
 // ─── LinkedIn tier chain ────────────────────────────────────────────
+//
+// Tier 0: ProxyCurl/EnrichLayer (paid, canonical JSON) — runs INSIDE
+//         runLinkedInPublicFetcher when PROXYCURL_API_KEY is set.
+// Tier 1: TinyFish (proxy-rotating headless) — also inside
+//         runLinkedInPublicFetcher.
+// Tier 2: Jina Reader markdown — inside the same fetcher.
+// Tier 4: uploaded PDF salvage (separate fetcher, last resort).
+//
+// (Tier 3 — Playwright Googlebot UA — was removed once Tier 0
+// went first-class; the headless Chromium dependency cost more in
+// image size + cold start than it returned in usable facts.)
 
 async function runLinkedInTierChain(opts: {
   session: ScanSession;
@@ -638,18 +648,9 @@ async function runLinkedInTierChain(opts: {
     return [];
   }
 
-  // Tier 1 + Tier 2 (TinyFish + Jina).
-  const t12 = await runLinkedInPublicFetcher({ session, usage, trace, onProgress });
-  if (t12.length > 0) return t12;
-
-  // Tier 3 — Playwright with Googlebot UA.
-  const t3 = await runLinkedInPlaywrightFetcher({
-    session,
-    usage,
-    trace,
-    onProgress,
-  });
-  if (t3.length > 0) return t3;
+  // Tier 0 (ProxyCurl) + Tier 1 (TinyFish) + Tier 2 (Jina) — in cascade.
+  const t012 = await runLinkedInPublicFetcher({ session, usage, trace, onProgress });
+  if (t012.length > 0) return t012;
 
   // Tier 4 — uploaded PDF salvage.
   if (pdfText) {
