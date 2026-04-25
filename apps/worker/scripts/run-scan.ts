@@ -91,6 +91,7 @@ async function main() {
   if (process.env.TWITTER) socials.twitter = process.env.TWITTER;
   if (process.env.LINKEDIN) socials.linkedin = process.env.LINKEDIN;
   if (process.env.WEBSITE) socials.website = process.env.WEBSITE;
+  if (process.env.YOUTUBE) socials.youtube = process.env.YOUTUBE;
   if (process.env.ORCID) socials.orcid = process.env.ORCID;
   if (process.env.STACKOVERFLOW) socials.stackoverflow = process.env.STACKOVERFLOW;
 

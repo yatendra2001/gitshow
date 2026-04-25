@@ -483,6 +483,17 @@ export async function runResumePipeline(
       prose,
       blog: fetchersResult.blog,
       email: opts.intakeEmail,
+      // Round-trip the intake-supplied socials so they land on
+      // contact.socials.{linkedin,x,youtube} instead of getting
+      // dropped — the legacy ContactSection on the web side reads
+      // socials.X.url directly and crashes if it's missing.
+      intakeSocials: {
+        linkedin: session.socials.linkedin,
+        twitter: session.socials.twitter,
+        youtube: session.socials.youtube,
+        orcid: session.socials.orcid,
+        stackoverflow: session.socials.stackoverflow,
+      },
       trace,
     });
   });

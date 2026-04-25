@@ -169,6 +169,7 @@ export async function POST(
         linkedin: socials.linkedin || undefined,
         twitter: socials.twitter || undefined,
         website: socials.website || undefined,
+        youtube: socials.youtube || undefined,
         orcid: socials.orcid || undefined,
         stackoverflow: socials.stackoverflow || undefined,
         blogUrls,
@@ -212,6 +213,7 @@ function buildScanEnv(
     linkedin?: string;
     twitter?: string;
     website?: string;
+    youtube?: string;
     orcid?: string;
     stackoverflow?: string;
     blogUrls?: string[];
@@ -242,6 +244,7 @@ function buildScanEnv(
   if (s.linkedin) out.LINKEDIN = s.linkedin;
   if (s.twitter) out.TWITTER = s.twitter;
   if (s.website) out.WEBSITE = s.website;
+  if (s.youtube) out.YOUTUBE = s.youtube;
   if (s.orcid) out.ORCID = s.orcid;
   if (s.stackoverflow) out.STACKOVERFLOW = s.stackoverflow;
   if (s.blogUrls && s.blogUrls.length > 0)
