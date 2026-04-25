@@ -37,6 +37,12 @@ interface OrcidRecord {
     addresses?: {
       address?: Array<{ country?: { value?: string }; "region"?: { value?: string } }>;
     };
+    "researcher-urls"?: {
+      "researcher-url"?: Array<{
+        "url-name"?: { value?: string } | null;
+        url?: { value?: string };
+      }>;
+    };
   };
   "activities-summary"?: {
     employments?: {
@@ -145,7 +151,25 @@ export async function runOrcidFetcher(
       return [];
     }
     const data = (await res.json()) as OrcidRecord;
-    const facts = buildFacts({ data, orcidUrl: raw, id });
+
+    // ── Self-link verification ──────────────────────────────────────
+    // The user typed the ORCID iD at intake — anyone can paste any
+    // iD, so the API call itself proves nothing about ownership. We
+    // require the ORCID profile's `researcher-urls` to link back to
+    // the user's GitHub (or commit a verified GitHub link in the
+    // bio, etc.). Without that cross-link we still extract the
+    // affiliations + name (those are useful priors), but we DROP
+    // the publication facts — surfacing someone else's papers on
+    // the user's portfolio is the worst-case failure mode and we
+    // saw it in the wild (Yatendra Kumar getting Yatendra Singh's
+    // pharmacology papers).
+    const verified = orcidLinksToGithub(data, input.session.handle);
+    if (!verified) {
+      log(
+        `[${label}] ORCID profile does NOT cross-link to github.com/${input.session.handle} — keeping affiliations, dropping publications.\n`,
+      );
+    }
+    const facts = buildFacts({ data, orcidUrl: raw, id, verified });
     emitFactsToTrace(trace, label, facts);
 
     trace?.fetcherEnd({
@@ -196,18 +220,50 @@ function mapWorkKind(type: string | undefined): PublicationKind {
   return "other";
 }
 
+/**
+ * Does the ORCID profile cross-link back to the user's GitHub? We
+ * accept either:
+ *   - any researcher-url whose href contains `github.com/{handle}` or
+ *     `github.com/{handle}/`
+ *   - a researcher-url named GitHub whose href matches
+ *
+ * Used as a proof-of-ownership gate before publication facts get
+ * attached to the user's portfolio.
+ */
+function orcidLinksToGithub(data: OrcidRecord, handle: string): boolean {
+  const urls = data.person?.["researcher-urls"]?.["researcher-url"] ?? [];
+  const lcHandle = handle.toLowerCase();
+  for (const u of urls) {
+    const href = (u.url?.value ?? "").toLowerCase();
+    if (!href) continue;
+    if (
+      href.includes(`github.com/${lcHandle}`) ||
+      href.endsWith(`/${lcHandle}`) ||
+      href.endsWith(`/${lcHandle}/`)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function buildFacts(args: {
   data: OrcidRecord;
   orcidUrl: string;
   id: string;
+  /** Did the ORCID profile cross-link to the user's GitHub? */
+  verified: boolean;
 }): TypedFact[] {
-  const { data, orcidUrl, id } = args;
+  const { data, orcidUrl, id, verified } = args;
   const facts: TypedFact[] = [];
+  // first-party-api authority is preserved; confidence is the lever
+  // we use for self-link verification. high (verified link) →
+  // verified band, medium (unverified self-claimed) → likely band.
   const src = (snippet?: string) =>
     makeSource({
       fetcher: "orcid",
       method: "api",
-      confidence: "high",
+      confidence: verified ? "high" : "medium",
       url: orcidUrl,
       snippet,
       authority: "first-party-api",
@@ -289,36 +345,42 @@ function buildFacts(args: {
     }
   }
 
-  // Works → AUTHORED
-  const workGroups = data["activities-summary"]?.works?.group ?? [];
-  for (const group of workGroups) {
-    for (const w of group["work-summary"] ?? []) {
-      const title = w.title?.title?.value;
-      if (!title) continue;
-      const externalIds = w["external-ids"]?.["external-id"] ?? [];
-      const doi = externalIds.find(
-        (e) => (e["external-id-type"] ?? "").toLowerCase() === "doi",
-      )?.["external-id-value"];
-      const arxivId = externalIds.find(
-        (e) => (e["external-id-type"] ?? "").toLowerCase() === "arxiv",
-      )?.["external-id-value"];
-      const url = w.url?.value
-        ?? externalIds.find((e) => e["external-id-url"]?.value)?.["external-id-url"]?.value
-        ?? (doi ? `https://doi.org/${doi}` : `https://orcid.org/${id}`);
-      facts.push({
-        kind: "AUTHORED",
-        publication: {
-          title,
-          url,
-          kind: mapWorkKind(w.type),
-          doi,
-          arxivId,
-          venue: w["journal-title"]?.value,
-          publishedAt: fmtDate(w["publication-date"]),
-          coAuthors: [],
-        },
-        source: src(title),
-      });
+  // Works → AUTHORED. Only emit publication facts when the ORCID
+  // profile cross-links to the user's GitHub. Without that proof of
+  // ownership, the user could paste any ORCID iD and get a stranger's
+  // entire bibliography on their portfolio. Affiliations stay (above)
+  // because they're useful even at lower confidence.
+  if (verified) {
+    const workGroups = data["activities-summary"]?.works?.group ?? [];
+    for (const group of workGroups) {
+      for (const w of group["work-summary"] ?? []) {
+        const title = w.title?.title?.value;
+        if (!title) continue;
+        const externalIds = w["external-ids"]?.["external-id"] ?? [];
+        const doi = externalIds.find(
+          (e) => (e["external-id-type"] ?? "").toLowerCase() === "doi",
+        )?.["external-id-value"];
+        const arxivId = externalIds.find(
+          (e) => (e["external-id-type"] ?? "").toLowerCase() === "arxiv",
+        )?.["external-id-value"];
+        const url = w.url?.value
+          ?? externalIds.find((e) => e["external-id-url"]?.value)?.["external-id-url"]?.value
+          ?? (doi ? `https://doi.org/${doi}` : `https://orcid.org/${id}`);
+        facts.push({
+          kind: "AUTHORED",
+          publication: {
+            title,
+            url,
+            kind: mapWorkKind(w.type),
+            doi,
+            arxivId,
+            venue: w["journal-title"]?.value,
+            publishedAt: fmtDate(w["publication-date"]),
+            coAuthors: [],
+          },
+          source: src(title),
+        });
+      }
     }
   }
 
