@@ -147,7 +147,11 @@ function ReasoningBody({
 }) {
   const blocks = React.useMemo(() => parseMarkdown(text), [text]);
   return (
-    <div>
+    // gs-stream gives every direct child (rendered markdown block) a
+    // brief fade + blur entry — so as the model streams, new
+    // paragraphs glide in instead of popping. See globals.css for
+    // the keyframes + reduced-motion overrides.
+    <div className="gs-stream">
       {blocks.map((b, i) => renderBlock(b, i))}
       {streaming ? (
         <span className="gs-caret ml-[2px] inline-block h-[0.9em] w-[2px] translate-y-[2px] bg-blue-400" />

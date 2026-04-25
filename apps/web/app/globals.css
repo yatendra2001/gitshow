@@ -79,6 +79,122 @@
   }
 }
 
+/* ─── Pipeline / scan-progress motion utilities ──────────────────────
+ *
+ * Used by the live scan progress page (Reasoning, Tool, Task,
+ * AgentRunBlock, PhaseRow, etc.) and the intake / dashboard cards.
+ * The classes were referenced everywhere but never defined — content
+ * popped into place with no easing. These rules fix that.
+ *
+ * Following Emil's blueprint:
+ *   - enter/exit transitions → ease-out, 200–300ms
+ *   - on-screen looped indicators (pulse) → ease-in-out, infinite
+ *   - transform + opacity only (GPU-accelerated; no layout thrash)
+ *   - prefers-reduced-motion disables every motion rule (kept at
+ *     the bottom so it can override).
+ *
+ * Live under @layer utilities so Tailwind's specificity ordering
+ * keeps them overridable from the className side.
+ */
+@layer utilities {
+  .gs-enter {
+    animation: gs-enter 220ms cubic-bezier(0.215, 0.61, 0.355, 1) both;
+  }
+
+  /* Streaming reasoning + chain-of-thought: each rendered child
+   * (paragraph, list item, code block) fades + slides up + un-blurs
+   * on mount. The Reasoning component re-parses markdown on every
+   * delta, so newly-rendered blocks animate in as they arrive.
+   *
+   * `backwards` fill keeps the from-state visible for the brief
+   * delay between mount and first frame. */
+  .gs-stream > * {
+    animation: gs-stream-block 280ms cubic-bezier(0.215, 0.61, 0.355, 1) backwards;
+  }
+
+  .gs-fade {
+    animation: gs-fade 220ms cubic-bezier(0.215, 0.61, 0.355, 1) both;
+  }
+
+  .gs-pulse {
+    animation: gs-pulse 1.4s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
+  }
+
+  /* Caret at the tail of streaming text. Reuses the existing
+   * blink-cursor keyframe from the @theme block above. */
+  .gs-caret {
+    animation: blink-cursor 1.2s step-end infinite;
+  }
+
+  /* Themed scrollbar for nested scroll containers (Reasoning body,
+   * preview panes). Styling-only — no animation, but kept here so
+   * everything pipeline-flavoured lives in one block. */
+  .gs-pane-scroll,
+  .gs-chat-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in oklch, var(--foreground), transparent 78%)
+      transparent;
+  }
+  .gs-pane-scroll::-webkit-scrollbar,
+  .gs-chat-scroll::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .gs-pane-scroll::-webkit-scrollbar-thumb,
+  .gs-chat-scroll::-webkit-scrollbar-thumb {
+    background: color-mix(in oklch, var(--foreground), transparent 80%);
+    border-radius: 3px;
+  }
+  .gs-pane-scroll::-webkit-scrollbar-thumb:hover,
+  .gs-chat-scroll::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklch, var(--foreground), transparent 60%);
+  }
+}
+
+@keyframes gs-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes gs-stream-block {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+@keyframes gs-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes gs-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gs-enter,
+  .gs-fade,
+  .gs-pulse,
+  .gs-caret,
+  .gs-stream > * {
+    animation: none !important;
+  }
+}
+
 :root {
   --radius: 0.625rem;
   --background: oklch(1 0 0);
