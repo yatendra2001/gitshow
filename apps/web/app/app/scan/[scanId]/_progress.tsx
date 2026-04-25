@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { Check, AlertTriangle, Circle } from "lucide-react";
 import { LogoMark } from "@/components/logo";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
+import { Matrix } from "@/components/ui/matrix";
+import { concentricBreath, breathingDot } from "@/components/ui/matrix-loaders";
 import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Tool, type ToolStatus } from "@/components/ai-elements/tool";
 import {
@@ -204,8 +206,15 @@ function buildAgentActivity(events: EventRow[], now: number): Map<string, AgentR
   };
 
   for (const ev of events) {
-    const agent = ev.worker;
-    if (!agent) continue;
+    const rawAgent = ev.worker;
+    if (!rawAgent) continue;
+    // The agent layer auto-retries when the model fails to call its
+    // submit tool, and emits a fresh agent label per attempt:
+    //   judge:foo, judge:foo:force, judge:foo:force-final.
+    // From the user's perspective these are ONE judging — collapse
+    // them by stripping the retry suffix so a single AgentRunBlock
+    // shows the merged reasoning + tool calls.
+    const agent = rawAgent.replace(/:force(-final)?$/, "");
     let run = byAgent.get(agent);
     if (!run) {
       run = { agent, reasonings: [], tools: [], hasActivity: false };
@@ -764,10 +773,22 @@ function PhaseHeader({ node, now }: { node: PhaseNode; now: number }) {
 
 function PhaseDot({ status }: { status: NodeStatus }) {
   if (status === "running") {
+    // Custom 5×5 dot-matrix concentric-breath loader. Replaces the
+    // legacy ring + ping-circle; same expanding-wave energy but
+    // calmer and less Material-Design-y. Sized to ~22px to match
+    // the surrounding done/failed/pending dot footprint.
     return (
-      <span className="relative flex size-[22px] shrink-0 items-center justify-center rounded-full bg-[var(--primary)]/10 ring-1 ring-[var(--primary)]/40">
-        <span className="absolute inline-flex size-2 animate-ping rounded-full bg-[var(--primary)] opacity-70" />
-        <span className="relative inline-flex size-2 rounded-full bg-[var(--primary)]" />
+      <span className="flex size-[22px] shrink-0 items-center justify-center">
+        <Matrix
+          rows={5}
+          cols={5}
+          frames={concentricBreath}
+          fps={14}
+          size={2}
+          gap={1}
+          ariaLabel="In progress"
+          className="opacity-80"
+        />
       </span>
     );
   }
@@ -832,10 +853,21 @@ function SubPhaseRow({ node }: { node: PhaseNode }) {
 
 function SubDot({ status }: { status: NodeStatus }) {
   if (status === "running") {
+    // Smaller 5×5 dot-matrix breathing-dot for the sub-row. Matches
+    // the parent PhaseDot's matrix language but calmer — a single
+    // centred dot fading 0.25→1.0 instead of expanding rings.
     return (
-      <span className="relative flex size-3 shrink-0 items-center justify-center">
-        <span className="absolute inline-flex size-1.5 animate-ping rounded-full bg-[var(--primary)] opacity-70" />
-        <span className="relative inline-flex size-1.5 rounded-full bg-[var(--primary)]" />
+      <span className="flex size-3 shrink-0 items-center justify-center">
+        <Matrix
+          rows={5}
+          cols={5}
+          frames={breathingDot}
+          fps={14}
+          size={1}
+          gap={1}
+          ariaLabel="In progress"
+          className="opacity-80"
+        />
       </span>
     );
   }
