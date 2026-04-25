@@ -47,6 +47,17 @@ const BodySchema = z.object({
     .array(z.string().url())
     .max(5)
     .optional(),
+  /**
+   * Repo full names ("owner/name") the user picked from the
+   * "Repos to skip" multi-select on the intake page. The worker
+   * filters these out of the github-fetched repo set before any
+   * downstream stage — so a one-off fork or a personal-investing
+   * page never makes it into the portfolio.
+   */
+  skip_repos: z
+    .array(z.string().regex(/^[\w.-]+\/[\w.-]+$/, "must be owner/name"))
+    .max(100)
+    .optional(),
 });
 
 export async function POST(
@@ -105,6 +116,7 @@ export async function POST(
 
   const socials = parse.data.socials ?? {};
   const blogUrls = parse.data.blog_urls ?? [];
+  const skipRepos = parse.data.skip_repos ?? [];
 
   try {
     await env.DB.prepare(
@@ -160,6 +172,7 @@ export async function POST(
         orcid: socials.orcid || undefined,
         stackoverflow: socials.stackoverflow || undefined,
         blogUrls,
+        skipRepos,
         userGhToken,
       }),
     });
@@ -202,6 +215,7 @@ function buildScanEnv(
     orcid?: string;
     stackoverflow?: string;
     blogUrls?: string[];
+    skipRepos?: string[];
     userGhToken: string;
   },
 ): Record<string, string> {
@@ -232,6 +246,8 @@ function buildScanEnv(
   if (s.stackoverflow) out.STACKOVERFLOW = s.stackoverflow;
   if (s.blogUrls && s.blogUrls.length > 0)
     out.BLOG_URLS = s.blogUrls.join(",");
+  if (s.skipRepos && s.skipRepos.length > 0)
+    out.SKIP_REPOS = s.skipRepos.join(",");
   // Optional envs — not on CloudflareEnv's hard type yet, so read via
   // an escape-hatch cast. Missing values are fine (the sender silently
   // no-ops).

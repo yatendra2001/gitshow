@@ -69,11 +69,20 @@ async function main() {
     .filter(Boolean)
     .slice(0, 5);
 
+  // Repo full names ("owner/name") the user picked from the intake's
+  // "Repos to skip" picker. The pipeline drops these before the
+  // tiering stage so they never reach the Repo Judge or get featured.
+  const skipRepos: string[] = (process.env.SKIP_REPOS ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
   const session: ScanSession = {
     id: scanId,
     handle,
     socials,
     blog_urls: blogUrls.length > 0 ? blogUrls : undefined,
+    skip_repos: skipRepos.length > 0 ? skipRepos : undefined,
     context_notes: process.env.CONTEXT_NOTES || undefined,
     started_at: new Date().toISOString(),
     dashboard_url: `https://openrouter.ai/sessions/${scanId}`,

@@ -69,7 +69,8 @@ Rules:
 - Ask things the scan CAN'T figure out on its own: positioning intent, employment context, preferred framing, things to skip.
 - Keep each question short and human. No corporate/HR tone. "What's your current situation?" beats "Please describe your employment status."
 - If you can suggest 2-4 distinct options, do — the UI renders them as chips. Otherwise leave options out; users will free-form.
-- ALWAYS include a question that surfaces choice: "Any repos you'd rather I NOT analyze?" is great because it respects the user's authorship.
+- DO NOT ask which repos to skip — the intake page already shows a structured multi-select repo picker for that. Asking via free text duplicates work and is harder to honor.
+- DO ask things that surface the user's choice on positioning: which lane they want to lead with, whether to feature side projects vs. work, framing of an honest gap.
 - If the bio or top-repos strongly suggest one positioning, ask the user to confirm / redirect it — don't assume.
 - Avoid yes/no questions. They're useless downstream.
 - Do not ask about things you can measure from the data (commit counts, languages, stars).
