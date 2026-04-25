@@ -153,6 +153,12 @@ export const ProjectSchema = z.object({
   kind: ProjectKindSchema,
   polish: PolishSchema,
   shouldFeature: z.boolean().default(false),
+  /**
+   * Sonnet-assigned rank among the curated top-N picks (0-indexed,
+   * 0 = best). Only the projects in the My Projects grid have this
+   * set; everything else (including unfeatured repos) is undefined.
+   */
+  featureRank: z.number().int().min(0).optional(),
   reason: z.string().optional(),
   dates: z
     .object({

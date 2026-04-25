@@ -95,6 +95,7 @@ const PHASE_COPY: Record<string, string> = {
   "repo-filter": "Picking which repos matter",
   inventory: "Studying your top repos",
   "repo-judge": "Spotting what's distinctive",
+  "project-ranker": "Picking your top projects",
   fetchers: "Gathering context from across the web",
   merge: "Organising the pieces",
   media: "Finding cover images",
@@ -129,6 +130,7 @@ const PHASE_ORDER = [
   "repo-filter",
   "inventory",
   "repo-judge",
+  "project-ranker",
   "fetchers",
   "merge",
   "media",
@@ -176,6 +178,7 @@ interface PhaseNode {
  */
 const AGENT_TO_PHASE: Array<{ match: (a: string) => boolean; phase: string }> = [
   { match: (a) => a.startsWith("judge:"), phase: "repo-judge" },
+  { match: (a) => a === "project-ranker", phase: "project-ranker" },
   { match: (a) => a === "kg:pair-resolve", phase: "merge" },
   { match: (a) => a.startsWith("render:hero-prose"), phase: "hero-prose" },
   { match: (a) => a === "resume:blog-import" || a.startsWith("resume:blog-import:"), phase: "blog-import" },

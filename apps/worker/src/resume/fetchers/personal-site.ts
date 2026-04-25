@@ -108,16 +108,13 @@ export async function runPersonalSiteFetcher(
     }
 
     const { result } = await runAgentWithSubmit({
-      // Switched from bulk (Kimi K2.6) to section (Sonnet 4.6). Trace
-      // forensics on scan-dcEJNoPKT7 caught Kimi returning
-      // positions:[] on a site that clearly listed 6 work
-      // positions — same site, same prompt, same model also
-      // returned positions:[6] on the previous run. Kimi's
-      // structured-output reliability is unstable on this prompt;
-      // Sonnet doesn't have that flake. Personal-site is the most
-      // important fetcher for work history (LinkedIn is walled),
-      // so the +cost is worth it.
-      model: modelForRole("section"),
+      // Personal-site extraction is text-heavy and structured —
+      // standard `bulk` (Kimi K2.6) territory. We saw an isolated
+      // empty-positions flake in one earlier scan, but that's better
+      // addressed by the new Sonnet-driven project ranker that runs
+      // over EVERY judged repo than by upgrading every single fetcher
+      // to a frontier model.
+      model: modelForRole("bulk"),
       systemPrompt: SYSTEM_PROMPT,
       input: `## Source URL\n${url}\n\n## Rendered text\n\n${text.slice(0, 40_000)}\n\n---\nExtract bio, location, positions, projects. Call submit_personal_site.`,
       submitToolName: "submit_personal_site",
