@@ -29,7 +29,7 @@ export interface SpawnMachineInput {
   env: Record<string, string>;
   /** Machine name shown in the Fly dashboard. Defaults to `scan-<scanId>`. */
   name?: string;
-  /** Override resources. Defaults to shared-cpu-2x / 2048 MB. */
+  /** Override resources. Defaults to shared-cpu-2x / 4096 MB. */
   cpus?: number;
   cpuKind?: "shared" | "performance";
   memoryMb?: number;
@@ -94,7 +94,13 @@ export class FlyClient {
         guest: {
           cpu_kind: input.cpuKind ?? "shared",
           cpus: input.cpus ?? 2,
-          memory_mb: input.memoryMb ?? 2048,
+          // 4 GB. Playwright Chromium baseline is ~350 MB; running it in
+          // parallel with blog-import's Kimi reasoning stream and the
+          // other parallel HTTP fetchers regularly OOMed the previous
+          // 2 GB default — every scan died at ~1m30s into the fetchers
+          // phase with no error, just a silent disappearance from
+          // `fly machines list`.
+          memory_mb: input.memoryMb ?? 4096,
         },
         auto_destroy: true,
         restart: { policy: "no" },
