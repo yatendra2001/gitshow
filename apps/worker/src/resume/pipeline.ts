@@ -273,6 +273,9 @@ export async function runResumePipeline(
     const githubFacts = emitGithubFacts({ github, trace });
     log(`[pipeline]   github-facts: ${githubFacts.length} facts (sync)\n`);
 
+    // Run the 10 lightweight fetchers in parallel — they're all
+    // network-bound (TinyFish / Jina / GitHub APIs / arXiv / etc.)
+    // with small JSON payloads, so concurrency is the win.
     const [
       linkedInFacts,
       personalSiteFacts,
@@ -284,7 +287,6 @@ export async function runResumePipeline(
       semanticScholarFacts,
       arxivFacts,
       stackoverflowFacts,
-      blog,
     ] = await Promise.all([
       safeFetch("fetch:linkedin", FETCHER_TIMEOUTS_MS.linkedin, () =>
         runLinkedInTierChain({ session, usage, trace, onProgress, pdfText: opts.linkedinPdfText }),
@@ -326,7 +328,20 @@ export async function runResumePipeline(
       safeFetch("fetch:stackoverflow", FETCHER_TIMEOUTS_MS.stackoverflow, () =>
         runStackoverflowFetcher({ session, usage, trace, onProgress }),
       ),
-      safeFetch("blog-import", FETCHER_TIMEOUTS_MS["blog-import"], () =>
+    ]);
+
+    // blog-import runs SEQUENTIALLY after the parallel fan-out. It
+    // has very different cost/risk shape than the others — full LLM
+    // call per URL, multi-KB streaming reasoning, occasional model
+    // degeneracy — and overlapping it with Playwright's Chromium
+    // subprocess is what blew the 2 GB worker open. Sequencing it
+    // here means the heavy resources never coexist; a stuck
+    // blog-import only slows blog-import, never the rest of the
+    // fetchers row, never the next stage.
+    const blog = await safeFetch(
+      "blog-import",
+      FETCHER_TIMEOUTS_MS["blog-import"],
+      () =>
         runBlogImportAgent({
           session,
           usage,
@@ -334,8 +349,7 @@ export async function runResumePipeline(
           onProgress,
           emit: opts.emit,
         }),
-      ),
-    ]);
+    );
 
     return {
       githubFacts,
