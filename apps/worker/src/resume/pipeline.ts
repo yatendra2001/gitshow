@@ -87,21 +87,30 @@ const JUDGE_MAX_CANDIDATES = 30;
  * facts the other fetchers produced.
  */
 const FETCHER_TIMEOUTS_MS = {
-  linkedin: 4 * 60_000, // Playwright tier 3 alone can take 60–90s
-  "personal-site": 90_000,
-  twitter: 60_000,
-  hn: 60_000,
-  devto: 60_000,
-  medium: 60_000,
-  orcid: 30_000,
-  "semantic-scholar": 60_000,
-  arxiv: 60_000,
-  stackoverflow: 30_000,
-  // Blog import: per-URL cap is 3min (see agents/blog-import.ts).
-  // Outer ceiling kept tight because Kimi has been observed entering
-  // a degenerate generation loop on certain pages (#prev incident),
-  // and waiting 10 min before bailing burns OpenRouter credits.
-  "blog-import": 4 * 60_000,
+  // Heads-up: caps that are too tight cause SILENT data loss. When
+  // withTimeout fires, safeFetch returns [] but the inner fetcher
+  // keeps running and writes a misleading "success" trace event.
+  // Real-world run: personal-site took 109s → 90s cap dropped 6
+  // legitimate work positions on the floor while logging
+  // status=ok. Sized these on the conservative side; the worker
+  // has a 4 GB heap (#103) so leaving slack is cheap.
+  linkedin: 4 * 60_000,
+  /** LLM extraction over up to 40 KB of personal-site text — needs
+   * room. Observed 95p ≈ 110 s. */
+  "personal-site": 4 * 60_000,
+  /** LLM-extraction fetchers over a profile page each. */
+  twitter: 2 * 60_000,
+  hn: 2 * 60_000,
+  devto: 2 * 60_000,
+  medium: 2 * 60_000,
+  /** Pure HTTP, single API call, JSON. */
+  orcid: 60_000,
+  "semantic-scholar": 90_000,
+  arxiv: 90_000,
+  stackoverflow: 60_000,
+  /** Blog import: per-URL cap is 3 min (see agents/blog-import.ts).
+   * Outer ceiling at 5 min so 1–5 URLs all fit in one cycle. */
+  "blog-import": 5 * 60_000,
 } as const;
 
 export interface RunResumePipelineOptions {
@@ -260,8 +269,18 @@ export async function runResumePipeline(
         return await withTimeout(fn(), capMs, name);
       } catch (err) {
         if (err instanceof TimeoutError) {
+          // Loud warning — a fetcher hitting the cap usually means
+          // we silently dropped data. The inner fetcher might still
+          // log a misleading "fetcher.end status=ok" with N facts
+          // because it kept running after we gave up on it. Flag
+          // it so audit-trace can surface this clearly.
           log(
-            `[pipeline] ${name} timed out after ${capMs / 1000}s — skipping (returning 0 facts).\n`,
+            `[pipeline] ⚠ ${name} timed out after ${capMs / 1000}s — DROPPING any facts the fetcher might still produce. Bump FETCHER_TIMEOUTS_MS["${name}"] if this is a real signal.\n`,
+          );
+          trace?.note(
+            `fetcher-timeout:${name}`,
+            `${name} did not complete within ${capMs / 1000}s — dropped facts`,
+            { capMs, fetcher: name },
           );
           return [] as T[];
         }

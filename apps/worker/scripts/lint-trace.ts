@@ -174,6 +174,22 @@ const evs = <K extends TraceEvent["kind"]>(kind: K) =>
   }
 }
 
+// ─── Rule 8b — fetcher hit its outer wall-clock cap ───────────────
+//   When this fires, the fetcher's own trace event may still
+//   say "status=ok" because it kept running after we gave up on it
+//   — but safeFetch returned [] and any facts were dropped.
+{
+  for (const ev of evs("note")) {
+    if (ev.label?.startsWith("fetcher-timeout:")) {
+      findings.push({
+        rule: "fetcher-timeout-data-loss",
+        severity: "error",
+        message: `${ev.message} — bump FETCHER_TIMEOUTS_MS for this fetcher; the trace's fetcher.end event is misleading.`,
+      });
+    }
+  }
+}
+
 // ─── Rule 9 — total LLM cost > budget ──────────────────────────────
 {
   const total = trace.summary.totalLlmCostUsd;
