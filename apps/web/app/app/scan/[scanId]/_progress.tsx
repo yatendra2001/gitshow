@@ -397,7 +397,7 @@ export function ScanProgress({
           {scan.status === "running" || scan.status === "queued" ? (
             <ShimmeringText
               text={titleForStatus(scan)}
-              duration={3.4}
+              duration={4.2}
               spread={1}
             />
           ) : (
@@ -684,6 +684,14 @@ function AgentRunBlock({
   const lastReasoning = run.reasonings[run.reasonings.length - 1];
   const stillStreaming = parentRunning && lastReasoning?.endedAt == null;
   const friendly = friendlyAgentLabel(run.agent);
+  // Filter out internal "submit_*" tool calls — those are the agent's
+  // structured-return mechanism (submit_judgment, submit_hero_prose),
+  // not actions the user cares about. Cluttered the timeline with
+  // duplicate "Running submit_judgment / submit_judgment" rows under
+  // every agent run.
+  const visibleTools = run.tools.filter(
+    (t) => !/^submit_/i.test(t.toolName),
+  );
   // No standalone label row — the friendly label is already used as
   // the streaming Reasoning header. Leaves a single visual element
   // per agent run instead of stacking three.
@@ -701,9 +709,9 @@ function AgentRunBlock({
           label={friendly}
         />
       ) : null}
-      {run.tools.length > 0 ? (
+      {visibleTools.length > 0 ? (
         <div className="flex flex-col gap-1">
-          {run.tools.map((t) => (
+          {visibleTools.map((t) => (
             <Tool
               key={t.toolId}
               name={t.toolName}
@@ -748,7 +756,7 @@ function PhaseHeader({ node, now }: { node: PhaseNode; now: number }) {
         )}
       >
         {node.status === "running" ? (
-          <ShimmeringText text={node.title} duration={2.8} spread={1.2} />
+          <ShimmeringText text={node.title} duration={3.6} spread={1.1} />
         ) : (
           node.title
         )}
@@ -773,21 +781,24 @@ function PhaseHeader({ node, now }: { node: PhaseNode; now: number }) {
 
 function PhaseDot({ status }: { status: NodeStatus }) {
   if (status === "running") {
-    // Custom 5×5 dot-matrix concentric-breath loader. Replaces the
-    // legacy ring + ping-circle; same expanding-wave energy but
-    // calmer and less Material-Design-y. Sized to ~22px to match
-    // the surrounding done/failed/pending dot footprint.
+    // 5×5 concentric-breath at size=3 (≈19 px) — sized to fill the
+    // 22 px slot the done/pending dots occupy. `palette.on =
+    // foreground` instead of currentColor so the wave reads at full
+    // contrast regardless of inherited text color (was rendering
+    // near-invisible against muted-foreground in the previous pass).
+    // fps=10 is intentional — slower than the model's default
+    // loader; calmer to look at over a 30-minute scan.
     return (
       <span className="flex size-[22px] shrink-0 items-center justify-center">
         <Matrix
           rows={5}
           cols={5}
           frames={concentricBreath}
-          fps={14}
-          size={2}
+          fps={10}
+          size={3}
           gap={1}
+          palette={{ on: "var(--foreground)", off: "transparent" }}
           ariaLabel="In progress"
-          className="opacity-80"
         />
       </span>
     );
@@ -830,7 +841,7 @@ function SubPhaseRow({ node }: { node: PhaseNode }) {
         )}
       >
         {node.status === "running" ? (
-          <ShimmeringText text={node.title} duration={2.4} spread={1} />
+          <ShimmeringText text={node.title} duration={3.2} spread={1} />
         ) : (
           node.title
         )}
@@ -853,20 +864,20 @@ function SubPhaseRow({ node }: { node: PhaseNode }) {
 
 function SubDot({ status }: { status: NodeStatus }) {
   if (status === "running") {
-    // Smaller 5×5 dot-matrix breathing-dot for the sub-row. Matches
-    // the parent PhaseDot's matrix language but calmer — a single
-    // centred dot fading 0.25→1.0 instead of expanding rings.
+    // 5×5 breathing-dot at size=2. Smaller than PhaseDot (parent vs
+    // child hierarchy) but still big enough to read — earlier
+    // version at size=1 was 9 px and visually disappeared.
     return (
-      <span className="flex size-3 shrink-0 items-center justify-center">
+      <span className="flex size-3.5 shrink-0 items-center justify-center">
         <Matrix
           rows={5}
           cols={5}
           frames={breathingDot}
-          fps={14}
-          size={1}
-          gap={1}
+          fps={10}
+          size={2}
+          gap={0}
+          palette={{ on: "var(--foreground)", off: "transparent" }}
           ariaLabel="In progress"
-          className="opacity-80"
         />
       </span>
     );

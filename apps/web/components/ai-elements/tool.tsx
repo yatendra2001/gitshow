@@ -4,7 +4,8 @@ import * as React from "react";
 import { ChevronDown, Check, AlertTriangle, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
-import { Matrix, loader } from "@/components/ui/matrix";
+import { Matrix } from "@/components/ui/matrix";
+import { breathingDot } from "@/components/ui/matrix-loaders";
 
 /**
  * Tool — per-invocation row showing one tool call.
@@ -77,9 +78,9 @@ export function Tool({
             {running ? (
               <ShimmeringText
                 text={subtitle || name}
-                duration={2.4}
-                spread={1.4}
-                className="text-foreground/55"
+                duration={3.4}
+                spread={1.1}
+                className="text-foreground/60"
               />
             ) : (
               <span
@@ -94,7 +95,14 @@ export function Tool({
               </span>
             )}
           </span>
-          {subtitle && subtitle !== name ? (
+          {/* Show the technical tool name as a sub-line ONLY when it
+              contributes new info. If subtitle is missing OR identical
+              to name OR matches the friendly label closely, hide the
+              sub-line — repeating "submit_judgment / submit_judgment"
+              on every card was pure visual debt. */}
+          {subtitle &&
+          subtitle !== name &&
+          subtitle.toLowerCase() !== name.toLowerCase() ? (
             <span className="block truncate font-mono text-[10.5px] text-muted-foreground/60">
               {name}
             </span>
@@ -146,21 +154,25 @@ function StatusGlyph({ status }: { status: ToolStatus }) {
   if (status === "running") {
     return (
       <Matrix
-        rows={6}
-        cols={6}
-        frames={loader}
-        fps={14}
-        size={2}
+        rows={5}
+        cols={5}
+        frames={breathingDot}
+        fps={10}
+        size={3}
         gap={1}
+        palette={{ on: "var(--foreground)", off: "transparent" }}
         ariaLabel="Running"
-        className="shrink-0 opacity-60"
+        className="shrink-0"
       />
     );
   }
   if (status === "completed") {
+    // Foreground-tinted disc, not coloured. The timeline already has
+    // green check ticks on phase rows; another green dot here added
+    // noise. Mono-tone reads cleaner.
     return (
-      <span className="flex size-3 shrink-0 items-center justify-center rounded-full bg-emerald-500/80">
-        <Check className="size-2 text-white" strokeWidth={3.5} />
+      <span className="flex size-3.5 shrink-0 items-center justify-center rounded-full bg-foreground/20">
+        <Check className="size-2 text-foreground/80" strokeWidth={3} />
       </span>
     );
   }
