@@ -1,10 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
-import { Matrix, loader } from "@/components/ui/matrix";
+import { Matrix } from "@/components/ui/matrix";
+import { breathingDot } from "@/components/ui/matrix-loaders";
 
 /**
  * Reasoning — the "Thought for Xs" collapsible. Streams text in while
@@ -43,7 +44,11 @@ export function Reasoning({
   className,
   ...props
 }: ReasoningProps) {
-  const [open, setOpen] = React.useState(true);
+  // Open state defaults to `streaming`, NOT true. Previously every
+  // already-completed Reasoning rendered fully open on poll, which
+  // turned a long agent timeline into a wall of "Thought for Xs"
+  // bodies. Now done blocks land closed and click-to-open instead.
+  const [open, setOpen] = React.useState(streaming);
   const mountedAt = React.useRef(Date.now());
   const [derivedMs, setDerivedMs] = React.useState(0);
 
@@ -66,7 +71,6 @@ export function Reasoning({
     1,
     Math.round((elapsedMs ?? derivedMs) / 1000),
   );
-  const headerLabel = streaming ? label : `Thought for ${seconds}s`;
 
   return (
     <div
@@ -83,36 +87,46 @@ export function Reasoning({
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 py-1.5 text-left group"
+        className="flex w-full items-center gap-2.5 py-1.5 text-left group"
       >
         {streaming ? (
-          // Tiny dot-matrix loader as the "thinking" indicator. Lives
-          // in 6×6 SVG cells, ~10px, animates at 14fps. Subtle enough
-          // to sit next to body text without screaming.
+          // breathingDot at size=3 — 5×5 SVG cells, 19px square. The
+          // earlier "loader" preset at size=2 was ~10px and visually
+          // disappeared at low contrast. Foreground palette + larger
+          // cells make it actually readable.
           <Matrix
-            rows={6}
-            cols={6}
-            frames={loader}
-            fps={14}
-            size={2}
+            rows={5}
+            cols={5}
+            frames={breathingDot}
+            fps={10}
+            size={3}
             gap={1}
+            palette={{
+              on: "var(--foreground)",
+              off: "transparent",
+            }}
             ariaLabel="Thinking"
-            className="shrink-0 opacity-60"
+            className="shrink-0"
           />
         ) : (
-          <span className="size-2.5 rounded-full bg-muted-foreground/40 shrink-0" />
+          // Solid check on a small foreground-tinted disc — clearly
+          // reads as "done" without color noise.
+          <span className="flex size-3.5 shrink-0 items-center justify-center rounded-full bg-foreground/20">
+            <Check className="size-2 text-foreground/80" strokeWidth={3} />
+          </span>
         )}
-        <span className="flex-1 text-[12.5px] font-medium tracking-tight">
+        <span className="flex-1 text-[13px] font-medium tracking-tight">
           {streaming ? (
             <ShimmeringText
               text={label}
-              duration={2.4}
-              spread={1.4}
-              className="text-foreground/55"
+              duration={3.8}
+              spread={1.1}
+              className="text-foreground/60"
             />
           ) : (
-            <span className="text-muted-foreground">
-              Thought for {seconds}s
+            <span className="text-muted-foreground/80">
+              {label} <span className="text-muted-foreground/50">·</span>{" "}
+              <span className="font-mono tabular-nums">{seconds}s</span>
             </span>
           )}
         </span>
@@ -305,30 +319,35 @@ function denseifyStreamingLines(raw: string): string {
 }
 
 function renderBlock(b: Block, key: number): React.ReactNode {
+  // The Reasoning body is a "scratchpad" — model thinking in real
+  // time. Rendering it like a documentation page (big bold headers,
+  // fancy bullets, code-block fences) tricks the eye into giving it
+  // weight it doesn't deserve. Strip the visual hierarchy down to
+  // dense paragraphs with subtle list/quote affordances. Headers
+  // collapse to a faint italic line, lists lose the giant indent,
+  // code blocks shed their card chrome.
   switch (b.kind) {
     case "h":
-      return b.level === 1 ? (
-        <h1 key={key} className="text-[15px] font-semibold mt-3 mb-1.5 first:mt-0">
+      return (
+        <p
+          key={key}
+          className="mt-2.5 mb-0.5 first:mt-0 text-foreground/85 italic"
+        >
           {renderInline(b.text)}
-        </h1>
-      ) : b.level === 2 ? (
-        <h2 key={key} className="text-[14px] font-semibold mt-3 mb-1.5 first:mt-0">
-          {renderInline(b.text)}
-        </h2>
-      ) : (
-        <h3 key={key} className="text-[13px] font-semibold mt-2 mb-1 first:mt-0">
-          {renderInline(b.text)}
-        </h3>
+        </p>
       );
     case "p":
       return (
-        <p key={key} className="my-1.5 first:mt-0 last:mb-0">
+        <p key={key} className="my-1 first:mt-0 last:mb-0">
           {renderInline(b.text)}
         </p>
       );
     case "ul":
       return (
-        <ul key={key} className="list-disc pl-5 my-1.5 space-y-0.5 marker:text-muted-foreground/50">
+        <ul
+          key={key}
+          className="list-disc pl-4 my-1 space-y-0.5 marker:text-muted-foreground/40"
+        >
           {b.items.map((it, j) => (
             <li key={j}>{renderInline(it)}</li>
           ))}
@@ -336,7 +355,10 @@ function renderBlock(b: Block, key: number): React.ReactNode {
       );
     case "ol":
       return (
-        <ol key={key} className="list-decimal pl-5 my-1.5 space-y-0.5 marker:text-muted-foreground/50">
+        <ol
+          key={key}
+          className="list-decimal pl-4 my-1 space-y-0.5 marker:text-muted-foreground/40"
+        >
           {b.items.map((it, j) => (
             <li key={j}>{renderInline(it)}</li>
           ))}
@@ -346,7 +368,7 @@ function renderBlock(b: Block, key: number): React.ReactNode {
       return (
         <pre
           key={key}
-          className="bg-muted/60 rounded-md p-2 my-2 text-[12px] leading-relaxed overflow-x-auto font-mono"
+          className="my-1.5 text-[11.5px] leading-relaxed overflow-x-auto font-mono text-foreground/65"
         >
           {b.text}
         </pre>
@@ -374,14 +396,17 @@ function renderInline(text: string): React.ReactNode {
     if (m.index > last) out.push(text.slice(last, m.index));
     const tok = m[0]!;
     if (tok.startsWith("**") && tok.endsWith("**")) {
+      // Strip emphasis — the "scratchpad" feel breaks if every
+      // bolded "Repository Info:" yells at the reader. Show the
+      // text plain; the prose still carries meaning.
       out.push(
-        <strong key={key++} className="font-semibold text-foreground">
+        <span key={key++} className="text-foreground/85">
           {tok.slice(2, -2)}
-        </strong>,
+        </span>,
       );
     } else if (tok.startsWith("*") && tok.endsWith("*")) {
       out.push(
-        <em key={key++} className="italic">
+        <em key={key++} className="italic text-foreground/85">
           {tok.slice(1, -1)}
         </em>,
       );
@@ -389,7 +414,7 @@ function renderInline(text: string): React.ReactNode {
       out.push(
         <code
           key={key++}
-          className="rounded bg-muted px-1 py-[1px] text-[12px] font-mono"
+          className="font-mono text-foreground/85 text-[11.5px]"
         >
           {tok.slice(1, -1)}
         </code>,
