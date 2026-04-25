@@ -51,6 +51,8 @@ export default function ProjectsSection() {
                                 image={project.image}
                                 video={project.video}
                                 links={project.links}
+                                userShare={project.userShare}
+                                webMentions={project.webMentions}
                             />
                         </BlurFade>
                     ))}

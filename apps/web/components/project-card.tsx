@@ -39,6 +39,14 @@ interface Props {
     type: string;
     href: string;
   }[];
+  /** 0..1 — fraction of repo authored by the user. Renders as a badge. */
+  userShare?: number;
+  /** Press / community mentions of the project (HN, Product Hunt, dev.to). */
+  webMentions?: ReadonlyArray<{
+    title: string;
+    url: string;
+    source: string;
+  }>;
   className?: string;
 }
 
@@ -66,9 +74,15 @@ export function ProjectCard({
   image,
   video,
   links,
+  userShare,
+  webMentions,
   className,
 }: Props) {
   const targetHref = href || "#";
+  const sharePct =
+    typeof userShare === "number" && userShare > 0
+      ? Math.round(userShare * 100)
+      : null;
   return (
     <div
       className={cn(
@@ -128,7 +142,17 @@ export function ProjectCard({
         <div className="flex items-start justify-between gap-2">
           <div className="flex flex-col gap-1">
             <h3 className="font-semibold">{title}</h3>
-            <time className="text-xs text-muted-foreground">{dates}</time>
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+              <time>{dates}</time>
+              {sharePct !== null && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span className="font-mono tabular-nums">
+                    {sharePct}% authored
+                  </span>
+                </>
+              )}
+            </div>
           </div>
           <ArrowUpRight
             className="h-4 w-4 text-muted-foreground transition-transform duration-200 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-foreground"
@@ -138,6 +162,23 @@ export function ProjectCard({
         <div className="text-xs flex-1 prose max-w-full text-pretty font-sans leading-relaxed text-muted-foreground dark:prose-invert">
           <Markdown>{description}</Markdown>
         </div>
+        {webMentions && webMentions.length > 0 && (
+          <div className="pointer-events-auto flex flex-wrap gap-1.5 relative z-10">
+            {webMentions.slice(0, 3).map((m) => (
+              <Link
+                href={m.url}
+                key={m.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="inline-flex items-center gap-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground border border-border/60 rounded-md px-1.5 py-0.5 bg-background/60 hover:bg-background"
+                title={m.title}
+              >
+                {m.source}
+              </Link>
+            ))}
+          </div>
+        )}
         {tags && tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-auto">
             {tags.map((tag) => (

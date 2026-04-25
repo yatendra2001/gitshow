@@ -22,6 +22,7 @@ import type { ScanSession } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
 import type { ScanTrace } from "../observability/trace.js";
 import type { RepoJudgeOutput } from "./repo-judge.js";
+import type { RepoStudy } from "../../repo-study.js";
 
 /** How many projects to surface in the curated "My Projects" grid. */
 export const PROJECT_FEATURE_CAP = 6;
@@ -49,6 +50,8 @@ const SYSTEM_PROMPT = `You are picking the top projects to feature on a develope
 
 You receive one card per judged repo with:
   - repoFullName, primaryLanguage, stars, archived, fork
+  - userShare    (0..1 — fraction of repo lines this user authored, from git log)
+  - userCommits  (commits authored by this user / total non-merge commits)
   - judgment.kind        (product / library / tool / experiment / tutorial-follow / template-clone / fork-contribution / contribution-mirror / dotfiles-config / coursework / empty-or-trivial / research-artifact)
   - judgment.polish      (shipped / working / wip / broken / not-code)
   - judgment.purpose     (one-line honest description from the per-repo judge)
@@ -58,9 +61,10 @@ You receive one card per judged repo with:
 Rules for picking up to 6:
   - HARD EXCLUDE: contribution-mirror, dotfiles-config, empty-or-trivial, tutorial-follow, template-clone. Never feature these.
   - HARD EXCLUDE: archived AND polish=broken — those are dead and broken; the timeline can have them.
-  - PREFER kind=product or kind=library with polish=shipped or polish=working.
+  - HARD EXCLUDE userShare < 0.10 on substantial repos (>5KB total source). That's a fork or a barely-touched template — it doesn't represent the user's craft.
+  - PREFER kind=product or kind=library with polish=shipped or polish=working AND userShare ≥ 0.5.
   - PREFER repos where the judgment.purpose reads like a real product description ("Open-source X for Y") over generic ones ("A toy implementation of Z").
-  - Stars are a tie-breaker, not a gate. A 0-star polished product beats a 200-star tutorial-follow.
+  - Stars are a tie-breaker, not a gate. A 0-star polished solo build (userShare=0.95) beats a 200-star tutorial-follow.
   - Range matters: if you can pick 5 polished products and 1 strong library, that's better than 6 near-identical CRUD apps. But don't reach for diversity if one bucket is genuinely stronger.
   - You MAY return fewer than 6 picks if the slate is weak. A tight 4-project grid beats a padded 6.
 
@@ -70,6 +74,8 @@ export interface ProjectRankerInput {
   session: ScanSession;
   usage: SessionUsage;
   judgments: Record<string, RepoJudgeOutput>;
+  /** Per-repo blame stats keyed by full name (provided when available). */
+  studies?: Record<string, RepoStudy>;
   trace?: ScanTrace;
   onProgress?: (text: string) => void;
   emit?: AgentEventEmit;
@@ -78,9 +84,9 @@ export interface ProjectRankerInput {
 export async function runProjectRanker(
   input: ProjectRankerInput,
 ): Promise<ProjectRankerOutput> {
-  const { session, usage, judgments, trace, onProgress, emit } = input;
+  const { session, usage, judgments, studies, trace, onProgress, emit } = input;
 
-  const cards = formatJudgmentCards(judgments);
+  const cards = formatJudgmentCards(judgments, studies);
   if (cards.candidateCount === 0) {
     return { picks: [], rationale: "No judged repos to rank." };
   }
@@ -129,6 +135,7 @@ export async function runProjectRanker(
 
 function formatJudgmentCards(
   judgments: Record<string, RepoJudgeOutput>,
+  studies?: Record<string, RepoStudy>,
 ): { body: string; candidateCount: number } {
   const lines: string[] = [];
   let n = 0;
@@ -152,6 +159,14 @@ function formatJudgmentCards(
       .join(" ");
     lines.push(`### ${fullName}`);
     lines.push(`  meta: ${meta}`);
+    const study = studies?.[fullName];
+    if (study) {
+      lines.push(
+        `  attribution: userShare=${(study.userShare * 100).toFixed(0)}%  userCommits=${study.userCommits}/${study.totalCommits}  userLines=${study.userLines}/${study.totalLines}`,
+      );
+    } else {
+      lines.push(`  attribution: (not available — study did not run)`);
+    }
     lines.push(`  kind=${j.judgment.kind}  polish=${j.judgment.polish}`);
     lines.push(`  purpose: ${j.judgment.purpose}`);
     lines.push(

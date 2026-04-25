@@ -27,6 +27,7 @@ import {
 } from "@gitshow/shared/kg";
 import { sampleRepo, formatSample, type RepoSample } from "./repo-sampler.js";
 import type { ScanTrace } from "../observability/trace.js";
+import type { RepoStudy } from "../../repo-study.js";
 
 export const RepoJudgmentSchema = z.object({
   kind: ProjectKindSchema,
@@ -48,6 +49,8 @@ export interface RepoJudgeInput {
   repo: RepoRef;
   /** Local path where the repo was cloned (inventory stage). */
   repoPath: string;
+  /** Per-repo attribution + manifest stats produced by `studyRepo`. */
+  study?: RepoStudy;
   trace?: ScanTrace;
   onProgress?: (text: string) => void;
   /** Optional structured emit — streams reasoning/tool events. */
@@ -70,9 +73,16 @@ What you receive (in tagged blocks):
   <tree>        depth-2 file tree
   <manifest>    package.json / Cargo.toml / pyproject.toml / etc.
   <file>        first 2KB of up to 5 source files
+  <attribution> git-log stats — what fraction of the repo this user authored
 
 The ONLY test for shouldFeature=true is:
   "Did the user build something real that's worth showing on a portfolio?"
+
+Use <attribution> as a TRUTH check: a low userShare (e.g. < 10%) on a
+non-trivial repo is a strong signal of "fork-with-tiny-change" or
+"clone-of-someone-else's-work" — those should NOT be featured even if
+the README looks polished. Conversely, high userShare (>70%) with
+substantial commits is strong evidence the user is the primary author.
 
 External validation (stars, forks, mentions) is NEVER a gate.
 Pinned vs. not is decided downstream — your job is to read and judge.
@@ -125,10 +135,25 @@ Output ONLY by calling submit_judgment.`;
 const REASONING_EFFORT = "medium" as const;
 
 export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput> {
-  const { repo, repoPath, session, usage, trace, onProgress, emit } = input;
+  const { repo, repoPath, study, session, usage, trace, onProgress, emit } = input;
   const t0 = Date.now();
   const sample = await sampleRepo(repoPath);
   const formatted = formatSample(sample);
+
+  const attributionBlock = study
+    ? [
+        `<attribution>`,
+        `  user lines: ${study.userLines}/${study.totalLines} (${(study.userShare * 100).toFixed(0)}% of all added lines)`,
+        `  user commits: ${study.userCommits}/${study.totalCommits}`,
+        study.firstUserCommit
+          ? `  first user commit: ${study.firstUserCommit.slice(0, 10)}`
+          : `  first user commit: (none)`,
+        study.lastUserCommit
+          ? `  last user commit: ${study.lastUserCommit.slice(0, 10)}`
+          : `  last user commit: (none)`,
+        `</attribution>`,
+      ].join("\n")
+    : "";
 
   const userInput = [
     `<repo>${repo.fullName}</repo>`,
@@ -136,8 +161,11 @@ export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput>
     `description="${(repo.description ?? "").replace(/"/g, "'").slice(0, 200)}"`,
     `</meta>`,
     "",
+    attributionBlock,
     formatted,
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   let judgment: RepoJudgment;
   try {
@@ -194,6 +222,8 @@ export interface JudgeAllOptions {
   github: GitHubData;
   /** Map of fullName → local clone path produced by inventory stage. */
   clonedPaths: Record<string, string>;
+  /** Map of fullName → RepoStudy produced alongside cloning. */
+  studies?: Record<string, RepoStudy>;
   /** Limit the candidate set; default 30. */
   maxCandidates?: number;
   trace?: ScanTrace;
@@ -216,6 +246,7 @@ export async function judgeAllRepos(
             usage: opts.usage,
             repo: c.repo,
             repoPath: c.repoPath,
+            study: opts.studies?.[c.repo.fullName],
             trace: opts.trace,
             onProgress: opts.onProgress,
             emit: opts.emit,

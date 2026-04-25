@@ -8,9 +8,9 @@
  *   4. repo-judge           — Kimi reads README + tree + samples per repo;
  *                             produces Judgment{kind, polish, shouldFeature, …}
  *   5. fetcher fan-out      — github-facts (sync) + linkedin tier chain +
- *                             personal-site + twitter + hn/devto/medium +
+ *                             personal-site + hn/devto/medium +
  *                             orcid + semantic-scholar + arxiv + stackoverflow
- *                             + blog-import (existing). All emit TypedFacts.
+ *                             + youtube + blog-import. All emit TypedFacts.
  *   6. merge-facts          — fuse all TypedFacts into one KnowledgeGraph
  *                             (deterministic + LLM pair-resolution)
  *   7. apply-judgments      — overlay per-repo Judgments onto Project nodes
@@ -31,6 +31,8 @@ import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { fetchGitHubData } from "../github-fetcher.js";
 import { filterRepos } from "../repo-filter.js";
 import { cloneAndInventory } from "../inventory-runner.js";
+import { studyRepo, type RepoStudy } from "../repo-study.js";
+import { aggregateSkillsFromStudies } from "./skills/aggregate-from-manifests.js";
 import type { ScanSession } from "../schemas.js";
 import type { GitHubData, StructuredInventory } from "../types.js";
 import type { SessionUsage } from "../session.js";
@@ -41,11 +43,14 @@ import {
   type ProjectRankerOutput,
 } from "./judge/project-ranker.js";
 import {
+  runProjectSearch,
+  type ProjectSearchOutput,
+} from "./judge/project-search.js";
+import {
   emitGithubFacts,
   runLinkedInPublicFetcher,
   runLinkedInPdfFetcher,
   runPersonalSiteFetcher,
-  runTwitterBioFetcher,
   runHnProfileFetcher,
   runDevtoProfileFetcher,
   runMediumProfileFetcher,
@@ -113,7 +118,6 @@ const FETCHER_HARD_CAP_MS = 15 * 60_000;
 const FETCHER_TIMEOUTS_MS = {
   linkedin: FETCHER_HARD_CAP_MS,
   "personal-site": FETCHER_HARD_CAP_MS,
-  twitter: FETCHER_HARD_CAP_MS,
   hn: FETCHER_HARD_CAP_MS,
   devto: FETCHER_HARD_CAP_MS,
   medium: FETCHER_HARD_CAP_MS,
@@ -220,7 +224,12 @@ export async function runResumePipeline(
   });
 
   // 3. Inventory: clone deep-tier repos so the Repo Judge can read them.
+  //    For each successful clone we also run `studyRepo` to collect
+  //    the user-attribution stats (`git log --author=<handle>`) and
+  //    parse manifests — both feed downstream stages without needing
+  //    a separate clone pass.
   const cloned: Record<string, string> = {};
+  const studies: Record<string, RepoStudy> = {};
   await phases.phase("inventory", async () => {
     log(
       `[pipeline] stage 3: inventory (cap ${INVENTORY_CAP}, concurrency ${INVENTORY_CONCURRENCY})\n`,
@@ -238,6 +247,22 @@ export async function runResumePipeline(
               log,
             });
             cloned[repo.fullName] = inv.repoPath;
+            try {
+              const study = await studyRepo({
+                repoPath: inv.repoPath,
+                fullName: repo.fullName,
+                handle: session.handle,
+                log,
+              });
+              studies[repo.fullName] = study;
+              log(
+                `[study] ${repo.fullName}: user authored ${(study.userShare * 100).toFixed(0)}% (${study.userLines}/${study.totalLines} lines, ${study.userCommits}/${study.totalCommits} commits, ${study.manifestDeps.length} deps)\n`,
+              );
+            } catch (err) {
+              log(
+                `[study] ${repo.fullName} failed: ${(err as Error).message.slice(0, 80)}\n`,
+              );
+            }
           } catch (err) {
             log(
               `[inv] ${repo.fullName} failed: ${(err as Error).message.slice(0, 80)}\n`,
@@ -260,6 +285,7 @@ export async function runResumePipeline(
       usage,
       github,
       clonedPaths: cloned,
+      studies,
       maxCandidates: JUDGE_MAX_CANDIDATES,
       trace,
       onProgress,
@@ -292,6 +318,35 @@ export async function runResumePipeline(
       `[pipeline]   ranker picked ${r.picks.length} project(s) for grid\n`,
     );
     return r;
+  });
+
+  // 4c. Project search (Tavily) — for the 6 picks only. Surfaces
+  //     HN / Product Hunt / dev.to mentions onto the public project
+  //     card. Gated on TAVILY_API_KEY; runs as a no-op when missing.
+  const search = await phases.phase("project-search", async () => {
+    log(`[pipeline] stage 4c: project-search\n`);
+    if (ranking.picks.length === 0) {
+      return { mentionsByRepo: {} } as ProjectSearchOutput;
+    }
+    const titleByRepo: Record<string, string> = {};
+    const homepageByRepo: Record<string, string | undefined> = {};
+    for (const repo of github.ownedRepos) {
+      titleByRepo[repo.fullName] = friendlyTitleFromFullName(
+        repo.fullName,
+        repo.description,
+      );
+    }
+    // KG projects already carry homepageUrl after the merger, but this
+    // stage runs BEFORE merge — homepage is unavailable here, so we
+    // fall back to title+handle queries which Tavily handles fine.
+    return runProjectSearch({
+      ranking,
+      titleByRepo,
+      homepageByRepo,
+      handle: session.handle,
+      trace,
+      log,
+    });
   });
 
   // 5. Fetcher fan-out (parallel). Each fetcher returns TypedFact[].
@@ -336,10 +391,13 @@ export async function runResumePipeline(
     // Run the 10 lightweight fetchers in parallel — they're all
     // network-bound (TinyFish / Jina / GitHub APIs / arXiv / etc.)
     // with small JSON payloads, so concurrency is the win.
+    // Twitter / X fetcher dropped: the public page returns ~295
+    // chars (a login-wall stub) for unauthed scrapers. The intake
+    // already preserves the user's X URL on the contact card; trying
+    // to enrich it just burned LLM credits for empty extractions.
     const [
       linkedInFacts,
       personalSiteFacts,
-      twitterFacts,
       hnFacts,
       devtoFacts,
       mediumFacts,
@@ -354,9 +412,6 @@ export async function runResumePipeline(
       ),
       safeFetch("fetch:personal-site", FETCHER_TIMEOUTS_MS["personal-site"], () =>
         runPersonalSiteFetcher({ session, usage, trace, onProgress }),
-      ),
-      safeFetch("fetch:twitter", FETCHER_TIMEOUTS_MS.twitter, () =>
-        runTwitterBioFetcher({ session, usage, trace, onProgress }),
       ),
       safeFetch("fetch:hn", FETCHER_TIMEOUTS_MS.hn, () =>
         runHnProfileFetcher({ session, usage, trace, onProgress }),
@@ -439,7 +494,6 @@ export async function runResumePipeline(
       githubFacts,
       linkedInFacts,
       personalSiteFacts,
-      twitterFacts,
       hnFacts,
       devtoFacts,
       mediumFacts,
@@ -456,11 +510,27 @@ export async function runResumePipeline(
   const judgmentFacts = projectJudgmentsToBuiltFacts(judgments);
   const intakeFacts = projectIntakeFacts(session, opts.intakeEmail);
 
+  // Manifest-driven skills — aggregate every studied repo's deps
+  // into HAS_SKILL facts with usage frequency + a 0..100 score that
+  // drives the chip bars on the public profile.
+  const pushedAtByRepo: Record<string, string | undefined> = {};
+  for (const r of github.ownedRepos) pushedAtByRepo[r.fullName] = r.pushedAt ?? undefined;
+  const manifestSkills = aggregateSkillsFromStudies({
+    studies,
+    pushedAtByRepo,
+    attributionUrl: `https://github.com/${session.handle}`,
+  });
+  log(
+    `[pipeline]   manifest skills: ${manifestSkills.facts.length} (top: ${manifestSkills.ranked
+      .slice(0, 6)
+      .map((s) => `${s.name}@${s.score}`)
+      .join(", ")})\n`,
+  );
+
   const allFacts: TypedFact[] = [
     ...fetchersResult.githubFacts,
     ...fetchersResult.linkedInFacts,
     ...fetchersResult.personalSiteFacts,
-    ...fetchersResult.twitterFacts,
     ...fetchersResult.hnFacts,
     ...fetchersResult.devtoFacts,
     ...fetchersResult.mediumFacts,
@@ -471,6 +541,7 @@ export async function runResumePipeline(
     ...fetchersResult.youtubeFacts,
     ...judgmentFacts,
     ...intakeFacts,
+    ...manifestSkills.facts,
   ];
   log(`[pipeline]   total facts: ${allFacts.length}\n`);
 
@@ -493,13 +564,17 @@ export async function runResumePipeline(
     });
   });
 
-  // 8. Apply judgments + ranker picks to Project nodes.
+  // 8. Apply judgments + ranker picks + per-repo blame stats to
+  //    Project nodes.
   //    - Per-repo judgments (Kimi) write kind/polish/purpose/reason/tags.
   //    - The Sonnet ranker is the source of truth for shouldFeature +
   //      featureRank: ONLY the projects in `ranking.picks` get
   //      shouldFeature=true; everything else (including repos Kimi
   //      thought were featurable) falls through to the build-log.
-  applyJudgmentsToKg(kg, judgments, ranking);
+  //    - The repo-study writes userShare/userCommits/userLines so the
+  //      project cards can surface "Authored 87% of code".
+  applyJudgmentsToKg(kg, judgments, ranking, studies);
+  applySearchMentionsToKg(kg, search, ranking);
 
   // 9. Media fetch (og → README → YouTube → Gemini gen / Clearbit logos).
   const r2 = r2ClientFromEnv();
@@ -721,6 +796,7 @@ function applyJudgmentsToKg(
   kg: KnowledgeGraph,
   judgments: Record<string, RepoJudgeOutput>,
   ranking: ProjectRankerOutput,
+  studies: Record<string, RepoStudy>,
 ): void {
   // Pre-build the Sonnet pick map so we can stamp featureRank in one
   // pass below. Pick index = featureRank (0 = best).
@@ -756,7 +832,34 @@ function applyJudgmentsToKg(
       project.featureRank = undefined;
     }
 
+    // Stamp per-repo attribution so the renderer can show
+    // "Authored 87% of code" badges on the project card.
+    const study = studies[fullName];
+    if (study) {
+      project.userShare = study.userShare;
+      project.userCommits = study.userCommits;
+      project.userLines = study.userLines;
+    }
+
     kg.judgments[project.id] = j.judgment;
+  }
+}
+
+function applySearchMentionsToKg(
+  kg: KnowledgeGraph,
+  search: ProjectSearchOutput,
+  ranking: ProjectRankerOutput,
+): void {
+  if (Object.keys(search.mentionsByRepo).length === 0) return;
+  // Pick set is small (≤6) — linear lookup by repoFullName is fine.
+  for (const pick of ranking.picks) {
+    const mentions = search.mentionsByRepo[pick.repoFullName];
+    if (!mentions || mentions.length === 0) continue;
+    const project = kg.entities.projects.find(
+      (p) => p.repoFullName === pick.repoFullName,
+    );
+    if (!project) continue;
+    project.webMentions = mentions;
   }
 }
 

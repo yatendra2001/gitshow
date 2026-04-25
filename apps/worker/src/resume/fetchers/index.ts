@@ -26,7 +26,6 @@ export {
 
 export { runLinkedInPdfFetcher } from "./linkedin-pdf.js";
 export { runPersonalSiteFetcher } from "./personal-site.js";
-export { runTwitterBioFetcher } from "./twitter-bio.js";
 export { runHnProfileFetcher } from "./hn-profile.js";
 export { runDevtoProfileFetcher } from "./devto-profile.js";
 export { runMediumProfileFetcher } from "./medium-profile.js";

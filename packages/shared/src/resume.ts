@@ -163,6 +163,10 @@ export const SkillSchema = z.object({
    * When unknown we still render the name pill without an icon.
    */
   iconKey: z.string().max(40).optional(),
+  /** 0..100 strength score from the manifest-skills aggregator. */
+  score: z.number().min(0).max(100).optional(),
+  /** Number of owned repos that declared this dependency. */
+  usageCount: z.number().int().nonnegative().optional(),
 });
 export type Skill = z.infer<typeof SkillSchema>;
 
@@ -225,6 +229,14 @@ export const ProjectMediaSchema = z.object({
 });
 export type ProjectMedia = z.infer<typeof ProjectMediaSchema>;
 
+export const ProjectWebMentionSchema = z.object({
+  title: z.string().max(240),
+  url: z.string().url(),
+  source: z.string().max(60),
+  snippet: z.string().max(400).optional(),
+});
+export type ProjectWebMention = z.infer<typeof ProjectWebMentionSchema>;
+
 export const ProjectSchema = z.object({
   id: z.string(),
   title: z.string().max(120),
@@ -247,6 +259,15 @@ export const ProjectSchema = z.object({
   kind: ProjectKindSchema.default("code"),
   /** Hero/thumbnails sourced via the media pipeline. */
   media: ProjectMediaSchema.optional(),
+  /**
+   * 0..1 — fraction of repo lines authored by the user. Surfaces on
+   * the card as e.g. "Authored 87% of code". Undefined for projects
+   * not backed by a clonable repo (personal-site mentions, etc.).
+   */
+  userShare: z.number().min(0).max(1).optional(),
+  userCommits: z.number().int().nonnegative().optional(),
+  /** Up to 3 web mentions, populated for the 6 projects in the grid. */
+  webMentions: z.array(ProjectWebMentionSchema).max(3).optional(),
 });
 export type Project = z.infer<typeof ProjectSchema>;
 

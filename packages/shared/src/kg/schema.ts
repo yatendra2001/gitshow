@@ -145,6 +145,18 @@ export const RoleSchema = z.object({
 });
 export type Role = z.infer<typeof RoleSchema>;
 
+export const WebMentionSchema = z.object({
+  /** Article / post / discussion title. */
+  title: z.string().max(240),
+  /** Canonical URL. */
+  url: z.string().url(),
+  /** Hostname-derived label (e.g., "Hacker News", "Product Hunt"). */
+  source: z.string().max(60),
+  /** First ~200 chars of the page summary, when the search API returns one. */
+  snippet: z.string().max(400).optional(),
+});
+export type WebMention = z.infer<typeof WebMentionSchema>;
+
 export const ProjectSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -152,6 +164,25 @@ export const ProjectSchema = z.object({
   purpose: z.string(),
   kind: ProjectKindSchema,
   polish: PolishSchema,
+  /**
+   * Fraction of repo lines authored by the user (0..1), computed
+   * via `git log --author=<handle> --numstat` in the repo-study
+   * stage. A "fork with one commit" reads ~0.01; a real solo build
+   * reads ~0.95. Fed into the Sonnet ranker prompt so the
+   * grid doesn't end up showcasing tutorial-clones the user
+   * barely touched.
+   */
+  userShare: z.number().min(0).max(1).optional(),
+  /** Number of commits authored by the user. */
+  userCommits: z.number().int().nonnegative().optional(),
+  /** User-authored line count (added across history). */
+  userLines: z.number().int().nonnegative().optional(),
+  /**
+   * Web mentions from the project-search stage — HN/Product Hunt/
+   * dev.to/reddit posts that name this project. Only populated for
+   * the 6 projects the ranker picked.
+   */
+  webMentions: z.array(WebMentionSchema).optional(),
   shouldFeature: z.boolean().default(false),
   /**
    * Sonnet-assigned rank among the curated top-N picks (0-indexed,
@@ -195,6 +226,18 @@ export const SkillSchema = z.object({
   canonicalName: z.string(),
   category: z.string().optional(),
   iconKey: z.string().optional(),
+  /**
+   * How many of the user's owned repos declared this skill in their
+   * manifest (package.json, Cargo.toml, etc.). Set by the manifest-
+   * skills aggregator that runs after every repo is studied.
+   */
+  usageCount: z.number().int().nonnegative().optional(),
+  /**
+   * Composite 0..100 strength score, computed from usage count
+   * × recency × code-volume signals. Drives the score bars on the
+   * skill chips. Undefined for legacy / non-aggregated skills.
+   */
+  score: z.number().min(0).max(100).optional(),
 });
 export type Skill = z.infer<typeof SkillSchema>;
 
