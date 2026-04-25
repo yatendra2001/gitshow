@@ -369,6 +369,8 @@ export const ScanSocialsSchema = z.object({
   linkedin: z.string().optional(),
   website: z.string().optional(),
   github: z.string().optional(),
+  /** YouTube channel/handle URL — round-tripped to Resume.contact.socials.youtube. */
+  youtube: z.string().optional(),
   /** ORCID iD URL (https://orcid.org/0000-0000-0000-0000) for the researcher persona. */
   orcid: z.string().optional(),
   /** Stack Overflow user URL (https://stackoverflow.com/users/{id}/{slug}). */

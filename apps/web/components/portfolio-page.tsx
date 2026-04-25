@@ -67,21 +67,24 @@ export default function PortfolioPage() {
           </BlurFade>
         </div>
       </section>
-      <section id="work">
-        <div className="flex min-h-0 flex-col gap-y-6">
-          <BlurFade delay={BLUR_FADE_DELAY * 5}>
-            <h2 className="text-xl font-bold">Work Experience</h2>
-          </BlurFade>
-          <BlurFade delay={BLUR_FADE_DELAY * 6}>
-            <WorkSection />
-          </BlurFade>
-        </div>
-      </section>
-      <section id="education">
-        <div className="flex min-h-0 flex-col gap-y-6">
-          <BlurFade delay={BLUR_FADE_DELAY * 7}>
-            <h2 className="text-xl font-bold">Education</h2>
-          </BlurFade>
+      {!hidden.has("work") && DATA.work.length > 0 && (
+        <section id="work">
+          <div className="flex min-h-0 flex-col gap-y-6">
+            <BlurFade delay={BLUR_FADE_DELAY * 5}>
+              <h2 className="text-xl font-bold">Work Experience</h2>
+            </BlurFade>
+            <BlurFade delay={BLUR_FADE_DELAY * 6}>
+              <WorkSection />
+            </BlurFade>
+          </div>
+        </section>
+      )}
+      {!hidden.has("education") && DATA.education.length > 0 && (
+        <section id="education">
+          <div className="flex min-h-0 flex-col gap-y-6">
+            <BlurFade delay={BLUR_FADE_DELAY * 7}>
+              <h2 className="text-xl font-bold">Education</h2>
+            </BlurFade>
           <div className="flex flex-col gap-8">
             {DATA.education.map((education, index) => (
               <BlurFade
@@ -126,8 +129,9 @@ export default function PortfolioPage() {
               </BlurFade>
             ))}
           </div>
-        </div>
-      </section>
+          </div>
+        </section>
+      )}
       <section id="skills">
         <div className="flex min-h-0 flex-col gap-y-4">
           <BlurFade delay={BLUR_FADE_DELAY * 9}>

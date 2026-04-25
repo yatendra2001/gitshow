@@ -57,6 +57,21 @@ export interface RenderInput {
   blog?: BlogPost[];
   /** Optional canonical email (intake or contact-fetcher). */
   email?: string;
+  /**
+   * User-supplied socials from the intake (linkedin / twitter / youtube /
+   * orcid / stackoverflow). The KG carries a Person node but doesn't
+   * round-trip these — feed them in here so they land on
+   * `Resume.contact.socials.{linkedin,x,youtube}` instead of getting
+   * dropped or relegated to `other[]` (which made the legacy
+   * ContactSection crash on `social.X.url`).
+   */
+  intakeSocials?: {
+    linkedin?: string;
+    twitter?: string;
+    youtube?: string;
+    orcid?: string;
+    stackoverflow?: string;
+  };
   trace?: ScanTrace;
 }
 
@@ -107,7 +122,11 @@ export function renderResumeFromKg(input: RenderInput): Resume {
   const skills = projectSkills({ kg, skillById, trace });
   const hackathons = projectHackathons({ kg, achievementById, trace });
   const publications = projectPublications({ kg, publicationById, trace });
-  const socials = projectSocials({ person, handle });
+  const socials = projectSocials({
+    person,
+    handle,
+    intakeSocials: input.intakeSocials,
+  });
   const personLogos = projectCompanyLogos({ kg, mediaById, work });
   const educationLogos = projectSchoolLogos({ kg, mediaById, education });
 
@@ -475,8 +494,15 @@ function projectPublications(opts: {
 function projectSocials(opts: {
   person: KgPerson;
   handle: string;
+  intakeSocials?: {
+    linkedin?: string;
+    twitter?: string;
+    youtube?: string;
+    orcid?: string;
+    stackoverflow?: string;
+  };
 }): Resume["contact"]["socials"] {
-  const { person, handle } = opts;
+  const { person, handle, intakeSocials } = opts;
   const github: SocialLink = {
     name: "GitHub",
     url: `https://github.com/${handle}`,
@@ -499,15 +525,74 @@ function projectSocials(opts: {
         navbar: true,
       }
     : undefined;
+
+  const linkedin: SocialLink | undefined = intakeSocials?.linkedin
+    ? {
+        name: "LinkedIn",
+        url: intakeSocials.linkedin,
+        iconKey: "linkedin",
+        navbar: true,
+      }
+    : undefined;
+
+  const x: SocialLink | undefined = intakeSocials?.twitter
+    ? {
+        name: "X",
+        url: normalizeTwitterUrl(intakeSocials.twitter),
+        iconKey: "x",
+        navbar: true,
+      }
+    : undefined;
+
+  const youtube: SocialLink | undefined = intakeSocials?.youtube
+    ? {
+        name: "YouTube",
+        url: intakeSocials.youtube,
+        iconKey: "youtube",
+        navbar: true,
+      }
+    : undefined;
+
+  // ORCID / Stack Overflow don't have first-class slots in the legacy
+  // template-shape socials, so they ride in `other[]` for now.
+  const other: SocialLink[] = [];
+  if (intakeSocials?.orcid) {
+    other.push({
+      name: "ORCID",
+      url: intakeSocials.orcid,
+      iconKey: "generic",
+      navbar: false,
+    });
+  }
+  if (intakeSocials?.stackoverflow) {
+    other.push({
+      name: "Stack Overflow",
+      url: intakeSocials.stackoverflow,
+      iconKey: "generic",
+      navbar: false,
+    });
+  }
+
   return {
     github,
-    linkedin: undefined,
-    x: undefined,
-    youtube: undefined,
+    linkedin,
+    x,
+    youtube,
     website,
     email,
-    other: [],
+    other,
   };
+}
+
+/**
+ * Accept either a bare twitter handle (`@iamyatendrak`) or a full URL
+ * and return a canonical https URL the contact section can link to.
+ */
+function normalizeTwitterUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  const handle = trimmed.replace(/^@/, "");
+  return `https://x.com/${handle}`;
 }
 
 function projectCompanyLogos(opts: {
