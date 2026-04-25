@@ -479,16 +479,41 @@ function buildPhaseTree(
 
   const activityByPhase = buildAgentActivity(events, now);
 
+  // Anything strictly BEFORE the current phase in the canonical order
+  // is implicitly done — even if we don't have its stage-end event in
+  // the response (the worker writes them but the API may have trimmed
+  // older rows). Without this, the early phases stay grey forever
+  // when the rich-event firehose pushes their stage-end out of the
+  // window. The pipeline runs sequentially, so this is safe.
+  const sectionAgentChildSet = new Set(SECTION_AGENT_CHILDREN);
+  const currentIdx = (() => {
+    if (!scan.current_phase) return -1;
+    if (sectionAgentChildSet.has(scan.current_phase)) {
+      return PHASE_ORDER.indexOf("fetchers");
+    }
+    return PHASE_ORDER.indexOf(scan.current_phase);
+  })();
+
   const resolve = (id: string, considerCurrent: boolean): PhaseNode => {
     const bucket = byStage.get(id);
     const isCurrent = considerCurrent && scan.current_phase === id;
     const isCompletedInScanRow = scan.last_completed_phase === id;
+    // If the pipeline has advanced past this phase, it's done — even
+    // if we don't have its stage-end row in the response (trimmed by
+    // the rich-event firehose during a long phase like repo-judge).
+    const phaseIdx = PHASE_ORDER.indexOf(id);
+    const isPriorToCurrent =
+      considerCurrent &&
+      currentIdx > 0 &&
+      phaseIdx >= 0 &&
+      phaseIdx < currentIdx;
 
     let status: NodeStatus;
     if (bucket?.error) status = "failed";
     else if (bucket?.end) status = "done";
     else if (bucket?.start || isCurrent) status = "running";
     else if (isCompletedInScanRow) status = "done";
+    else if (isPriorToCurrent) status = "done";
     else status = "pending";
 
     // Once the whole scan is succeeded, any phase that didn't emit its own
