@@ -6,12 +6,10 @@ import { getIntakeForUser } from "@/lib/intake";
 /**
  * GET /api/intake/[id]
  *
- * Polled by the intake page until status becomes `ready` (questions
- * are populated) or `failed`. Responds with the intake view shape
- * the UI can render directly.
- *
- * The agent is expected to finish in 20-60s. The client polls at
- * ~1-2s cadence during that window.
+ * Returns the intake row for the authed user. The intake page no
+ * longer polls this (it just shows the URL form immediately), but
+ * the route stays for status checks (e.g. resuming a consumed
+ * intake to surface its scan_id).
  */
 export async function GET(
   _req: Request,
