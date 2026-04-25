@@ -670,7 +670,7 @@ function AgentRunBlock({
   const stillStreaming = parentRunning && lastReasoning?.endedAt == null;
   const friendly = friendlyAgentLabel(run.agent);
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className="gs-enter flex flex-col gap-1.5">
       <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
         <span className="font-mono text-foreground/80">{friendly}</span>
       </div>
@@ -791,7 +791,7 @@ function PhaseDot({ status }: { status: NodeStatus }) {
 
 function SubPhaseRow({ node }: { node: PhaseNode }) {
   return (
-    <li className="flex items-baseline gap-2.5 pl-1">
+    <li className="gs-enter flex items-baseline gap-2.5 pl-1">
       <SubDot status={node.status} />
       <span
         className={cn(
