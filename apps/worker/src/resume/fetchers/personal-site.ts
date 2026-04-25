@@ -123,7 +123,24 @@ export async function runPersonalSiteFetcher(
       trace,
     });
 
-    const facts = buildFacts({ extraction: result, url });
+    // Self-link verification: does the page link back to the user's
+    // GitHub? If yes, the extracted facts get high confidence
+    // ("verified" band). If no, downgrade to "low" so they end up
+    // as "suggested" and get filtered out at render. Personal sites
+    // are user-asserted; we trust them only when the page itself
+    // proves ownership of the GitHub identity we've already verified
+    // via OAuth.
+    const verified = textMentionsGithubHandle(text, input.session.handle);
+    if (!verified) {
+      log(
+        `[${label}] page does not link to github.com/${input.session.handle} — downgrading facts to low confidence.\n`,
+      );
+    }
+    const facts = buildFacts({
+      extraction: result,
+      url,
+      confidence: verified ? "high" : "low",
+    });
     emitFactsToTrace(trace, label, facts);
 
     trace?.fetcherEnd({
@@ -197,17 +214,32 @@ async function fetchText(
   }
 }
 
+/** Does the rendered page text link back to `github.com/{handle}`? */
+function textMentionsGithubHandle(text: string, handle: string): boolean {
+  if (!text || !handle) return false;
+  const lc = text.toLowerCase();
+  const lcHandle = handle.toLowerCase();
+  return (
+    lc.includes(`github.com/${lcHandle}`) ||
+    lc.includes(`@${lcHandle}`) ||
+    // Some sites render their GH link as `github.com / handle` after
+    // markdown trimming — accept the spaced variant too.
+    lc.includes(`github.com / ${lcHandle}`)
+  );
+}
+
 function buildFacts(args: {
   extraction: PersonalSiteExtraction;
   url: string;
+  confidence: "high" | "medium" | "low";
 }): TypedFact[] {
-  const { extraction, url } = args;
+  const { extraction, url, confidence } = args;
   const facts: TypedFact[] = [];
   const src = (snippet?: string) =>
     makeSource({
       fetcher: "personal-site",
       method: "llm-extraction",
-      confidence: "medium",
+      confidence,
       url,
       snippet,
     });

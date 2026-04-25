@@ -148,7 +148,16 @@ export async function runTwitterBioFetcher(
       trace,
     });
 
-    const facts = buildFacts({ extraction: result, url: winner.url });
+    // Self-link verification: does the Twitter bio cross-link to the
+    // user's GitHub? If the page text mentions `github.com/{handle}`,
+    // the bio is a verified self-claim. If not, downgrade — anyone
+    // can ask us to scrape any Twitter handle.
+    const githubLink = mentionsGithubHandle(winner.text, input.session.handle);
+    const facts = buildFacts({
+      extraction: result,
+      url: winner.url,
+      confidence: githubLink ? "high" : "low",
+    });
     emitFactsToTrace(trace, label, facts);
 
     trace?.fetcherEnd({
@@ -188,17 +197,28 @@ function normaliseHandle(raw: string | undefined): string | null {
   return s;
 }
 
+function mentionsGithubHandle(text: string, handle: string): boolean {
+  if (!text || !handle) return false;
+  const lc = text.toLowerCase();
+  const lcHandle = handle.toLowerCase();
+  return (
+    lc.includes(`github.com/${lcHandle}`) ||
+    lc.includes(`@${lcHandle}`)
+  );
+}
+
 function buildFacts(args: {
   extraction: TwitterExtraction;
   url: string;
+  confidence: "high" | "medium" | "low";
 }): TypedFact[] {
-  const { extraction, url } = args;
+  const { extraction, url, confidence } = args;
   const facts: TypedFact[] = [];
   const src = (snippet?: string) =>
     makeSource({
       fetcher: "twitter",
       method: "llm-extraction",
-      confidence: "medium",
+      confidence,
       url,
       snippet,
     });
