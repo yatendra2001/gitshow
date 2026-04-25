@@ -23,7 +23,17 @@
 import type { ScanTrace } from "../observability/trace.js";
 
 const OPENROUTER_CHAT = "https://openrouter.ai/api/v1/chat/completions";
-const BANNER_MODEL = "google/gemini-3.1-flash-image-preview";
+/**
+ * Nano Banana 2 — Google's Gemini 3 Pro Image Preview. Released
+ * Nov 20 2025; the successor to Gemini 2.5 Flash Image (the
+ * original "Nano Banana"). Pricing on OpenRouter: $2/M input,
+ * $12/M output; per generated image hovers at ~$0.02-0.04.
+ *
+ * The previous slug `gemini-3.1-flash-image-preview` was a typo —
+ * that model never existed, so banner-gen silently no-op'd on
+ * every project (404 → trace.rejectionReason="http_404").
+ */
+const BANNER_MODEL = "google/gemini-3-pro-image-preview";
 
 export interface BannerGenInput {
   project: {
@@ -33,6 +43,10 @@ export interface BannerGenInput {
     tags: string[];
     kind: string;
   };
+  /** Scan id — passed as OpenRouter session_id so the banner-gen
+   *  call shows up in the same dashboard session as the rest of
+   *  the scan's LLM activity. */
+  scanId?: string;
   trace?: ScanTrace;
 }
 
@@ -75,11 +89,21 @@ export async function generateProjectBanner(
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
+        // Group banner-gen calls under the same OpenRouter dashboard
+        // session as the rest of the scan's LLM activity. Without
+        // this, image gen was invisible from the trace's session
+        // view and impossible to reconcile with judge/merger costs.
+        ...(input.scanId ? { "X-Session-Id": input.scanId } : {}),
+        // Standard attribution headers OpenRouter uses for the
+        // model leaderboard + abuse routing.
+        "HTTP-Referer": "https://github.com/yatendrakumar/gitshow",
+        "X-Title": "GitShow Banner Generation",
       },
       body: JSON.stringify({
         model: BANNER_MODEL,
         messages: [{ role: "user", content: prompt }],
         modalities: ["image", "text"],
+        ...(input.scanId ? { session_id: input.scanId } : {}),
       }),
     });
 
@@ -164,28 +188,63 @@ function buildPrompt(project: {
   kind: string;
 }): string {
   const tags = project.tags.slice(0, 5).join(", ");
-  return `Generate a sober, minimalist abstract banner image for a software project
-portfolio card. 1200×630 landscape.
+  // Two-part structure (per user feedback after seeing "Lorem ipsum"
+  // hallucinated onto a generated banner):
+  //   1. PRODUCT CONTEXT — model knows what this thing is.
+  //   2. ATMOSPHERIC ASK — frame the deliverable as ambient mood
+  //      art, not a "cover" or "card", so the model never reaches
+  //      for text-on-poster mental patterns.
+  //
+  // We explicitly enumerate the failure modes we've seen in the
+  // wild (Lorem ipsum placeholder, UI mockup screens, fake logos)
+  // because abstract negation ("no text") doesn't always hold —
+  // listing concrete anti-patterns does.
+  return `## What this product is
+"${project.title}" — ${project.purpose}
+Built with: ${tags || "(unspecified)"}
+Type: ${project.kind}
 
-Project title: ${project.title}
-What it does: ${project.purpose}
-Technologies: ${tags}
-Project kind: ${project.kind}
+## What to generate
+A calm, atmospheric texture image that evokes the SPIRIT of this product.
+Think: ambient mood backdrop, not a "poster" or "cover" or "card".
+1200×630 landscape, dark theme.
 
-STRICT requirements:
-- NO text, letters, words, numbers, logos, or typography ANYWHERE in the image.
-  (AI text rendering is unreliable; portfolio cards have a real text overlay.)
-- Abstract geometric shapes, soft gradients, or flowing forms — never literal
-  illustrations of the product, never stock-photo scenes, never people.
-- Muted, sophisticated palette (1-3 hues). Avoid pure saturated colors.
-  Think: slate + soft blue, warm charcoal + peach, forest + sand.
-- Centered composition with a calm focal point. Leave breathing room;
-  the viewer's attention goes to the overlaid text, not the image.
-- Professional portfolio aesthetic. Think: Apple keynote backgrounds,
-  Linear changelog headers, Stripe hero art, Vercel OG images.
-- Dark enough to work under white text overlay; not so dark it loses detail.
+Reference aesthetic — match this energy precisely:
+  - Apple keynote backdrops (subtle gradient depth, no decoration)
+  - Linear changelog headers (single soft glow, generous negative space)
+  - Vercel OG art (clean geometric pull, deliberate restraint)
+  - Aurora over still water (organic motion, muted palette)
 
-Output: one image, 1200×630 landscape, no text.`;
+The product context is for VIBE only — don't illustrate the product.
+A code-editor app doesn't need brackets in the image; a podcast app
+doesn't need a microphone. Translate the feeling, not the literal thing.
+
+## Hard rules — these failures have happened before
+- ABSOLUTELY NO TEXT. No letters, no words, no numbers, no glyphs of any
+  language, no "Lorem ipsum", no captions, no labels, no signage, no
+  watermarks. The image will sit BEHIND a real text overlay; any text
+  you generate will collide with it and look broken. If you feel the
+  composition wants text, leave that area empty instead.
+- NO UI mockups. No phone frames, no laptop frames, no app screenshots,
+  no chat bubbles, no buttons, no cursors, no windows, no toolbars.
+- NO logos, brand marks, icons, emoji, or stylised symbols.
+- NO people, faces, hands, body parts, or character art.
+- NO literal objects from the product domain (no books for a reading
+  app, no notes for a music app, no graphs for an analytics app).
+- NO stock-photo scenes, no realistic photography.
+
+## Style requirements
+- Muted sophisticated palette: 1-3 hues max. Avoid pure saturated
+  primary colours. Examples that work: slate + soft blue, warm
+  charcoal + dusty peach, deep forest + sand, midnight + lavender.
+- Composition: a single calm focal point with generous breathing
+  room. Asymmetric works; "card-shaped" centred panels do not.
+- Tonal range: dark enough that white overlay text has contrast, not
+  so dark that the image loses detail. Mid-tone richness > flat black.
+- Texture, not illustration: think soft gradient meshes, fluid motion
+  blur, gentle volumetric light, ambient noise — not crisp shapes.
+
+Output: one 1200×630 landscape PNG. Atmosphere only. No text.`;
 }
 
 async function decodeImage(

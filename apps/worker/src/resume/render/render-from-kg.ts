@@ -118,7 +118,16 @@ export function renderResumeFromKg(input: RenderInput): Resume {
     mediaById,
     trace,
   });
-  const buildLog = projectBuildLog({ kg, repoById, trace });
+  // Pass the curated grid's project IDs into Build Log so it acts as
+  // an OVERFLOW timeline — everything else the user shipped — instead
+  // of duplicating the top-6 cards.
+  const featuredProjectIds = new Set(projects.map((p) => p.id));
+  const buildLog = projectBuildLog({
+    kg,
+    repoById,
+    trace,
+    excludeProjectIds: featuredProjectIds,
+  });
   const skills = projectSkills({ kg, skillById, trace });
   const hackathons = projectHackathons({ kg, achievementById, trace });
   const publications = projectPublications({ kg, publicationById, trace });
@@ -329,8 +338,12 @@ function projectBuildLog(opts: {
   kg: KnowledgeGraph;
   repoById: Map<string, Repository>;
   trace?: ScanTrace;
+  /** Project IDs already shown in the curated My Projects grid —
+   *  skipped here so the Build Log isn't a duplicate of the cards
+   *  above it. The Build Log's job is the chronological overflow. */
+  excludeProjectIds?: Set<string>;
 }): BuildLogEntry[] {
-  const { kg, repoById, trace } = opts;
+  const { kg, repoById, trace, excludeProjectIds } = opts;
 
   const out: BuildLogEntry[] = [];
   const projects = kg.entities.projects;
@@ -338,6 +351,7 @@ function projectBuildLog(opts: {
 
   for (const p of projects) {
     if (NOISE_PROJECT_KINDS.has(p.kind)) continue;
+    if (excludeProjectIds?.has(p.id)) continue;
     const repo = p.repoFullName
       ? kg.entities.repositories.find((r) => r.fullName === p.repoFullName)
       : undefined;
