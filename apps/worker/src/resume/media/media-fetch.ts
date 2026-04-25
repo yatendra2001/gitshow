@@ -64,6 +64,9 @@ export interface MediaFetchOptions {
     /** User handle — becomes the R2 prefix `media/{handle}/...`. */
     handle: string;
   };
+  /** Scan ID — passed as OpenRouter session_id on banner-gen calls so
+   *  image generation shows up in the same session as everything else. */
+  scanId?: string;
 }
 
 export async function fetchMediaForKG(
@@ -79,6 +82,7 @@ export async function fetchMediaForKG(
       tinyfish,
       r2: opts.r2,
       handle,
+      scanId: opts.scanId,
     });
   }
 
@@ -118,6 +122,8 @@ interface ProjectCtx {
   tinyfish: TinyFishClient | null;
   r2?: MediaFetchOptions["r2"];
   handle: string;
+  /** Scan id — flows down into banner-gen as OpenRouter session_id. */
+  scanId?: string;
 }
 
 type HeroOrigin = MediaAsset["origin"];
@@ -169,6 +175,7 @@ async function attachProjectHero(
         tags: project.tags,
         kind: project.kind,
       },
+      scanId: ctx.scanId,
       trace: ctx.trace,
     });
     if (gen) {

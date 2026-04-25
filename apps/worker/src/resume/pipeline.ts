@@ -469,6 +469,7 @@ export async function runResumePipeline(
     await fetchMediaForKG(kg, {
       trace,
       r2: r2 ? { client: r2.client, bucket: r2.bucket, handle: session.handle } : undefined,
+      scanId: session.id,
     });
   });
 
