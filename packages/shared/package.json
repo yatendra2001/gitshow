@@ -11,6 +11,7 @@
     "./schemas": "./src/schemas.ts",
     "./models": "./src/models.ts",
     "./resume": "./src/resume.ts",
+    "./resume-doc": "./src/resume-doc.ts",
     "./kg": "./src/kg/index.ts",
     "./skill-icon-slugs": "./src/skill-icon-slugs.ts",
     "./events": "./src/events.ts",

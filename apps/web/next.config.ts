@@ -17,7 +17,12 @@ const nextConfig: NextConfig = {
   // raw TypeScript from `@gitshow/shared` instead of expecting a prebuild.
   transpilePackages: ["@gitshow/shared"],
   experimental: {
-    optimizePackageImports: ["lucide-react", "recharts"],
+    optimizePackageImports: [
+      "lucide-react",
+      "recharts",
+      "@hugeicons/react",
+      "@hugeicons/core-free-icons",
+    ],
   },
   images: {
     remotePatterns: [
