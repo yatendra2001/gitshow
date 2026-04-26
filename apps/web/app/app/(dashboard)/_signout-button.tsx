@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { LogOut } from "lucide-react";
+import { Logout01Icon } from "@hugeicons/core-free-icons";
 import { authClient } from "@/lib/auth-client";
 import { cn } from "@/lib/utils";
+import { Icon } from "@/components/dashboard/icon";
 
 /**
  * Sign-out — styled to sit next to the theme toggle in the sidebar
@@ -49,9 +50,9 @@ export function SignOutButton() {
         "disabled:opacity-60 disabled:cursor-progress",
       )}
     >
-      <LogOut
-        className="size-4 shrink-0 text-muted-foreground/70 group-hover:text-foreground"
-        strokeWidth={2}
+      <Icon
+        icon={Logout01Icon}
+        className="size-4 text-muted-foreground/70 group-hover:text-foreground"
       />
       <span>{busy ? "Signing out…" : "Sign out"}</span>
     </button>
