@@ -104,28 +104,28 @@ export const siteConfig = {
                 id: 1,
                 title: "Profile",
                 content:
-                    "Your header. Real stats — commits, PRs, repos, years — pulled straight from GitHub. No manual bullet points.",
+                    "Your hero — name, intro, and the bio GitShow drafts from your commits. Edit the words; the proof underneath stays sourced.",
                 mockup: <PortfolioProfileMockup />,
             },
             {
                 id: 2,
                 title: "Projects",
                 content:
-                    "Each project is written from your real commits and PRs — with links back to the exact pull request that proves the claim.",
+                    "Each project written from your real commits and PRs — with links back to the exact pull request that proves the claim.",
                 mockup: <PortfolioProjectMockup />,
             },
             {
                 id: 3,
-                title: "Skills",
+                title: "Skills & Work",
                 content:
-                    "A skills section sourced from what you actually ship. Numbers, not adjectives.",
+                    "Skills sourced from what you actually ship. Roles below, expandable, with the impact lines under each.",
                 mockup: <PortfolioSkillsMockup />,
             },
             {
                 id: 4,
-                title: "Analytics",
+                title: "Build Log",
                 content:
-                    "See who viewed your portfolio, from which company, and which project made them click through.",
+                    "A timeline of weekend projects, talks, and side experiments — pulled from the repos you starred and shipped after hours.",
                 mockup: <PortfolioAnalyticsMockup />,
             },
         ],
