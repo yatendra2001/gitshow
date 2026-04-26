@@ -256,7 +256,15 @@ export const RESUME_PRINT_CSS = `
     color: #000 !important;
     background: #fff !important;
     color-scheme: light;
-    font-family: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
+    /* Arial first by design — it's the only sans-serif that ships
+       with both macOS (where the editor preview renders) AND Linux
+       Chromium (where Cloudflare Browser Rendering generates the
+       PDF). Without it, macOS would pick Helvetica (compact metrics)
+       and Linux would fall back to Liberation Sans (slightly wider),
+       and bullets that wrap to N lines in browser silently wrap to
+       N+1 in the PDF. The fit indicator then lies. Arial → Liberation
+       Sans is metric-compatible if Arial is missing on Linux. */
+    font-family: Arial, "Liberation Sans", "Helvetica Neue", Helvetica, sans-serif;
     font-size: 10.5pt;
     line-height: 1.4;
     padding: 0.6in 0.7in;
