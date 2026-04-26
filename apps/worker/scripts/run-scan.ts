@@ -93,6 +93,16 @@ async function main() {
       "run-scan: SCAN_ID/HANDLE not set — image boot smoke test, exiting cleanly. " +
         "Real scans get these env vars injected by the Machines API at create time.",
     );
+    // Hold "started" state long enough for Fly's deploy poller to
+    // observe it. Without this, the machine completes its smoke boot
+    // in <1s and the poller (~5s interval) races to catch the
+    // started → stopped transition, so `flyctl deploy` times out
+    // waiting for a state change that already happened. See deploy
+    // run 24955201404 for the failure mode. Local boots (no
+    // FLY_MACHINE_ID) skip the wait.
+    if (process.env.FLY_MACHINE_ID) {
+      await new Promise((resolve) => setTimeout(resolve, 10_000));
+    }
     process.exit(0);
   }
   const scanId = requireEnv("SCAN_ID");
