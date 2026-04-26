@@ -7,12 +7,14 @@
  * never hurt the pipeline.
  */
 
+import { render } from "@react-email/render";
 import type { Logger } from "../util";
 import { consoleLogger } from "../util";
+import { ScanCompleteEmail } from "./templates/scan-complete";
 
 export interface EmailSenderConfig {
   apiKey: string;
-  /** RFC-compliant "Name <addr>" or just "addr". Default: gitshow noreply. */
+  /** RFC-compliant "Name <addr>" or just "addr". Default: `Yatendra (gitshow) <yatendra@gitshow.io>`. */
   from?: string;
   /**
    * Fallback sender used when `from` is rejected (403/422 — typically
@@ -49,7 +51,7 @@ export class ResendSender {
 
   constructor(cfg: EmailSenderConfig) {
     this.apiKey = cfg.apiKey;
-    this.from = cfg.from ?? "gitshow <noreply@gitshow.io>";
+    this.from = cfg.from ?? "Yatendra (gitshow) <yatendra@gitshow.io>";
     this.fallbackFrom =
       cfg.fallbackFrom === undefined ? "onboarding@resend.dev" : cfg.fallbackFrom;
     this.endpoint = cfg.endpoint ?? "https://api.resend.com/emails";
@@ -69,7 +71,7 @@ export class ResendSender {
     if (!apiKey) return null;
     return new ResendSender({
       apiKey,
-      from: envObj.EMAIL_FROM ?? "gitshow <noreply@gitshow.io>",
+      from: envObj.EMAIL_FROM ?? "Yatendra (gitshow) <yatendra@gitshow.io>",
       fallbackFrom:
         envObj.EMAIL_FALLBACK_FROM === undefined
           ? undefined // use class default
@@ -169,28 +171,33 @@ export class ResendSender {
 
 export interface ScanCompleteTemplate {
   handle: string;
-  claimCount: number;
   profileUrl: string;
 }
 
-export function renderScanComplete(t: ScanCompleteTemplate): {
+export async function renderScanComplete(t: ScanCompleteTemplate): Promise<{
   subject: string;
   html: string;
   text: string;
-} {
-  const subject = `Your gitshow profile is ready`;
-  const text = `Your gitshow profile for @${t.handle} is ready — we found ${t.claimCount} claims with receipts.
-
-Open it: ${t.profileUrl}
-
-— gitshow`;
-  const html = layout(
-    `<h1 style="font-size:20px;margin:0 0 12px;font-weight:600;">Your gitshow profile is ready</h1>
-     <p style="margin:0 0 16px;">We finished the scan for <strong>@${escapeHtml(t.handle)}</strong> — ${t.claimCount} claims with receipts.</p>
-     <p style="margin:0 0 24px;"><a href="${escapeHtml(t.profileUrl)}" style="display:inline-block;padding:10px 16px;background:#111;color:#fff;text-decoration:none;border-radius:8px;font-size:14px;">Open your profile</a></p>
-     <p style="margin:0;color:#666;font-size:13px;">Revise it, share it — <span style="color:#999;">${escapeHtml(t.profileUrl)}</span></p>`,
-  );
+}> {
+  const subject = `Your gitshow draft is ready, @${t.handle}`;
+  const element = ScanCompleteEmail({
+    handle: t.handle,
+    profileUrl: t.profileUrl,
+    logoUrl: deriveLogoUrl(t.profileUrl),
+  });
+  const [html, text] = await Promise.all([
+    render(element),
+    render(element, { plainText: true }),
+  ]);
   return { subject, html, text };
+}
+
+function deriveLogoUrl(profileUrl: string): string | undefined {
+  try {
+    return `${new URL(profileUrl).origin}/icon-light.png`;
+  } catch {
+    return undefined;
+  }
 }
 
 export interface ScanFailedTemplate {

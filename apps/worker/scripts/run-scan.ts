@@ -235,9 +235,8 @@ async function main() {
         if (email) {
           const contact = await d1.getUserContactById(userId);
           if (contact?.email) {
-            const tpl = renderScanComplete({
+            const tpl = await renderScanComplete({
               handle,
-              claimCount: 0,
               profileUrl,
             });
             const r = await email.send({
