@@ -70,15 +70,26 @@ export async function cloneAndInventory(
       if (!existsSync(join(clonePath, ".git"))) {
         log(`[inv] cloning ${fullName}${attempt > 1 ? ` (retry ${attempt})` : ""}...\n`);
         await mkdir(join(profileDir, "repos"), { recursive: true });
-        // Partial clone: full commit graph (so `git log --author=`
-        // attribution works) but no blobs upfront — they're fetched
-        // lazily when sampleRepo reads files. Cuts clone size for huge
-        // repos like flutter/engine from gigabytes to ~100MB.
+        // Full clone. We tried `--filter=blob:none` (partial clone) in
+        // an earlier pass to cut external-giant clone sizes from
+        // gigabytes to ~100MB — but that broke blame stats: `git log
+        // --numstat` then needs to fetch missing blobs on demand to
+        // compute per-file line diffs, and the auth context from
+        // `gh repo clone` doesn't carry over to subsequent `git log`
+        // calls. Result: `fatal: could not read Username for
+        // 'https://github.com':` on every blame attempt.
+        //
+        // Once we stopped cloning external contributor repos entirely
+        // (the relationship === "contributor" → metadata tier rule),
+        // the partial-clone optimization stopped earning its keep.
+        // Owned repos are typically <100MB; full clones are fine and
+        // keep blame stats accurate.
+        //
         // Bounded by CLONE_TIMEOUT_MS so a single slow remote can't
         // hold the inventory slot indefinitely.
         await execFileAsync(
           "gh",
-          ["repo", "clone", fullName, clonePath, "--", "--filter=blob:none"],
+          ["repo", "clone", fullName, clonePath],
           { timeout: CLONE_TIMEOUT_MS },
         );
       } else {
