@@ -26,9 +26,12 @@ jobs:
         # We DON'T pass --build-only because that doesn't update the app's
         # currentRelease on Fly (that's why FlyClient's GraphQL resolver
         # would otherwise keep returning the previous deployment tag).
-        # Unavoidable side-effect: Fly creates a crashlooping "app" machine
-        # (there's no SCAN_ID in its env). We clean it up below.
-        run: flyctl deploy -c apps/worker/fly.toml .
+        # Unavoidable side-effect: Fly creates a smoke-boot "app" machine
+        # (there's no SCAN_ID in its env). The worker entrypoint sleeps
+        # 10s before exit so Fly's poller observes the "started" state;
+        # the cleanup step below then destroys it. --ha=false skips the
+        # standby machine since we'd just destroy that too.
+        run: flyctl deploy -c apps/worker/fly.toml . --ha=false
         env:
           FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
 
