@@ -1,27 +1,18 @@
 "use client";
 
-import {
-    Code2,
-    FileCode,
-    GitBranch,
-    GitCommit,
-    GitMerge,
-    GitPullRequest,
-    Github,
-} from "lucide-react";
 import { Button } from "@/components/marketing/ui/button";
 import { siteConfig } from "@/lib/marketing-config";
 import { SectionHeader } from "../section-header";
 import { Icons } from "../icons";
 import { HeaderBadge } from "../header-badge";
-import { OrbitingIconsBurst } from "@/components/marketing/animations/orbiting-icons-burst";
-import { DottedMap } from "@/components/marketing/ui/dotted-map";
 import { LazyDither } from "@/components/marketing/animations/lazy-dither";
+import { CornerPlus } from "@/components/marketing/ui/corner-plus";
+import { RepoIngestionBlock } from "@/components/marketing/animations/sections/repo-ingestion-block";
+import { RecruiterSearchBlock } from "@/components/marketing/animations/sections/recruiter-search-block";
 
 const featureConfig = siteConfig.featureSection;
 
 export function FeatureSection() {
-
     return (
         <section id="features" className="w-full relative">
             <SectionHeader>
@@ -44,7 +35,6 @@ export function FeatureSection() {
             </div>
             <div className="mx-auto">
                 <div className="grid grid-cols-1 md:grid-cols-6">
-                    {/* Left Column - Sticky Description */}
                     <div className="col-span-1 md:col-span-2 p-8 md:p-10 lg:p-14 md:sticky md:top-20 md:self-start flex flex-col gap-7">
                         <h3 className="text-3xl lg:text-4xl font-medium tracking-tighter text-left text-balance">
                             {featureConfig.sections.title}
@@ -60,75 +50,11 @@ export function FeatureSection() {
                         </Button>
                     </div>
 
-                    {/* Right Column - Animated Blocks */}
                     <div className="col-span-1 md:col-span-4 w-full border-t md:border-t-0 md:border-l border-border relative">
+                        <CornerPlus position="all" className="text-muted-foreground/50" />
                         <div className="w-full divide-y divide-border">
                             <div className="relative">
-                                <OrbitingIconsBurst
-                                    items={[
-                                        {
-                                            id: 1,
-                                            delay: 0,
-                                            rayIndex: 10,
-                                            distance: 152,
-                                            className: "",
-                                            icon: <GitCommit className="size-full p-2" />,
-                                        },
-                                        {
-                                            id: 2,
-                                            delay: 0.08,
-                                            rayIndex: 14,
-                                            distance: 138,
-                                            className: "",
-                                            icon: (
-                                                <GitPullRequest className="size-full p-2" />
-                                            ),
-                                        },
-                                        {
-                                            id: 3,
-                                            delay: 0.16,
-                                            rayIndex: 19,
-                                            distance: 178,
-                                            className: "",
-                                            icon: (
-                                                <GitBranch className="size-full p-2" />
-                                            ),
-                                        },
-                                        {
-                                            id: 4,
-                                            delay: 0.24,
-                                            rayIndex: 22,
-                                            distance: 144,
-                                            className: "",
-                                            icon: (
-                                                <FileCode className="size-full p-2" />
-                                            ),
-                                        },
-                                        {
-                                            id: 5,
-                                            delay: 0.48,
-                                            rayIndex: 4,
-                                            distance: 156,
-                                            className: "",
-                                            icon: (
-                                                <GitMerge className="size-full p-2" />
-                                            ),
-                                        },
-                                        {
-                                            id: 6,
-                                            delay: 0.56,
-                                            rayIndex: 7,
-                                            distance: 170,
-                                            className: "",
-                                            icon: (
-                                                <Code2 className="size-full p-2" />
-                                            ),
-                                        },
-                                    ]}
-                                    lineCount={22}
-                                    centerIcon={<Github className="size-full p-3" />}
-                                    className="relative min-h-[300px] md:min-h-[400px] mask-[radial-gradient(ellipse_at_center,black_40%,black_60%,transparent_85%)]"
-                                />
+                                <RepoIngestionBlock />
                                 <div className="max-w-xl text-left items-start p-6">
                                     <p className="text-sm text-muted-foreground flex items-center gap-3 justify-start">
                                         {featureConfig.sections.blocks[0].icon}
@@ -141,28 +67,9 @@ export function FeatureSection() {
                             </div>
 
                             <div className="relative">
-                                <div className="relative min-h-[300px] md:min-h-[400px] overflow-hidden mask-[radial-gradient(ellipse_at_center,black_40%,black_60%,transparent_85%)]">
-                                    <div className="absolute inset-0 bg-radial from-transparent to-background to-70%" />
-                                    <DottedMap
-                                        markers={[
-                                            { lat: 40.7128, lng: -74.006, size: 0.3 },
-                                            { lat: 34.0522, lng: -118.2437, size: 0.3 },
-                                            { lat: 51.5074, lng: -0.1278, size: 0.3 },
-                                            { lat: -33.8688, lng: 151.2093, size: 0.3 },
-                                            { lat: 48.8566, lng: 2.3522, size: 0.3 },
-                                            { lat: 35.6762, lng: 139.6503, size: 0.3 },
-                                            { lat: 55.7558, lng: 37.6176, size: 0.3 },
-                                            { lat: 39.9042, lng: 116.4074, size: 0.3 },
-                                            { lat: 28.6139, lng: 77.209, size: 0.3 },
-                                            { lat: -23.5505, lng: -46.6333, size: 0.3 },
-                                            { lat: 1.3521, lng: 103.8198, size: 0.3 },
-                                            { lat: 25.2048, lng: 55.2708, size: 0.3 },
-                                            { lat: 52.52, lng: 13.405, size: 0.3 },
-                                            { lat: 19.4326, lng: -99.1332, size: 0.3 },
-                                            { lat: -26.2041, lng: 28.0473, size: 0.3 },
-                                        ]}
-                                    />
-                                </div>
+                                <CornerPlus position="top-left" className="text-muted-foreground/50" />
+                                <CornerPlus position="top-right" className="text-muted-foreground/50" />
+                                <RecruiterSearchBlock />
                                 <div className="max-w-xl text-left items-start p-6">
                                     <p className="text-sm text-muted-foreground flex items-center gap-3 justify-start">
                                         {featureConfig.sections.blocks[1].icon}
