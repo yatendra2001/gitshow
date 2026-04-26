@@ -26,6 +26,8 @@ export interface DashboardContext {
   userId: string;
   /** GitHub login from the session (used for sidebar / public URL). */
   handle: string;
+  /** Avatar URL from the GitHub OAuth profile (sidebar avatar). */
+  avatarUrl: string | null;
   isPro: boolean;
   /** Plan label for the sidebar avatar card. */
   planLabel: string;
@@ -66,6 +68,7 @@ export const loadDashboardContext = cache(
     return {
       userId,
       handle,
+      avatarUrl: session.user.image ?? null,
       isPro,
       planLabel,
       subscriptionStatus: subscription?.status ?? null,

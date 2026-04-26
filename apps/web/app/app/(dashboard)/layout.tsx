@@ -6,14 +6,12 @@ import { SignOutButton } from "./_signout-button";
 import { loadDashboardContext } from "./_context";
 
 /**
- * Sidebar shell layout for /app, /app/billing.
+ * Sidebar shell layout for every /app/* route except /scan and /intake
+ * (those are focused full-bleed flows that live outside the group).
  *
- * Edit / Preview / Scan / Intake stay outside this group on purpose —
- * they're full-bleed authoring surfaces (no sidebar) so the editor and
- * scan-progress views can use the entire viewport.
- *
- * Non-Pro users still see the shell so the sidebar surfaces Billing
- * and Support; the Workspace section is hidden for them in the rail.
+ * Both Pro and non-Pro users see the shell — the sidebar still
+ * surfaces Billing and Support for cancelled accounts. The page itself
+ * decides whether to render the upgrade card or the dashboard.
  */
 
 export default async function DashboardLayout({
@@ -27,6 +25,7 @@ export default async function DashboardLayout({
   return (
     <DashboardShell
       handle={ctx.handle}
+      avatarUrl={ctx.avatarUrl}
       publicSlug={ctx.profile?.public_slug ?? null}
       isPublished={ctx.isPublished}
       planLabel={ctx.planLabel}
@@ -36,7 +35,7 @@ export default async function DashboardLayout({
           <NotificationBell />
         </>
       }
-      sidebarFooterTrailing={<SignOutButton />}
+      signOutSlot={<SignOutButton />}
     >
       {children}
     </DashboardShell>
