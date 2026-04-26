@@ -18,6 +18,13 @@ import type { StructuredInventory } from "./types.js";
 const execFileAsync = promisify(execFile);
 
 const MAX_RETRIES = 3;
+/**
+ * Per-clone wall-clock cap. Even with a partial clone, an external
+ * contributor repo like flutter/engine has a huge commit graph and
+ * can take minutes; we still want to bound it so one slow clone
+ * doesn't permanently hold an inventory slot.
+ */
+const CLONE_TIMEOUT_MS = 5 * 60_000;
 
 /** Transient error signatures we should retry vs. fail fast. */
 function isTransient(msg: string): boolean {
@@ -63,11 +70,17 @@ export async function cloneAndInventory(
       if (!existsSync(join(clonePath, ".git"))) {
         log(`[inv] cloning ${fullName}${attempt > 1 ? ` (retry ${attempt})` : ""}...\n`);
         await mkdir(join(profileDir, "repos"), { recursive: true });
-        // Full checkout — code-reading tools want the working tree.
-        // No timeout — huge repos legitimately take a while.
-        await execFileAsync("gh", ["repo", "clone", fullName, clonePath], {
-          timeout: 0,
-        });
+        // Partial clone: full commit graph (so `git log --author=`
+        // attribution works) but no blobs upfront — they're fetched
+        // lazily when sampleRepo reads files. Cuts clone size for huge
+        // repos like flutter/engine from gigabytes to ~100MB.
+        // Bounded by CLONE_TIMEOUT_MS so a single slow remote can't
+        // hold the inventory slot indefinitely.
+        await execFileAsync(
+          "gh",
+          ["repo", "clone", fullName, clonePath, "--", "--filter=blob:none"],
+          { timeout: CLONE_TIMEOUT_MS },
+        );
       } else {
         log(`[inv] reusing existing clone of ${fullName}\n`);
       }
