@@ -194,8 +194,15 @@ async function main() {
           scanLog.warn({ err }, "scan.fetch-snapshot.persist.failed");
         }
       },
+      // Stream the rich `[pipeline]` / `[inv]` / `[study]` / `[evidence]`
+      // log lines to stderr so they show up in `fly logs`. They were
+      // previously gated behind GITSHOW_DEBUG, which meant production
+      // scans were completely dark between the `boot` and `done`
+      // structured logs — a "stuck" scan and a "running fine but
+      // mid-clone" scan looked identical. Set GITSHOW_QUIET=1 to opt
+      // back into silence (e.g. for very chatty long-running scans).
       onProgress: (text) => {
-        if (process.env.GITSHOW_DEBUG) process.stderr.write(text);
+        if (!process.env.GITSHOW_QUIET) process.stderr.write(text);
       },
     });
 
