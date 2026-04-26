@@ -7,6 +7,12 @@
       "runtimeArgs": ["--filter", "@gitshow/web", "dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "email-preview",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["packages/shared/scripts/serve-preview.ts"],
+      "port": 4321
     }
   ]
 }
