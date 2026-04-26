@@ -12,11 +12,75 @@ import BuildLogSection from "@/components/section/build-log-section";
 import ProjectsSection from "@/components/section/projects-section";
 import WorkSection from "@/components/section/work-section";
 import { LogoOrInitials } from "@/components/logo-or-initials";
+import { formatResumeDateRange } from "@/lib/format-date";
 import HackathonsSection from "@/components/sections/hackathons";
 import PublicationsSection from "@/components/sections/publications";
 import { ArrowUpRight } from "lucide-react";
+import type { ComponentProps } from "react";
 
 const BLUR_FADE_DELAY = 0.04;
+
+/**
+ * react-markdown components override that turns hash-only links
+ * (`/#work`, `/#projects`, …) into smooth-scroll handlers instead of
+ * full anchor navigations. The hero-prose stage embeds these links
+ * by design — without this override, clicking one triggers a Next.js
+ * /#section navigation that flashes the page before scrolling.
+ *
+ * Off-site links (https://…) and same-page raw `#anchor` links pass
+ * through unchanged.
+ */
+/**
+ * Slim section heading used in About / Work / Education / Skills.
+ * The leading accent bar is a small originality touch — every other
+ * "shadcn portfolio template" uses bare `h2`, so this is one of the
+ * subtle differentiators. Stays light enough that it doesn't fight
+ * the rest of the layout.
+ */
+function SectionHeader({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="flex items-center gap-2.5 text-xl font-bold">
+      <span
+        aria-hidden
+        className="inline-block h-4 w-1 rounded-full bg-gradient-to-b from-[var(--primary)] to-[var(--primary)]/40"
+      />
+      {children}
+    </h2>
+  );
+}
+
+const smoothAnchorMarkdownComponents = {
+  a: ({ href, children, ...rest }: ComponentProps<"a">) => {
+    const isHashRoute = typeof href === "string" && /^\/#[A-Za-z][\w-]*$/.test(href);
+    if (!isHashRoute) {
+      return (
+        <a href={href} {...rest}>
+          {children}
+        </a>
+      );
+    }
+    const id = href!.slice(2); // strip "/#"
+    return (
+      <a
+        href={href}
+        {...rest}
+        onClick={(e) => {
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+          e.preventDefault();
+          const el = document.getElementById(id);
+          if (!el) return;
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+          // Sync the URL without triggering a Next nav.
+          if (typeof window !== "undefined") {
+            window.history.replaceState(null, "", href);
+          }
+        }}
+      >
+        {children}
+      </a>
+    );
+  },
+};
 
 /**
  * Full template-shape portfolio render. Used by:
@@ -59,11 +123,13 @@ export default function PortfolioPage() {
       <section id="about">
         <div className="flex min-h-0 flex-col gap-y-4">
           <BlurFade delay={BLUR_FADE_DELAY * 3}>
-            <h2 className="text-xl font-bold">About</h2>
+            <SectionHeader>About</SectionHeader>
           </BlurFade>
           <BlurFade delay={BLUR_FADE_DELAY * 4}>
             <div className="prose max-w-full text-pretty font-sans leading-relaxed text-muted-foreground dark:prose-invert">
-              <Markdown>{DATA.summary}</Markdown>
+              <Markdown components={smoothAnchorMarkdownComponents}>
+                {DATA.summary}
+              </Markdown>
             </div>
           </BlurFade>
         </div>
@@ -72,7 +138,7 @@ export default function PortfolioPage() {
         <section id="work">
           <div className="flex min-h-0 flex-col gap-y-6">
             <BlurFade delay={BLUR_FADE_DELAY * 5}>
-              <h2 className="text-xl font-bold">Work Experience</h2>
+              <SectionHeader>Work Experience</SectionHeader>
             </BlurFade>
             <BlurFade delay={BLUR_FADE_DELAY * 6}>
               <WorkSection />
@@ -84,7 +150,7 @@ export default function PortfolioPage() {
         <section id="education">
           <div className="flex min-h-0 flex-col gap-y-6">
             <BlurFade delay={BLUR_FADE_DELAY * 7}>
-              <h2 className="text-xl font-bold">Education</h2>
+              <SectionHeader>Education</SectionHeader>
             </BlurFade>
           <div className="flex flex-col gap-8">
             {DATA.education.map((education, index) => (
@@ -117,9 +183,7 @@ export default function PortfolioPage() {
                     </div>
                   </div>
                   <div className="flex items-center gap-1 text-xs tabular-nums text-muted-foreground text-right flex-none">
-                    <span>
-                      {education.start} - {education.end}
-                    </span>
+                    <span>{formatResumeDateRange(education.start, education.end)}</span>
                   </div>
                 </Link>
               </BlurFade>
@@ -131,7 +195,7 @@ export default function PortfolioPage() {
       <section id="skills">
         <div className="flex min-h-0 flex-col gap-y-4">
           <BlurFade delay={BLUR_FADE_DELAY * 9}>
-            <h2 className="text-xl font-bold">Skills</h2>
+            <SectionHeader>Skills</SectionHeader>
           </BlurFade>
           <div className="flex flex-wrap gap-2">
             {DATA.skills.map((skill, id) => {

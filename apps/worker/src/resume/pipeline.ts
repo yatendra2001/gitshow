@@ -66,6 +66,7 @@ import { writeKgToR2 } from "./kg/persist-kg.js";
 import { fetchMediaForKG } from "./media/index.js";
 import { generateHeroProse } from "./render/hero-prose.js";
 import { generatePersonReport } from "./render/person-report.js";
+import { rewriteWorkDescriptions } from "./render/work-rewrite.js";
 import { renderResumeFromKg } from "./render/render-from-kg.js";
 
 import {
@@ -628,28 +629,32 @@ async function runPipelineBody(args: PipelineBodyArgs): Promise<Resume> {
   const judgmentFacts = projectJudgmentsToBuiltFacts(judgments);
   const intakeFacts = projectIntakeFacts(session, opts.intakeEmail);
 
-  // Manifest-driven skills — aggregate every studied repo's deps
-  // into HAS_SKILL facts with usage frequency + a 0..100 score that
-  // drives the chip bars on the public profile.
+  // Skills — aggregate from Kimi's per-repo `judgment.technologies`
+  // list (a curated, brand-correct set of 5-10 techs per repo). The
+  // old manifest-deps path drowned the chip list in UI-package noise
+  // (Cupertino Icons, Postcss, Class Variance Authority…) AND missed
+  // anything not in package.json — Gemini, Solana, WalletConnect,
+  // Whisper, RAG were all invisible. Kimi catches them naturally.
   const pushedAtByRepo: Record<string, string | undefined> = {};
   for (const r of github.ownedRepos) pushedAtByRepo[r.fullName] = r.pushedAt ?? undefined;
   const manifestSkills = aggregateSkillsFromStudies({
+    judgments,
     studies,
     pushedAtByRepo,
     attributionUrl: `https://github.com/${session.handle}`,
   });
   log(
-    `[pipeline]   manifest skills: ${manifestSkills.facts.length} (top: ${manifestSkills.ranked
+    `[pipeline]   skills: ${manifestSkills.facts.length} (top: ${manifestSkills.ranked
       .slice(0, 6)
       .map((s) => `${s.name}@${s.score}`)
       .join(", ")})\n`,
   );
   trace?.note(
-    "manifest-skills:summary",
-    `${manifestSkills.facts.length} skills aggregated from ${Object.keys(studies).length} studied repos`,
+    "skills:summary",
+    `${manifestSkills.facts.length} skills aggregated from ${Object.keys(judgments).length} judged repos`,
     {
       totalSkills: manifestSkills.facts.length,
-      totalStudies: Object.keys(studies).length,
+      totalJudgments: Object.keys(judgments).length,
       top10: manifestSkills.ranked.slice(0, 10),
     },
   );
@@ -757,6 +762,28 @@ async function runPipelineBody(args: PipelineBodyArgs): Promise<Resume> {
   const personReport = await phases.phase("person-report", async () => {
     log(`[pipeline] stage 9b: person-report (Gemini grounded)\n`);
     return generatePersonReport({ kg, session, trace, log });
+  });
+
+  // 11.6 Work-description rewrite (single Sonnet call). Rewrites
+  //      LinkedIn-imported bullet-list dumps in WORKED_AT.attrs
+  //      .description into 2-3 sentence first-person prose. Mutates
+  //      the KG in place so the render layer reads the rewritten
+  //      version. Skipped when there are no descriptions long enough
+  //      to bother rewriting (>200 chars).
+  await phases.phase("work-rewrite", async () => {
+    log(`[pipeline] stage 9c: work-rewrite (Sonnet)\n`);
+    const r = await rewriteWorkDescriptions({
+      kg,
+      session,
+      usage,
+      trace,
+      onProgress,
+      emit: opts.emit,
+    });
+    log(
+      `[pipeline]   work-rewrite: ${r.rewritten} rewritten, ${r.skipped} kept (${r.durationMs}ms)\n`,
+    );
+    return r;
   });
 
   // 12. Hero prose (single Opus call) — receives the person report

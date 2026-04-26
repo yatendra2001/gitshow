@@ -1,24 +1,35 @@
 /**
- * Manifest-driven skills aggregator.
+ * Kimi-judgment-driven skills aggregator.
  *
- * Replaces the GitHub-topics-as-skills path that was emitting weird
- * chips like "flutter-test" and "code-signing". Walks every studied
- * repo's manifest dependencies (package.json deps, Cargo.toml,
- * pubspec.yaml, etc.), counts usage frequency, applies a slug-aware
- * canonicalisation pass, and emits HAS_SKILL TypedFacts with both
- * the count + a 0..100 strength score.
+ * The original implementation walked manifest deps (package.json,
+ * pubspec.yaml, Cargo.toml etc.) and scored skills by how often they
+ * appeared. That worked for "Tailwind / Next.js / TypeScript" but
+ * MISSED the things that actually distinguish a portfolio:
+ *   - LLM/AI usage (Gemini / Claude / Whisper aren't packages)
+ *   - Cloud + protocol surfaces (Solana / Web3 / WebRTC / RAG)
+ *   - Anything used over raw HTTP without a vendored SDK
+ * It also drowned the chip list in UI-helper noise (Cupertino Icons,
+ * Class Variance Authority, Tailwind Merge, Postcss).
+ *
+ * Kimi's per-repo judgment already produces a curated
+ * `judgment.technologies: string[]` list — the model picked the 5-10
+ * most distinctive techs per repo from the README + manifest + source
+ * samples. We aggregate those across all judged repos, count usage
+ * frequency, and emit HAS_SKILL TypedFacts with a 0..100 strength
+ * score (manifest-deps path retired entirely per yatendra's call —
+ * "rely on kimi analysis rather than packages at all").
  *
  * The score is the field the renderer's UI bars use:
  *
  *   score = 100 * sigmoid(usage*1.6 + recencyBonus + sizeBonus)
  *
  * — meaning a skill seen in 1 stale repo lands ~25-35; a skill seen
- * in 8 active repos lands 90+. The exact curve is tuned for the
- * common case (5-30 owned repos); everything's bounded so a power
- * user with 200 repos doesn't max out the entire chart.
+ * in 8 active repos lands 90+. Bounded so a power user with 200 repos
+ * doesn't max out the entire chart.
  */
 import { makeSource, type TypedFact } from "@gitshow/shared/kg";
 import type { RepoStudy, ManifestEcosystem } from "../../repo-study.js";
+import type { RepoJudgeOutput } from "../judge/repo-judge.js";
 
 export interface ManifestSkillAggregation {
   facts: TypedFact[];
@@ -169,6 +180,117 @@ function canonicaliseSkill(name: string, eco: ManifestEcosystem): string | null 
   return prettify(lower);
 }
 
+/**
+ * Lightweight cleanup for Kimi-supplied technology names. Kimi already
+ * gave us curated, brand-correct strings (e.g. "Gemini", "Solana",
+ * "WalletConnect", "Whisper", "RAG"), so we only:
+ *  - trim + bound length
+ *  - drop obviously useless entries (single chars, punctuation-only)
+ *  - normalise a handful of common spellings to a canonical display
+ *    form so e.g. "next.js" / "Next.js" / "nextjs" all merge
+ * No ecosystem-specific package mapping (that lived in the old
+ * manifest path); Kimi is the source of truth for naming now.
+ */
+function canonicaliseJudgmentTech(raw: string): string | null {
+  const s = raw.trim();
+  if (s.length === 0 || s.length > 60) return null;
+  if (!/[A-Za-z]/.test(s)) return null;
+  const lower = s.toLowerCase();
+
+  // Hard merges: same skill, different surface forms.
+  const ALIAS: Record<string, string> = {
+    "next.js": "Next.js",
+    nextjs: "Next.js",
+    "node.js": "Node.js",
+    nodejs: "Node.js",
+    typescript: "TypeScript",
+    javascript: "JavaScript",
+    react: "React",
+    "react native": "React Native",
+    "react-native": "React Native",
+    flutter: "Flutter",
+    dart: "Dart",
+    swift: "Swift",
+    swiftui: "SwiftUI",
+    rust: "Rust",
+    python: "Python",
+    golang: "Go",
+    "go (golang)": "Go",
+    tailwind: "Tailwind CSS",
+    "tailwind css": "Tailwind CSS",
+    tailwindcss: "Tailwind CSS",
+    bloc: "BLoC",
+    "bloc pattern": "BLoC",
+    cubit: "Cubit",
+    riverpod: "Riverpod",
+    provider: "Provider",
+    firebase: "Firebase",
+    "firebase auth": "Firebase",
+    firestore: "Firestore",
+    "cloud firestore": "Firestore",
+    supabase: "Supabase",
+    postgres: "PostgreSQL",
+    postgresql: "PostgreSQL",
+    sqlite: "SQLite",
+    mongodb: "MongoDB",
+    redis: "Redis",
+    docker: "Docker",
+    kubernetes: "Kubernetes",
+    aws: "AWS",
+    gcp: "GCP",
+    "google cloud": "GCP",
+    cloudflare: "Cloudflare",
+    "cloudflare workers": "Cloudflare Workers",
+    vercel: "Vercel",
+    fly: "Fly.io",
+    "fly.io": "Fly.io",
+    // AI / LLM surface area — these were the headline gap before this
+    // refactor: none of them are package names so the manifest-based
+    // aggregator never saw them.
+    gemini: "Gemini",
+    "gemini api": "Gemini",
+    "google gemini": "Gemini",
+    claude: "Claude",
+    anthropic: "Claude",
+    "openai api": "OpenAI",
+    openai: "OpenAI",
+    chatgpt: "OpenAI",
+    "gpt-4": "OpenAI",
+    whisper: "Whisper",
+    ollama: "Ollama",
+    langchain: "LangChain",
+    llamaindex: "LlamaIndex",
+    rag: "RAG",
+    "vector db": "Vector DB",
+    pinecone: "Pinecone",
+    pgvector: "pgvector",
+    "vertex ai": "Vertex AI",
+    "google generative ai": "Gemini",
+    // Web3
+    solana: "Solana",
+    ethereum: "Ethereum",
+    walletconnect: "WalletConnect",
+    web3: "Web3",
+    rainbowkit: "RainbowKit",
+    wagmi: "wagmi",
+    viem: "viem",
+    // Mobile
+    "google sign-in": "Google Sign-In",
+    "google sign in": "Google Sign-In",
+    "google oauth": "Google OAuth",
+    "apple sign-in": "Apple Sign-In",
+    "apple sign in": "Apple Sign-In",
+  };
+  if (ALIAS[lower]) return ALIAS[lower];
+
+  // Light prettify for everything else: collapse whitespace, drop a
+  // trailing period, capitalise first letter of each word UNLESS the
+  // input is already mixed-case (preserve "iOS", "tRPC" style).
+  const hasMixedCase = /[A-Z]/.test(s) && /[a-z]/.test(s);
+  if (hasMixedCase) return s.replace(/\s+/g, " ");
+  return prettify(lower);
+}
+
 function prettify(s: string): string {
   return s
     .replace(/[-_]+/g, " ")
@@ -197,21 +319,25 @@ function scoreSkill(a: SkillAccum): number {
 }
 
 export function aggregateSkillsFromStudies(args: {
+  /** Per-repo Kimi judgments — `judgment.technologies` is the source. */
+  judgments: Record<string, RepoJudgeOutput>;
+  /** Per-repo blame stats (used for the size bonus). */
   studies: Record<string, RepoStudy>;
   /** Pushed-at by repo full name, used for the recency bonus. */
   pushedAtByRepo: Record<string, string | undefined>;
   /** URL we can attribute the source to ("github.com/<handle>"). */
   attributionUrl: string;
 }): ManifestSkillAggregation {
-  const { studies, pushedAtByRepo, attributionUrl } = args;
+  const { judgments, studies, pushedAtByRepo, attributionUrl } = args;
   const accum = new Map<string, SkillAccum>();
 
-  for (const [fullName, study] of Object.entries(studies)) {
+  for (const [fullName, j] of Object.entries(judgments)) {
     const pushedAt = pushedAtByRepo[fullName];
     const isRecent = pushedAt ? NOW - Date.parse(pushedAt) < ONE_YEAR_MS : false;
-    const userLines = study.userLines;
-    for (const dep of study.manifestDeps) {
-      const name = canonicaliseSkill(dep.name, dep.ecosystem);
+    const userLines = studies[fullName]?.userLines ?? 0;
+    const techs = j.judgment.technologies ?? [];
+    for (const raw of techs) {
+      const name = canonicaliseJudgmentTech(raw);
       if (!name) continue;
       const key = name.toLowerCase();
       const a = accum.get(key) ?? {
@@ -250,11 +376,11 @@ export function aggregateSkillsFromStudies(args: {
       weight: r.score / 100,
     },
     source: makeSource({
-      fetcher: "github-fetcher",
-      method: "api",
+      fetcher: "repo-judge",
+      method: "llm-extraction",
       confidence: "high",
       url: attributionUrl,
-      snippet: `manifest mentions in ${r.usageCount} repo(s)`,
+      snippet: `judged-tech in ${r.usageCount} repo(s)`,
     }),
   }));
 
