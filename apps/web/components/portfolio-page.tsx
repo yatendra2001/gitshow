@@ -16,9 +16,47 @@ import { formatResumeDateRange } from "@/lib/format-date";
 import HackathonsSection from "@/components/sections/hackathons";
 import PublicationsSection from "@/components/sections/publications";
 import { ArrowUpRight } from "lucide-react";
-import type { ComponentProps } from "react";
+import { useEffect, type ComponentProps } from "react";
 
 const BLUR_FADE_DELAY = 0.04;
+
+/**
+ * Hook: intercept clicks on `/#section` anchor links anywhere in the
+ * document and replace them with smooth scroll. Fixes the "page
+ * reloads when you click an About link" bug.
+ *
+ * Why a document-level listener instead of just the react-markdown
+ * components override: the override only runs for links rendered
+ * via react-markdown. Anything else (a manually-authored anchor in
+ * a child component, a Next `<Link>` someone added later, etc.)
+ * still triggers a full Next.js nav. The document-level listener
+ * catches every click regardless of where the link came from.
+ *
+ * Cmd/Ctrl/Shift/middle-click and explicit target="_blank" links
+ * still pass through to the browser's default behaviour.
+ */
+function useSmoothHashAnchorScroll(): void {
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.button === 1) return;
+      const target = e.target as HTMLElement | null;
+      const link = target?.closest("a");
+      if (!link) return;
+      if (link.target && link.target !== "" && link.target !== "_self") return;
+      const href = link.getAttribute("href");
+      if (!href || !/^\/?#[A-Za-z][\w-]*$/.test(href)) return;
+      const id = href.slice(href.indexOf("#") + 1);
+      const el = document.getElementById(id);
+      if (!el) return;
+      e.preventDefault();
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      // Sync the URL without a Next.js navigation.
+      window.history.replaceState(null, "", `/#${id}`);
+    };
+    document.addEventListener("click", handler);
+    return () => document.removeEventListener("click", handler);
+  }, []);
+}
 
 /**
  * react-markdown components override that turns hash-only links
@@ -93,6 +131,9 @@ export default function PortfolioPage() {
   const DATA = useData();
   const resume = useResume();
   const hidden = new Set(resume.sections.hidden);
+  // Document-level click interceptor for /#section anchor links —
+  // smooth-scrolls instead of full-page nav. See hook docstring.
+  useSmoothHashAnchorScroll();
   return (
     <main className="min-h-dvh flex flex-col gap-14 relative">
       <section id="hero">
@@ -198,44 +239,28 @@ export default function PortfolioPage() {
             <SectionHeader>Skills</SectionHeader>
           </BlurFade>
           <div className="flex flex-wrap gap-2">
-            {DATA.skills.map((skill, id) => {
-              // Skills with manifest-aggregator scoring get a tiny
-              // mini-bar inside the chip — pure visual cue at the
-              // pill's right edge, doesn't change layout. Skills
-              // that landed via legacy paths (no score) render as
-              // before.
-              const score =
-                typeof skill.score === "number" ? skill.score : null;
-              return (
-                <BlurFade
-                  key={skill.name}
-                  delay={BLUR_FADE_DELAY * 10 + id * 0.05}
+            {DATA.skills.map((skill, id) => (
+              <BlurFade
+                key={skill.name}
+                delay={BLUR_FADE_DELAY * 10 + id * 0.05}
+              >
+                <div
+                  className="border bg-background border-border ring-2 ring-border/20 rounded-xl h-8 w-fit px-4 flex items-center gap-2"
+                  title={
+                    skill.usageCount
+                      ? `Used in ${skill.usageCount} repo${skill.usageCount === 1 ? "" : "s"}`
+                      : undefined
+                  }
                 >
-                  <div
-                    className="relative border bg-background border-border ring-2 ring-border/20 rounded-xl h-8 w-fit px-4 flex items-center gap-2 overflow-hidden"
-                    title={
-                      skill.usageCount
-                        ? `Used in ${skill.usageCount} repo${skill.usageCount === 1 ? "" : "s"}${score !== null ? ` · score ${score}/100` : ""}`
-                        : undefined
-                    }
-                  >
-                    {skill.icon && (
-                      <skill.icon className="size-4 rounded overflow-hidden object-contain" />
-                    )}
-                    <span className="relative z-[1] text-foreground text-sm font-medium">
-                      {skill.name}
-                    </span>
-                    {score !== null && score > 0 && (
-                      <span
-                        aria-hidden
-                        className="pointer-events-none absolute inset-y-0 left-0 bg-primary/[0.07] dark:bg-primary/[0.18]"
-                        style={{ width: `${Math.max(8, score)}%` }}
-                      />
-                    )}
-                  </div>
-                </BlurFade>
-              );
-            })}
+                  {skill.icon && (
+                    <skill.icon className="size-4 rounded overflow-hidden object-contain" />
+                  )}
+                  <span className="text-foreground text-sm font-medium">
+                    {skill.name}
+                  </span>
+                </div>
+              </BlurFade>
+            ))}
           </div>
         </div>
       </section>

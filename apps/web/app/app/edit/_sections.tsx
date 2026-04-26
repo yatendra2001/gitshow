@@ -10,6 +10,7 @@ import type {
   EducationEntry,
   Skill,
   Project,
+  ProjectWebMention,
   BuildLogEntry,
   BlogPost,
   IconKey,
@@ -476,6 +477,67 @@ export function ProjectsSectionForm({
             label="Links"
             items={item.links}
             onChange={(next) => onItemChange({ ...item, links: next })}
+          />
+          <WebMentionsEditor
+            value={item.webMentions ?? []}
+            onChange={(next) =>
+              onItemChange({
+                ...item,
+                webMentions: next.length > 0 ? next : undefined,
+              })
+            }
+          />
+        </div>
+      )}
+    />
+  );
+}
+
+/**
+ * Editor for the "Featured at" row on a project card. Each row carries
+ * the WebMention shape (source label + title + URL). The pipeline
+ * pre-fills these from the Gemini grounded evidence pass; this lets
+ * the owner curate or add their own (HN posts, press, podcasts) that
+ * the search didn't surface.
+ */
+function WebMentionsEditor({
+  value,
+  onChange,
+}: {
+  value: ProjectWebMention[];
+  onChange: (next: ProjectWebMention[]) => void;
+}) {
+  return (
+    <ListEditor<ProjectWebMention>
+      label="Featured at"
+      items={value}
+      onChange={onChange}
+      addLabel="Add mention"
+      emptyLabel="No mentions yet."
+      max={5}
+      factory={() => ({ title: "", url: "", source: "" })}
+      renderItem={(item, _i, onItemChange) => (
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <InputField
+            label="Source"
+            value={item.source}
+            onChange={(v) => onItemChange({ ...item, source: v })}
+            placeholder="Hacker News"
+            required
+          />
+          <InputField
+            label="Title"
+            value={item.title}
+            onChange={(v) => onItemChange({ ...item, title: v })}
+            placeholder="Show HN: …"
+            required
+          />
+          <InputField
+            label="URL"
+            value={item.url}
+            onChange={(v) => onItemChange({ ...item, url: v })}
+            type="url"
+            required
           />
         </div>
       )}
