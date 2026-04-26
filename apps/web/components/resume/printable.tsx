@@ -24,5 +24,15 @@ export interface PrintableResumeProps {
 
 export function PrintableResume({ doc, fullPage = false }: PrintableResumeProps) {
   const html = renderResumeHtml(doc, { fullPage });
-  return <div dangerouslySetInnerHTML={{ __html: html }} />;
+  // The resume is a forced-light island regardless of the surrounding
+  // app theme. Setting `colorScheme: "light"` at the boundary ensures
+  // the UA color-scheme cascade doesn't bleed dark-mode foreground
+  // colors into the resume's text. Belt + suspenders alongside the
+  // !important overrides in RESUME_PRINT_CSS.
+  return (
+    <div
+      style={{ colorScheme: "light", color: "#000" }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
 }

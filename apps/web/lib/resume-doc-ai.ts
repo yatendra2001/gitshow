@@ -25,6 +25,9 @@ import {
   DEFAULT_RESUME_SECTION_ORDER,
 } from "@gitshow/shared/resume-doc";
 
+export { SYSTEM_PROMPT, SONNET_MODEL, OPENROUTER_URL };
+export { distillResume };
+
 const SONNET_MODEL = "anthropic/claude-sonnet-4.6";
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 
@@ -248,11 +251,14 @@ function ensureId(prefix: string, idx: number, candidate: unknown): string {
 }
 
 /**
- * Coerce the raw JSON the model returned into a ResumeDoc, filling in
- * meta/page/sections/schemaVersion that the AI doesn't author. Returns
- * the validated doc or throws with a helpful message.
+ * Coerce the raw JSON the model returned into a ResumeDoc-shaped
+ * draft, filling in meta/page/sections/schemaVersion that the AI
+ * doesn't author. Lenient — accepts partial input and never throws.
+ *
+ * Used by the streaming endpoint so each partial-JSON tick can render
+ * a valid-looking doc even when the model is mid-generation.
  */
-export function buildResumeDocFromAI(
+export function coerceResumeDocFromAI(
   raw: unknown,
   sourceVersion: number,
 ): ResumeDoc {
@@ -265,63 +271,76 @@ export function buildResumeDocFromAI(
     location: r.header?.location || undefined,
     email: r.header?.email || undefined,
     phone: r.header?.phone || undefined,
-    links: (r.header?.links ?? []).slice(0, 4).map((l) => ({
-      label: l.label ?? "",
-      url: l.url ?? "",
-    })),
+    links: (r.header?.links ?? [])
+      .slice(0, 4)
+      .filter((l) => l && (l.label || l.url))
+      .map((l) => ({
+        label: l.label ?? "",
+        url: l.url ?? "",
+      })),
   };
 
-  const experience: ExperienceEntry[] = (r.experience ?? []).map((e, i) => ({
-    id: ensureId("exp", i, e.id),
-    company: e.company ?? "",
-    title: e.title ?? "",
-    start: e.start ?? "",
-    end: e.end ?? "",
-    location: e.location || undefined,
-    bullets: (e.bullets ?? []).filter(Boolean),
-  }));
+  const experience: ExperienceEntry[] = (r.experience ?? [])
+    .filter((e) => e && (e.company || e.title))
+    .map((e, i) => ({
+      id: ensureId("exp", i, e.id),
+      company: e.company ?? "",
+      title: e.title ?? "",
+      start: e.start ?? "",
+      end: e.end ?? "",
+      location: e.location || undefined,
+      bullets: (e.bullets ?? []).filter((b): b is string => typeof b === "string" && b.length > 0),
+    }));
 
-  const projects: ProjectDocEntry[] = (r.projects ?? []).map((p, i) => ({
-    id: ensureId("proj", i, p.id),
-    title: p.title ?? "",
-    url: p.url || undefined,
-    dates: p.dates || undefined,
-    stack: p.stack || undefined,
-    bullets: (p.bullets ?? []).filter(Boolean),
-  }));
+  const projects: ProjectDocEntry[] = (r.projects ?? [])
+    .filter((p) => p && p.title)
+    .map((p, i) => ({
+      id: ensureId("proj", i, p.id),
+      title: p.title ?? "",
+      url: p.url || undefined,
+      dates: p.dates || undefined,
+      stack: p.stack || undefined,
+      bullets: (p.bullets ?? []).filter((b): b is string => typeof b === "string" && b.length > 0),
+    }));
 
-  const education: EducationDocEntry[] = (r.education ?? []).map((e, i) => ({
-    id: ensureId("edu", i, e.id),
-    school: e.school ?? "",
-    degree: e.degree ?? "",
-    start: e.start ?? "",
-    end: e.end ?? "",
-    location: e.location || undefined,
-    detail: e.detail || undefined,
-  }));
+  const education: EducationDocEntry[] = (r.education ?? [])
+    .filter((e) => e && (e.school || e.degree))
+    .map((e, i) => ({
+      id: ensureId("edu", i, e.id),
+      school: e.school ?? "",
+      degree: e.degree ?? "",
+      start: e.start ?? "",
+      end: e.end ?? "",
+      location: e.location || undefined,
+      detail: e.detail || undefined,
+    }));
 
-  const skills: SkillGroup[] = (r.skills ?? []).map((s, i) => ({
-    id: ensureId("skill", i, s.id),
-    label: s.label ?? "",
-    items: s.items ?? "",
-  }));
+  const skills: SkillGroup[] = (r.skills ?? [])
+    .filter((s) => s && (s.label || s.items))
+    .map((s, i) => ({
+      id: ensureId("skill", i, s.id),
+      label: s.label ?? "",
+      items: s.items ?? "",
+    }));
 
-  const awards: AwardEntry[] = (r.awards ?? []).map((a, i) => ({
-    id: ensureId("award", i, a.id),
-    title: a.title ?? "",
-    date: a.date || undefined,
-    detail: a.detail || undefined,
-  }));
+  const awards: AwardEntry[] = (r.awards ?? [])
+    .filter((a) => a && a.title)
+    .map((a, i) => ({
+      id: ensureId("award", i, a.id),
+      title: a.title ?? "",
+      date: a.date || undefined,
+      detail: a.detail || undefined,
+    }));
 
-  const publications: PublicationDocEntry[] = (r.publications ?? []).map(
-    (p, i) => ({
+  const publications: PublicationDocEntry[] = (r.publications ?? [])
+    .filter((p) => p && p.citation)
+    .map((p, i) => ({
       id: ensureId("pub", i, p.id),
       citation: p.citation ?? "",
       url: p.url || undefined,
-    }),
-  );
+    }));
 
-  const draft = {
+  return {
     schemaVersion: 1 as const,
     header,
     experience,
@@ -342,7 +361,18 @@ export function buildResumeDocFromAI(
       sourceVersion,
     },
   };
+}
 
+/**
+ * Strict variant — used for the final write. Throws when the schema
+ * validation fails so the caller knows the AI returned something the
+ * editor can't safely persist.
+ */
+export function buildResumeDocFromAI(
+  raw: unknown,
+  sourceVersion: number,
+): ResumeDoc {
+  const draft = coerceResumeDocFromAI(raw, sourceVersion);
   const parsed = ResumeDocSchema.safeParse(draft);
   if (!parsed.success) {
     throw new Error(

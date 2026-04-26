@@ -29,8 +29,6 @@ import {
   Add01Icon,
   Delete02Icon,
   Download04Icon,
-  MagicWand01Icon,
-  Refresh01Icon,
   Tick02Icon,
   AlertCircleIcon,
   ArrowUp01Icon,
@@ -71,7 +69,6 @@ export function ResumeEditor({
   const [status, setStatus] = useState<Status>("idle");
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
-  const [regenerating, setRegenerating] = useState(false);
 
   const pendingRef = useRef<Record<string, unknown>>({});
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -132,29 +129,6 @@ export function ResumeEditor({
     };
   }, []);
 
-  const onRegenerateAll = useCallback(async () => {
-    if (regenerating) return;
-    setRegenerating(true);
-    try {
-      const resp = await fetch("/api/resume/doc/generate", { method: "POST" });
-      if (!resp.ok) {
-        const err = (await resp.json().catch(() => ({}))) as { error?: string };
-        setStatus("error");
-        setErrMsg(humanizeError(err.error));
-        return;
-      }
-      const data = (await resp.json()) as { doc: ResumeDoc };
-      setDoc(data.doc);
-      setStatus("saved");
-      setTimeout(() => setStatus("idle"), 1200);
-    } catch {
-      setStatus("error");
-      setErrMsg("Could not regenerate");
-    } finally {
-      setRegenerating(false);
-    }
-  }, [regenerating]);
-
   const onDownload = useCallback(async () => {
     if (downloading) return;
     setDownloading(true);
@@ -189,7 +163,7 @@ export function ResumeEditor({
   }, [doc.header.name, downloading]);
 
   const lineCount = useMemo(() => estimateContentLines(doc), [doc]);
-  const overBudget = lineCount > ONE_PAGE_LINE_BUDGET;
+  const fitTier = fitTierFor(lineCount);
 
   return (
     <div className="flex flex-col min-h-[calc(100svh-3.5rem)]">
@@ -198,10 +172,8 @@ export function ResumeEditor({
         errMsg={errMsg}
         onDownload={onDownload}
         downloading={downloading}
-        onRegenerate={onRegenerateAll}
-        regenerating={regenerating}
         lineCount={lineCount}
-        overBudget={overBudget}
+        fitTier={fitTier}
       />
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(0,520px)_minmax(0,1fr)]">
@@ -210,13 +182,7 @@ export function ResumeEditor({
           <div className="px-5 py-6 space-y-6">
             <AtsBadge />
             <HeaderForm doc={doc} onPatch={onPatch} />
-            <ExperienceForm
-              doc={doc}
-              onPatch={onPatch}
-              setDoc={setDoc}
-              setStatus={setStatus}
-              setErrMsg={setErrMsg}
-            />
+            <ExperienceForm doc={doc} onPatch={onPatch} />
             <ProjectsForm doc={doc} onPatch={onPatch} />
             <EducationForm doc={doc} onPatch={onPatch} />
             <SkillsForm doc={doc} onPatch={onPatch} />
@@ -233,6 +199,19 @@ export function ResumeEditor({
   );
 }
 
+/**
+ * Three tiers driven by the line-count estimate vs. the one-page
+ * budget. Subtle by design — comfortable is silent, near is amber,
+ * over is red. We don't strobe; the tier just colors the indicator
+ * and a tooltip explains the next step.
+ */
+type FitTier = "good" | "near" | "over";
+function fitTierFor(count: number): FitTier {
+  if (count > ONE_PAGE_LINE_BUDGET) return "over";
+  if (count > ONE_PAGE_LINE_BUDGET - 6) return "near";
+  return "good";
+}
+
 // ──────────────────────────────────────────────────────────────
 // Toolbar
 // ──────────────────────────────────────────────────────────────
@@ -242,19 +221,15 @@ function Toolbar({
   errMsg,
   onDownload,
   downloading,
-  onRegenerate,
-  regenerating,
   lineCount,
-  overBudget,
+  fitTier,
 }: {
   status: Status;
   errMsg: string | null;
   onDownload: () => void;
   downloading: boolean;
-  onRegenerate: () => void;
-  regenerating: boolean;
   lineCount: number;
-  overBudget: boolean;
+  fitTier: FitTier;
 }) {
   return (
     <div className="sticky top-14 z-10 flex items-center gap-3 border-b border-border/30 bg-background/85 backdrop-blur px-5 h-14">
@@ -266,31 +241,8 @@ function Toolbar({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <FitIndicator count={lineCount} over={overBudget} />
+        <FitIndicator count={lineCount} tier={fitTier} />
         <SaveBadge status={status} errMsg={errMsg} />
-        <button
-          type="button"
-          onClick={onRegenerate}
-          disabled={regenerating}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-md px-2.5 h-8 text-[12px] font-medium",
-            "border border-border/60 bg-background",
-            "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]",
-            "transition-[background-color,color] duration-150 ease",
-            "disabled:opacity-60 disabled:hover:bg-background disabled:hover:text-muted-foreground",
-            "min-h-9",
-          )}
-          aria-label="Regenerate resume with AI"
-          title="Regenerate the entire resume from your portfolio"
-        >
-          <HugeiconsIcon
-            icon={regenerating ? Loading03Icon : MagicWand01Icon}
-            size={14}
-            strokeWidth={2}
-            className={regenerating ? "animate-spin" : ""}
-          />
-          {regenerating ? "Regenerating" : "Regenerate"}
-        </button>
         <button
           type="button"
           onClick={onDownload}
@@ -317,27 +269,43 @@ function Toolbar({
   );
 }
 
-function FitIndicator({ count, over }: { count: number; over: boolean }) {
+function FitIndicator({ count, tier }: { count: number; tier: FitTier }) {
+  // Subtle 3-tier styling. The tier change is the only signal — no
+  // pulse, no flash. Keep it calm, the user reads the chip when they
+  // want to know.
+  const tierStyle = {
+    good: {
+      cls: "bg-foreground/[0.04] text-muted-foreground",
+      icon: Tick02Icon,
+      title: "Fits on one page",
+    },
+    near: {
+      // Amber/yellow tint that reads in both light + dark mode.
+      cls: "bg-amber-400/10 text-amber-700 dark:text-amber-400",
+      icon: AlertCircleIcon,
+      title: "Close to the one-page limit — consider trimming",
+    },
+    over: {
+      // Red tint, also subtle. We pair with the title text so the user
+      // gets the actionable hint when they hover.
+      cls: "bg-red-500/10 text-red-700 dark:text-red-400",
+      icon: AlertCircleIcon,
+      title: "Over one page — cut bullets or hide a section",
+    },
+  } as const;
+  const t = tierStyle[tier];
   return (
     <div
       className={cn(
         "hidden sm:inline-flex items-center gap-1.5 rounded-md px-2 h-7 text-[11px] font-medium",
         "transition-[background-color,color] duration-200 ease-out",
-        over
-          ? "bg-foreground/[0.06] text-foreground"
-          : "bg-foreground/[0.04] text-muted-foreground",
+        t.cls,
       )}
-      title={
-        over
-          ? "Content likely exceeds one page — trim bullets or hide a section"
-          : "Fits on one page"
-      }
+      title={t.title}
+      role="status"
+      aria-live="polite"
     >
-      <HugeiconsIcon
-        icon={over ? AlertCircleIcon : Tick02Icon}
-        size={12}
-        strokeWidth={2}
-      />
+      <HugeiconsIcon icon={t.icon} size={12} strokeWidth={2} />
       <span style={{ fontVariantNumeric: "tabular-nums" }}>
         {count}/{ONE_PAGE_LINE_BUDGET}
       </span>
@@ -622,18 +590,11 @@ function HeaderForm({
 function ExperienceForm({
   doc,
   onPatch,
-  setDoc,
-  setStatus,
-  setErrMsg,
 }: {
   doc: ResumeDoc;
   onPatch: (p: Partial<ResumeDoc>) => void;
-  setDoc: React.Dispatch<React.SetStateAction<ResumeDoc>>;
-  setStatus: React.Dispatch<React.SetStateAction<Status>>;
-  setErrMsg: React.Dispatch<React.SetStateAction<string | null>>;
 }) {
   const list = doc.experience;
-  const [regenIds, setRegenIds] = useState<Set<string>>(new Set());
 
   function setList(next: ExperienceEntry[]) {
     onPatch({ experience: next });
@@ -670,37 +631,6 @@ function ExperienceForm({
     setList(next);
   }
 
-  async function regenerateBullets(entry: ExperienceEntry) {
-    const ids = new Set(regenIds);
-    ids.add(entry.id);
-    setRegenIds(ids);
-    try {
-      const resp = await fetch("/api/resume/doc/regenerate-bullets", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ entry }),
-      });
-      if (!resp.ok) {
-        const err = (await resp.json().catch(() => ({}))) as { error?: string };
-        setStatus("error");
-        setErrMsg(humanizeError(err.error));
-        return;
-      }
-      const data = (await resp.json()) as { bullets: string[] };
-      const idx = list.findIndex((e) => e.id === entry.id);
-      if (idx >= 0) update(idx, { bullets: data.bullets });
-    } catch {
-      setStatus("error");
-      setErrMsg("Could not regenerate bullets");
-    } finally {
-      setRegenIds((s) => {
-        const n = new Set(s);
-        n.delete(entry.id);
-        return n;
-      });
-    }
-  }
-
   return (
     <SectionShell title="Experience" count={list.length} onAdd={add}>
       {list.length === 0 ? (
@@ -712,29 +642,6 @@ function ExperienceForm({
           onMoveUp={idx > 0 ? () => move(idx, -1) : undefined}
           onMoveDown={idx < list.length - 1 ? () => move(idx, 1) : undefined}
           onRemove={() => remove(idx)}
-          extra={
-            <button
-              type="button"
-              onClick={() => regenerateBullets(e)}
-              disabled={regenIds.has(e.id)}
-              className={cn(
-                "inline-flex items-center gap-1 rounded-md h-7 px-2 text-[11px] font-medium",
-                "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]",
-                "transition-[background-color,color] duration-150 ease",
-                "disabled:opacity-50",
-              )}
-              aria-label="Regenerate bullets with AI"
-              title="Regenerate bullets for this role"
-            >
-              <HugeiconsIcon
-                icon={regenIds.has(e.id) ? Loading03Icon : MagicWand01Icon}
-                size={12}
-                strokeWidth={2}
-                className={regenIds.has(e.id) ? "animate-spin" : ""}
-              />
-              {regenIds.has(e.id) ? "Regen…" : "Regen bullets"}
-            </button>
-          }
         >
           <div className="grid grid-cols-2 gap-2">
             <Field label="Company">
@@ -784,7 +691,7 @@ function ExperienceForm({
           </div>
           <Field
             label="Bullets"
-            hint="One per line · action verb first · wrap metrics in **bold** (e.g. **62%**, **180M req/day**)"
+            hint="One per line · action verb first · wrap metrics in **bold**"
           >
             <BulletsInput
               value={e.bullets}
@@ -1297,13 +1204,11 @@ function EntryCard({
   onMoveUp,
   onMoveDown,
   onRemove,
-  extra,
 }: {
   children: React.ReactNode;
   onMoveUp?: () => void;
   onMoveDown?: () => void;
   onRemove: () => void;
-  extra?: React.ReactNode;
 }) {
   return (
     <div
@@ -1314,7 +1219,6 @@ function EntryCard({
       )}
     >
       <div className="flex items-center justify-end gap-1">
-        {extra}
         {onMoveUp ? (
           <IconBtn
             icon={ArrowUp01Icon}
@@ -1405,9 +1309,12 @@ function BulletsInput({
 function PreviewPane({ doc }: { doc: ResumeDoc }) {
   return (
     <div className="bg-foreground/[0.015] dark:bg-foreground/[0.04] hidden lg:block lg:overflow-y-auto lg:max-h-[calc(100svh-3.5rem-3.5rem)] gs-pane-scroll">
-      <style jsx global>{`
-        ${RESUME_PRINT_CSS}
-      `}</style>
+      {/* Plain <style> tag with dangerouslySetInnerHTML — styled-jsx
+          silently drops `<style jsx global>{`${dynamicString}`}` when
+          the template literal contains only an interpolation, which
+          was eating every resume rule and making the preview render
+          as plain text. */}
+      <style dangerouslySetInnerHTML={{ __html: RESUME_PRINT_CSS }} />
       <div className="flex justify-center px-6 py-8">
         <div
           className="origin-top"

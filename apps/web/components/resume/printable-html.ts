@@ -239,9 +239,17 @@ function esc(value: string): string {
  * the page is rendered at 96dpi with 1:1 scaling before transform.
  */
 export const RESUME_PRINT_CSS = `
+  /* The resume is a forced-light island. The dashboard ships its own
+     dark-mode foreground/background variables which cascade into this
+     component via inheritance — without these overrides the resume
+     turned into near-white text on a light card in dark mode (the
+     classic invisible-resume bug). 'color-scheme: light' resets the
+     UA color scheme inside the resume; the explicit color/background
+     pair beats any ancestor that set them via custom properties. */
   .resume-doc {
-    color: #000;
-    background: #fff;
+    color: #000 !important;
+    background: #fff !important;
+    color-scheme: light;
     font-family: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
     font-size: 10.5pt;
     line-height: 1.4;
@@ -251,8 +259,8 @@ export const RESUME_PRINT_CSS = `
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
-  .resume-doc * { box-sizing: border-box; }
-  .resume-doc a { color: inherit; text-decoration: none; }
+  .resume-doc * { box-sizing: border-box; color: inherit; }
+  .resume-doc a { color: inherit !important; text-decoration: none; }
 
   .resume-header { margin-bottom: 14pt; text-align: center; }
   .resume-name {
