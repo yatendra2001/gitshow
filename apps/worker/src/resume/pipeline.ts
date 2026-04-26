@@ -350,6 +350,11 @@ async function runPipelineBody(args: PipelineBodyArgs): Promise<Resume> {
                 repoPath: inv.repoPath,
                 fullName: repo.fullName,
                 handle: session.handle,
+                // Pass every verified email GitHub has on file for the
+                // user so commits authored under their real personal /
+                // work email get counted, not just commits where the
+                // GitHub handle is a substring of the author email.
+                userEmails: github.userEmails,
                 log,
               });
               studies[repo.fullName] = study;
