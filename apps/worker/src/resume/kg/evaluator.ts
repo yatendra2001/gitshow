@@ -27,7 +27,6 @@ export interface KgEvaluationReport {
 export interface EvaluateKgInput {
   kg: KnowledgeGraph;
   hasLinkedIn: boolean;
-  hasLinkedInPdf: boolean;
   hasPersonalSite: boolean;
   trace?: ScanTrace;
 }
@@ -43,7 +42,7 @@ const NOISE_KINDS = new Set([
 
 export function evaluateKg(input: EvaluateKgInput): KgEvaluationReport {
   const issues: KgIssue[] = [];
-  const { kg, hasLinkedIn, hasLinkedInPdf, hasPersonalSite } = input;
+  const { kg, hasLinkedIn, hasPersonalSite } = input;
 
   // BLOCKING: 0 Person
   if (kg.entities.persons.length === 0) {
@@ -67,14 +66,15 @@ export function evaluateKg(input: EvaluateKgInput): KgEvaluationReport {
   }
 
   // BLOCKING: LinkedIn provided but 0 WORKED_AT after the chain succeeded.
-  // (We treat any LinkedIn URL OR uploaded PDF as "user gave us LinkedIn signal".)
+  // The fetcher chain (ProxyCurl → TinyFish Agent → Gemini grounded) is
+  // expected to always return SOMETHING when a LinkedIn URL is supplied;
+  // a zero-fact result means a real failure worth flagging.
   const workedAt = kg.edges.filter((e) => e.type === "WORKED_AT");
-  if ((hasLinkedIn || hasLinkedInPdf) && workedAt.length === 0) {
+  if (hasLinkedIn && workedAt.length === 0) {
     issues.push({
       section: "work",
-      severity: hasLinkedInPdf ? "error" : "warn",
-      message:
-        "LinkedIn signal present but produced 0 WORKED_AT edges — surface PDF upload prompt",
+      severity: "error",
+      message: "LinkedIn URL provided but produced 0 WORKED_AT edges",
     });
   }
 
@@ -87,15 +87,6 @@ export function evaluateKg(input: EvaluateKgInput): KgEvaluationReport {
         message: `Edge ${e.id} has 0 sources — fetcher bug`,
       });
     }
-  }
-
-  // WARNING: LinkedIn provided but tier-1+2 produced 0 typed facts → suggest PDF upload.
-  if (hasLinkedIn && !hasLinkedInPdf && workedAt.length === 0) {
-    issues.push({
-      section: "linkedin",
-      severity: "warn",
-      message: "LinkedIn URL provided but no work facts surfaced — prompt user for PDF upload",
-    });
   }
 
   // WARNING: personal site set, fetcher returned 0 facts.

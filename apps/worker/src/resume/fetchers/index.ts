@@ -4,8 +4,7 @@
  *
  * Each fetcher:
  *   - Takes a shared `FetcherInput` shape (session, usage, trace,
- *     onProgress). Some fetchers extend it (linkedin-pdf adds pdfText;
- *     semantic-scholar + arxiv add personName).
+ *     onProgress). semantic-scholar + arxiv add personName.
  *   - Emits `TypedFact[]`.
  *   - Wraps its body in try/catch; on error returns [] and records a
  *     `fetcher.error` trace event. Never throws.
@@ -15,16 +14,11 @@
 
 export {
   runLinkedInPublicFetcher,
-  LOGIN_WALL_PATTERN,
-  LOGIN_WALL_TITLES,
-  MIN_TEXT_CHARS,
-  isUsable,
   buildFacts as buildLinkedInFacts,
   emitFactsToTrace,
   LinkedInExtractionSchema,
 } from "./linkedin-public.js";
 
-export { runLinkedInPdfFetcher } from "./linkedin-pdf.js";
 export { runPersonalSiteFetcher } from "./personal-site.js";
 export { runHnProfileFetcher } from "./hn-profile.js";
 export { runDevtoProfileFetcher } from "./devto-profile.js";

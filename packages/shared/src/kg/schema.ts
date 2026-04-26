@@ -65,8 +65,6 @@ export const FetcherSchema = z.enum([
   "github-fetcher",
   "github-hint",
   "linkedin-public",
-  "linkedin-playwright",
-  "linkedin-pdf",
   "personal-site",
   "twitter",
   "hn",
@@ -178,9 +176,10 @@ export const ProjectSchema = z.object({
   /** User-authored line count (added across history). */
   userLines: z.number().int().nonnegative().optional(),
   /**
-   * Web mentions from the project-search stage — HN/Product Hunt/
-   * dev.to/reddit posts that name this project. Only populated for
-   * the 6 projects the ranker picked.
+   * Web mentions surfaced from the per-repo Gemini grounded evidence
+   * pass — HN / Product Hunt / dev.to / blog posts / press that
+   * name this project. Populated for any judged repo where Gemini
+   * found credible external mentions (capped at 5 per project).
    */
   webMentions: z.array(WebMentionSchema).optional(),
   shouldFeature: z.boolean().default(false),

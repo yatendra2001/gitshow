@@ -43,13 +43,12 @@ import {
   type ProjectRankerOutput,
 } from "./judge/project-ranker.js";
 import {
-  runProjectSearch,
-  type ProjectSearchOutput,
-} from "./judge/project-search.js";
+  fetchAllRepoEvidence,
+  type RepoEvidence,
+} from "./judge/repo-evidence.js";
 import {
   emitGithubFacts,
   runLinkedInPublicFetcher,
-  runLinkedInPdfFetcher,
   runPersonalSiteFetcher,
   runHnProfileFetcher,
   runDevtoProfileFetcher,
@@ -66,6 +65,7 @@ import { evaluateKg } from "./kg/evaluator.js";
 import { writeKgToR2 } from "./kg/persist-kg.js";
 import { fetchMediaForKG } from "./media/index.js";
 import { generateHeroProse } from "./render/hero-prose.js";
+import { generatePersonReport } from "./render/person-report.js";
 import { renderResumeFromKg } from "./render/render-from-kg.js";
 
 import {
@@ -76,6 +76,13 @@ import {
   type BuiltFact,
 } from "@gitshow/shared/kg";
 import { ScanTrace, traceR2Key } from "./observability/trace.js";
+import {
+  bindScanContext,
+  captureEvent,
+  clearScanContext,
+  emitScanCostSummary,
+  flushPostHog,
+} from "@gitshow/shared/cloud/posthog";
 import { writeDraftResume } from "./persist.js";
 import { noopPhases, type PhaseReporter } from "./phases.js";
 import { withTimeout, TimeoutError } from "../util/timeout.js";
@@ -90,7 +97,12 @@ import type { Resume } from "@gitshow/shared/resume";
  * repo so the Sonnet ranker has full context to pick the top 6 from.
  */
 const INVENTORY_CAP = 200;
-const INVENTORY_CONCURRENCY = 3;
+/**
+ * Inventory cloning is bandwidth + disk-I/O bound. 8 parallel git
+ * clones is comfortable on Fly's network without saturating disk
+ * (each clone is shallow `--depth=1`).
+ */
+const INVENTORY_CONCURRENCY = 8;
 const JUDGE_MAX_CANDIDATES = 200;
 
 /**
@@ -149,8 +161,6 @@ export interface RunResumePipelineOptions {
     };
     dataSources: GitHubData["fetchStats"];
   }) => Promise<void> | void;
-  /** Pre-extracted LinkedIn PDF text from scans.linkedin_pdf_text. */
-  linkedinPdfText?: string;
   /** User-supplied email captured at intake (overrides anything we infer). */
   intakeEmail?: string;
   /**
@@ -171,6 +181,12 @@ export async function runResumePipeline(
   const profileDir = opts.profileDir ?? `profiles/${session.handle}`;
   await mkdir(profileDir, { recursive: true });
 
+  bindScanContext({ scanId: session.id, handle: session.handle });
+  captureEvent({
+    name: "scan started",
+    properties: { model: session.model, has_linkedin: !!session.socials.linkedin },
+  });
+
   const trace = new ScanTrace({
     scanId: session.id,
     handle: session.handle,
@@ -187,7 +203,7 @@ export async function runResumePipeline(
   // path persists inline and rethrows.
   let resumePersisted = false;
   try {
-    return await runPipelineBody({
+    const resume = await runPipelineBody({
       session,
       usage,
       log,
@@ -200,7 +216,22 @@ export async function runResumePipeline(
         resumePersisted = true;
       },
     });
+    captureEvent({
+      name: "scan completed",
+      properties: {
+        projects: resume.projects.length,
+        work: resume.work.length,
+        education: resume.education.length,
+        skills: resume.skills.length,
+        publications: resume.publications.length,
+      },
+    });
+    return resume;
   } catch (err) {
+    captureEvent({
+      name: "scan failed",
+      properties: { error: (err as Error).message.slice(0, 240) },
+    });
     if (!resumePersisted && (opts.writeToR2 || process.env.R2_BUCKET_NAME)) {
       try {
         const packet = trace.finalize();
@@ -213,6 +244,21 @@ export async function runResumePipeline(
       }
     }
     throw err;
+  } finally {
+    // Emit the scan-cost summary BEFORE clearing the context so the
+    // aggregator is still alive. This event is what feeds the
+    // "$/scan" + "$/model" dashboards in PostHog.
+    const cost = emitScanCostSummary();
+    if (cost) {
+      log(
+        `[pipeline] cost: $${cost.total_cost_usd.toFixed(4)} ` +
+          `(${cost.total_calls} calls, ${cost.total_input_tokens + cost.total_output_tokens} tokens) ` +
+          `top model: ${cost.by_model[0]?.display_name ?? "—"} ` +
+          `($${cost.by_model[0]?.cost_usd.toFixed(4) ?? "0"})\n`,
+      );
+    }
+    await flushPostHog();
+    clearScanContext();
   }
 }
 
@@ -373,15 +419,27 @@ async function runPipelineBody(args: PipelineBodyArgs): Promise<Resume> {
   });
   log(`[pipeline]   judged ${Object.keys(judgments).length} repos\n`);
 
-  // 4b. Project Ranker (Sonnet 4.6) — single comparative pick over
-  //     ALL judgments. Sonnet's picks become the My Projects grid;
-  //     everything else falls through to the build-log timeline.
-  //     This decouples "study each repo" (Kimi, per-repo) from
-  //     "decide which 6 to feature" (Sonnet, global comparison) so
-  //     a single Kimi flake on one repo can't take a real project
-  //     out of the grid.
+  // 4b. Per-repo evidence (Gemini 3 Flash grounded). One grounded call
+  //     per non-noise judged repo. Provides the ranker with reception,
+  //     external mentions, and novelty signals — the "is this famous?"
+  //     axis that's hard to infer from code alone.
+  const evidence = await phases.phase("repo-evidence", async () => {
+    log(`[pipeline] stage 4b: per-repo evidence (Gemini grounded)\n`);
+    if (Object.keys(judgments).length === 0) {
+      return {} as Record<string, RepoEvidence>;
+    }
+    return fetchAllRepoEvidence({ judgments, trace, log });
+  });
+  log(`[pipeline]   evidence reports: ${Object.keys(evidence).length}\n`);
+
+  // 4c. Project Ranker (Sonnet 4.6) — single comparative pick over
+  //     ALL judgments + evidence reports. Sonnet's picks become the
+  //     My Projects grid; everything else falls through to the
+  //     build-log timeline. This decouples "study each repo" (Kimi)
+  //     and "investigate external traction" (Gemini grounded) from
+  //     "decide which 6 to feature" (Sonnet, comparative).
   const ranking = await phases.phase("project-ranker", async () => {
-    log(`[pipeline] stage 4b: project-ranker (Sonnet)\n`);
+    log(`[pipeline] stage 4c: project-ranker (Sonnet)\n`);
     if (Object.keys(judgments).length === 0) {
       return { picks: [], rationale: "no judgments to rank" } as ProjectRankerOutput;
     }
@@ -389,6 +447,8 @@ async function runPipelineBody(args: PipelineBodyArgs): Promise<Resume> {
       session,
       usage,
       judgments,
+      evidence,
+      studies,
       trace,
       onProgress,
       emit: opts.emit,
@@ -397,35 +457,6 @@ async function runPipelineBody(args: PipelineBodyArgs): Promise<Resume> {
       `[pipeline]   ranker picked ${r.picks.length} project(s) for grid\n`,
     );
     return r;
-  });
-
-  // 4c. Project search (Tavily) — for the 6 picks only. Surfaces
-  //     HN / Product Hunt / dev.to mentions onto the public project
-  //     card. Gated on TAVILY_API_KEY; runs as a no-op when missing.
-  const search = await phases.phase("project-search", async () => {
-    log(`[pipeline] stage 4c: project-search\n`);
-    if (ranking.picks.length === 0) {
-      return { mentionsByRepo: {} } as ProjectSearchOutput;
-    }
-    const titleByRepo: Record<string, string> = {};
-    const homepageByRepo: Record<string, string | undefined> = {};
-    for (const repo of github.ownedRepos) {
-      titleByRepo[repo.fullName] = friendlyTitleFromFullName(
-        repo.fullName,
-        repo.description,
-      );
-    }
-    // KG projects already carry homepageUrl after the merger, but this
-    // stage runs BEFORE merge — homepage is unavailable here, so we
-    // fall back to title+handle queries which Tavily handles fine.
-    return runProjectSearch({
-      ranking,
-      titleByRepo,
-      homepageByRepo,
-      handle: session.handle,
-      trace,
-      log,
-    });
   });
 
   // 5. Fetcher fan-out (parallel). Each fetcher returns TypedFact[].
@@ -487,7 +518,7 @@ async function runPipelineBody(args: PipelineBodyArgs): Promise<Resume> {
       youtubeFacts,
     ] = await Promise.all([
       safeFetch("fetch:linkedin", FETCHER_TIMEOUTS_MS.linkedin, () =>
-        runLinkedInTierChain({ session, usage, trace, onProgress, pdfText: opts.linkedinPdfText }),
+        runLinkedInTierChain({ session, usage, trace, onProgress }),
       ),
       safeFetch("fetch:personal-site", FETCHER_TIMEOUTS_MS["personal-site"], () =>
         runPersonalSiteFetcher({ session, usage, trace, onProgress }),
@@ -661,8 +692,7 @@ async function runPipelineBody(args: PipelineBodyArgs): Promise<Resume> {
   //      thought were featurable) falls through to the build-log.
   //    - The repo-study writes userShare/userCommits/userLines so the
   //      project cards can surface "Authored 87% of code".
-  applyJudgmentsToKg(kg, judgments, ranking, studies);
-  applySearchMentionsToKg(kg, search, ranking);
+  applyJudgmentsToKg(kg, judgments, ranking, studies, evidence);
 
   // 9. Media fetch (og → README → YouTube → Gemini gen / Clearbit logos).
   const r2 = r2ClientFromEnv();
@@ -700,7 +730,6 @@ async function runPipelineBody(args: PipelineBodyArgs): Promise<Resume> {
     const report = evaluateKg({
       kg,
       hasLinkedIn: !!session.socials.linkedin,
-      hasLinkedInPdf: !!opts.linkedinPdfText,
       hasPersonalSite: !!session.socials.website,
       trace,
     });
@@ -713,13 +742,24 @@ async function runPipelineBody(args: PipelineBodyArgs): Promise<Resume> {
     return report;
   });
 
-  // 12. Hero prose (single Opus call).
+  // 11.5 Person report (Gemini grounded, single call). Builds a
+  //      "what does the world know about this person" markdown that
+  //      hero-prose uses as context. Pulled out as its own stage so
+  //      a Gemini outage doesn't take down the rest of the pipeline.
+  const personReport = await phases.phase("person-report", async () => {
+    log(`[pipeline] stage 9b: person-report (Gemini grounded)\n`);
+    return generatePersonReport({ kg, session, trace, log });
+  });
+
+  // 12. Hero prose (single Opus call) — receives the person report
+  //     as additional grounded context.
   const prose = await phases.phase("hero-prose", async () => {
     log(`[pipeline] stage 10: hero-prose\n`);
     return generateHeroProse({
       session,
       usage,
       kg,
+      personReportMarkdown: personReport.reportMarkdown,
       trace,
       onProgress,
       emit: opts.emit,
@@ -788,45 +828,20 @@ async function runPipelineBody(args: PipelineBodyArgs): Promise<Resume> {
 
 // ─── LinkedIn tier chain ────────────────────────────────────────────
 //
-// Tier 0: ProxyCurl/EnrichLayer (paid, canonical JSON) — runs INSIDE
-//         runLinkedInPublicFetcher when PROXYCURL_API_KEY is set.
-// Tier 1: TinyFish (proxy-rotating headless) — also inside
-//         runLinkedInPublicFetcher.
-// Tier 2: Jina Reader markdown — inside the same fetcher.
-// Tier 4: uploaded PDF salvage (separate fetcher, last resort).
-//
-// (Tier 3 — Playwright Googlebot UA — was removed once Tier 0
-// went first-class; the headless Chromium dependency cost more in
-// image size + cold start than it returned in usable facts.)
+// All tiers live inside runLinkedInPublicFetcher:
+//   Tier 0: ProxyCurl/EnrichLayer (canonical JSON, when key set)
+//   Tier 1: TinyFish Agent API (scoped to the LinkedIn URL only)
+//   Tier 2: Gemini grounded with URL context (anti-hallucination prompt)
 
 async function runLinkedInTierChain(opts: {
   session: ScanSession;
   usage: SessionUsage;
   trace: ScanTrace;
   onProgress?: (t: string) => void;
-  pdfText?: string;
 }): Promise<TypedFact[]> {
-  const { session, usage, trace, onProgress, pdfText } = opts;
-
-  if (!session.socials.linkedin && !pdfText) {
-    return [];
-  }
-
-  // Tier 0 (ProxyCurl) + Tier 1 (TinyFish) + Tier 2 (Jina) — in cascade.
-  const t012 = await runLinkedInPublicFetcher({ session, usage, trace, onProgress });
-  if (t012.length > 0) return t012;
-
-  // Tier 4 — uploaded PDF salvage.
-  if (pdfText) {
-    return runLinkedInPdfFetcher({
-      session,
-      usage,
-      trace,
-      onProgress,
-      pdfText,
-    });
-  }
-  return [];
+  const { session, usage, trace, onProgress } = opts;
+  if (!session.socials.linkedin) return [];
+  return runLinkedInPublicFetcher({ session, usage, trace, onProgress });
 }
 
 // ─── Judgment → BUILT facts ─────────────────────────────────────────
@@ -886,6 +901,7 @@ function applyJudgmentsToKg(
   judgments: Record<string, RepoJudgeOutput>,
   ranking: ProjectRankerOutput,
   studies: Record<string, RepoStudy>,
+  evidence: Record<string, RepoEvidence>,
 ): void {
   // Pre-build the Sonnet pick map so we can stamp featureRank in one
   // pass below. Pick index = featureRank (0 = best).
@@ -930,25 +946,20 @@ function applyJudgmentsToKg(
       project.userLines = study.userLines;
     }
 
-    kg.judgments[project.id] = j.judgment;
-  }
-}
+    // Surface external mentions from the Gemini evidence pass.
+    // Featured projects get up to 5 (driven by ranker pick size);
+    // build-log projects get them too so they can show traction
+    // chips even without making the curated grid.
+    const ev = evidence[fullName];
+    if (ev && ev.mentions.length > 0) {
+      project.webMentions = ev.mentions.map((m) => ({
+        title: m.title,
+        url: m.url,
+        source: m.source,
+      }));
+    }
 
-function applySearchMentionsToKg(
-  kg: KnowledgeGraph,
-  search: ProjectSearchOutput,
-  ranking: ProjectRankerOutput,
-): void {
-  if (Object.keys(search.mentionsByRepo).length === 0) return;
-  // Pick set is small (≤6) — linear lookup by repoFullName is fine.
-  for (const pick of ranking.picks) {
-    const mentions = search.mentionsByRepo[pick.repoFullName];
-    if (!mentions || mentions.length === 0) continue;
-    const project = kg.entities.projects.find(
-      (p) => p.repoFullName === pick.repoFullName,
-    );
-    if (!project) continue;
-    project.webMentions = mentions;
+    kg.judgments[project.id] = j.judgment;
   }
 }
 

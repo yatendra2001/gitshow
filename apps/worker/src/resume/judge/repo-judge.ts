@@ -212,9 +212,11 @@ export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput>
 /**
  * Cap how many repos we judge in parallel. Kimi handles the parallelism
  * fine on the OpenRouter side; the limit keeps memory pressure bounded
- * since each judgment loads ~20KB of file samples.
+ * since each judgment loads ~20KB of file samples. Bumped to 15 — Kimi
+ * calls run ~5-10s and the per-judgment file-sample buffer is small
+ * enough to stack 15 deep without OOM on Fly's default 1GB worker.
  */
-const JUDGE_CONCURRENCY = 5;
+const JUDGE_CONCURRENCY = 15;
 
 export interface JudgeAllOptions {
   session: ScanSession;

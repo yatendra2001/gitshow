@@ -24,6 +24,31 @@
  */
 
 import type { Resume } from "@gitshow/shared/resume";
+import {
+  captureEvent,
+  captureLlm,
+  getScanCostSummary,
+  type ScanCostSummary,
+} from "@gitshow/shared/cloud/posthog";
+
+/** Note-label prefixes that get forwarded to PostHog (rest stay trace-local). */
+const NOTE_FORWARD_PREFIXES = [
+  "manifest-skills:",
+  "repo-study:",
+  "fetcher-timeout:",
+  "linkedin:",
+  "person-report:",
+  "evidence-error:",
+  "kg.evaluator",
+];
+
+function providerFromModel(model: string): string {
+  if (model.startsWith("anthropic/")) return "openrouter:anthropic";
+  if (model.startsWith("google/")) return "openrouter:google";
+  if (model.startsWith("moonshotai/")) return "openrouter:moonshot";
+  if (model.startsWith("openai/")) return "openrouter:openai";
+  return "openrouter";
+}
 
 // ─── Event taxonomy ──────────────────────────────────────────────────
 
@@ -139,14 +164,19 @@ export interface LinkedInFetchEvent extends TraceEventBase {
 export interface LinkedInTierAttemptEvent extends TraceEventBase {
   kind: "linkedin.tier.attempt";
   /**
-   * 0 = ProxyCurl/EnrichLayer (paid API, canonical JSON)
-   * 1 = TinyFish (proxy-rotating headless)
-   * 2 = Jina Reader (markdown of public page)
-   * 3 = (retired — was Playwright Googlebot UA)
-   * 4 = uploaded PDF salvage
+   * 0 = ProxyCurl / EnrichLayer (paid API, canonical JSON)
+   * 1 = TinyFish Agent (real-browser, scoped to URL)
+   * 2 = Gemini grounded URL context (anti-hallucination guarded)
+   * 3-4 = (retired — Playwright UA, uploaded PDF salvage)
    */
   tier: 0 | 1 | 2 | 3 | 4;
-  method: "proxycurl" | "tinyfish" | "jina" | "pdf";
+  method:
+    | "proxycurl"
+    | "tinyfish"
+    | "tinyfish-agent"
+    | "gemini-grounded"
+    | "jina"
+    | "pdf";
   ok: boolean;
   durationMs: number;
   reason?: string;
@@ -379,6 +409,13 @@ export interface FinalizedTrace {
     publications: number;
     personSummaryLen: number;
   };
+  /**
+   * Per-scan cost + token aggregate populated from the PostHog
+   * aggregator. Mirrors the `scan cost summary` event so post-mortem
+   * readers can answer "how much did this scan cost?" without going
+   * to PostHog. Undefined when the aggregator wasn't bound (CLI runs).
+   */
+  costSummary?: ScanCostSummary;
   /** Rolled-up totals for at-a-glance triage. */
   summary: {
     tinyfishSearches: number;
@@ -422,10 +459,18 @@ export class ScanTrace {
 
   stageStart(label: string): void {
     this.push<StageStartEvent>({ kind: "stage.start", label });
+    captureEvent({
+      name: "pipeline stage started",
+      properties: { stage: label },
+    });
   }
 
   stageEnd(label: string, durationMs: number, ok: boolean, error?: string): void {
     this.push<StageEndEvent>({ kind: "stage.end", label, durationMs, ok, error });
+    captureEvent({
+      name: "pipeline stage ended",
+      properties: { stage: label, duration_ms: durationMs, ok, error },
+    });
   }
 
   stageResource(e: Omit<StageResourceEvent, "kind" | "seq" | "t">): void {
@@ -446,6 +491,16 @@ export class ScanTrace {
 
   linkedInTierAttempt(e: Omit<LinkedInTierAttemptEvent, "kind" | "seq" | "t">): void {
     this.push<LinkedInTierAttemptEvent>({ kind: "linkedin.tier.attempt", ...e });
+    captureEvent({
+      name: "linkedin tier attempted",
+      properties: {
+        tier: e.tier,
+        method: e.method,
+        ok: e.ok,
+        duration_ms: e.durationMs,
+        reason: e.reason,
+      },
+    });
   }
 
   linkedInFactsEmitted(e: Omit<LinkedInFactsEmittedEvent, "kind" | "seq" | "t">): void {
@@ -471,6 +526,15 @@ export class ScanTrace {
   }
   fetcherEnd(e: Omit<FetcherEndEvent, "kind" | "seq" | "t">): void {
     this.push<FetcherEndEvent>({ kind: "fetcher.end", ...e });
+    captureEvent({
+      name: "fetcher ended",
+      properties: {
+        fetcher: e.label,
+        duration_ms: e.durationMs,
+        facts_emitted: e.factsEmitted,
+        status: e.status,
+      },
+    });
   }
 
   githubApiCall(e: Omit<GithubApiCallEvent, "kind" | "seq" | "t">): void {
@@ -482,6 +546,16 @@ export class ScanTrace {
 
   judgeVerdict(e: Omit<JudgeVerdictEvent, "kind" | "seq" | "t">): void {
     this.push<JudgeVerdictEvent>({ kind: "judge.verdict", ...e });
+    captureEvent({
+      name: "repo judged",
+      properties: {
+        repo: e.repo,
+        kind: e.judgeKind,
+        should_feature: e.shouldFeature,
+        files_read: e.filesRead,
+        reason: e.reason,
+      },
+    });
   }
 
   kgMergerDeterministic(e: Omit<KgMergerDeterministicEvent, "kind" | "seq" | "t">): void {
@@ -519,10 +593,35 @@ export class ScanTrace {
       input: bound(e.input, 6000),
       output: bound(e.output, 4000),
     });
+    captureLlm({
+      provider: providerFromModel(e.model),
+      model: e.model,
+      spanName: e.label,
+      input: [
+        { role: "system", content: bound(e.systemPrompt, 4000) },
+        { role: "user", content: bound(e.input, 6000) },
+      ],
+      output: [{ role: "assistant", content: bound(e.output, 4000) }],
+      inputTokens: e.inputTokens,
+      outputTokens: e.outputTokens,
+      latencyMs: e.durationMs,
+      isError: !e.ok,
+      error: e.error,
+    });
   }
 
   note(label: string, message: string, data?: Record<string, unknown>): void {
     this.push<NoteEvent>({ kind: "note", label, message, data });
+    // Mirror to PostHog only for the high-signal note labels — every
+    // pipeline summary, evaluator decision, and warning. Skip the
+    // noisy per-event notes (e.g. evidence:{repo}) which are already
+    // covered by other captureEvent paths.
+    if (NOTE_FORWARD_PREFIXES.some((p) => label.startsWith(p))) {
+      captureEvent({
+        name: "pipeline note",
+        properties: { label, message, ...(data ?? {}) },
+      });
+    }
   }
 
   evaluator(e: Omit<EvaluatorEvent, "kind" | "seq" | "t">): void {
@@ -576,6 +675,7 @@ export class ScanTrace {
       }
     }
 
+    const costSummary = getScanCostSummary() ?? undefined;
     return {
       meta: this._meta,
       resume: resume
@@ -591,6 +691,7 @@ export class ScanTrace {
             personSummaryLen: resume.person?.summary?.length ?? 0,
           }
         : undefined,
+      costSummary,
       summary: {
         tinyfishSearches: searches,
         tinyfishSearchesOk: searchesOk,

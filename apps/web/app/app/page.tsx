@@ -21,7 +21,6 @@ import {
   type AccessState,
   type DataSources,
 } from "@/components/scan/access-state-card";
-import { LinkedInUploadCard } from "@/components/app/linkedin-upload-card";
 
 /**
  * /app — the authenticated home. Single-person model.
@@ -214,11 +213,6 @@ export default async function AppHomePage({
         <DraftState
           handle={githubHandle}
           access={accessSnapshot}
-          scanId={latestScan?.id ?? null}
-          missingWorkOrEducation={
-            (draftResume?.work?.length ?? 0) === 0 ||
-            (draftResume?.education?.length ?? 0) === 0
-          }
         />
       ) : lastFailed ? (
         <FailedState scan={latestScan!} />
@@ -376,16 +370,12 @@ function ScanningState({ scan }: { scan: ScanSlim }) {
 function DraftState({
   handle,
   access,
-  scanId,
-  missingWorkOrEducation,
 }: {
   handle: string;
   access: {
     accessState: AccessState | null;
     dataSources: DataSources | null;
   } | null;
-  scanId: string | null;
-  missingWorkOrEducation: boolean;
 }) {
   const hasLocked =
     (access?.accessState?.orgs ?? []).some(
@@ -439,11 +429,6 @@ function DraftState({
               publishing if you want those repos included.
             </p>
           ) : null}
-        </div>
-      ) : null}
-      {missingWorkOrEducation && scanId ? (
-        <div className="mt-4 border-t border-border/30 pt-5">
-          <LinkedInUploadCard scanId={scanId} />
         </div>
       ) : null}
     </section>
