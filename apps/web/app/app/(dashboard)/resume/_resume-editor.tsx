@@ -22,7 +22,7 @@
  * dynamic numbers (tabular-nums on the page-fit indicator).
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -47,12 +47,23 @@ import type {
   ResumeSectionKey,
 } from "@gitshow/shared/resume-doc";
 // Letter page height at 96dpi (the canonical browser unit). Used for
-// the DOM-measurement-based fit indicator. We compare the resume's
-// rendered scrollHeight against this — it's the only honest signal
-// since the line-count heuristic systematically undercounted wrapped
-// bullets and lied about whether the doc fits one page.
-const LETTER_PAGE_HEIGHT_PX = 11 * 96;
-const NEAR_BUFFER_PX = 50;
+// the DOM-measurement-based fit indicator.
+const LETTER_PAGE_HEIGHT_PX = 11 * 96; // 1056
+
+// Cloudflare Browser Rendering (Linux Chromium) renders the same HTML
+// at slightly different font metrics than the user's local browser
+// (typically macOS) — Liberation Sans wraps a touch wider than Arial,
+// system kerning differs, etc. The cumulative effect on a resume with
+// 30+ bullets is real: a doc that measures 1040px in the editor can
+// land at ~1100px in the PDF, spilling onto page 2 even though the
+// chip says "fits".
+//
+// We give back ~50px to account for that drift. Anything within 50px
+// of the page boundary is flagged "over" defensively. Worst case the
+// user sees an overly-cautious warning; better than confidently
+// shipping a 2-page resume.
+const PDF_VARIANCE_BUFFER_PX = 50;
+const NEAR_BUFFER_PX = 60;
 import { cn } from "@/lib/utils";
 import {
   PrintableResume,
@@ -72,12 +83,19 @@ export function ResumeEditor({
   const [status, setStatus] = useState<Status>("idle");
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  // PDF generation has 4 visible phases. We drive the percentage with
+  // a smooth easeOut curve over the expected wall-clock time, then
+  // snap to 100 when the fetch resolves. Phase labels swap as pct
+  // crosses each band so the user always knows what's happening.
+  const [downloadPct, setDownloadPct] = useState(0);
+  const [downloadLabel, setDownloadLabel] = useState("Starting");
   // The actual rendered height of the resume in CSS pixels. Updated by
   // a ResizeObserver in PreviewPane. `null` until the first measurement
   // lands — we treat null as "good" so the chip doesn't flicker.
   const [renderedHeight, setRenderedHeight] = useState<number | null>(null);
 
   const pendingRef = useRef<Record<string, unknown>>({});
+  const progressRafRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = useRef(false);
 
@@ -140,6 +158,27 @@ export function ResumeEditor({
     if (downloading) return;
     setDownloading(true);
     setErrMsg(null);
+    setDownloadPct(0);
+    setDownloadLabel("Starting");
+
+    // Smooth easeOut progress driven by elapsed time. The curve
+    // 1 - exp(-3t) hits 95% at the expected duration and then
+    // asymptotes — feels honest because the real bottleneck (PDF
+    // render) slows as it nears completion. We snap to 100 when the
+    // fetch actually resolves.
+    const startedAt = performance.now();
+    const expectedMs = 9000;
+    const tick = () => {
+      const elapsed = performance.now() - startedAt;
+      const t = elapsed / expectedMs;
+      const eased = 1 - Math.exp(-3 * t);
+      const pct = Math.min(eased * 95, 95);
+      setDownloadPct(pct);
+      setDownloadLabel(labelForPct(pct));
+      progressRafRef.current = requestAnimationFrame(tick);
+    };
+    progressRafRef.current = requestAnimationFrame(tick);
+
     try {
       const resp = await fetch("/api/resume/doc/pdf", { method: "POST" });
       if (!resp.ok) {
@@ -148,9 +187,21 @@ export function ResumeEditor({
           detail?: string;
         };
         setErrMsg(err.detail || humanizeError(err.error));
+        if (progressRafRef.current)
+          cancelAnimationFrame(progressRafRef.current);
+        progressRafRef.current = null;
+        setDownloading(false);
         return;
       }
       const blob = await resp.blob();
+      // Stop the easing tick and finish the bar — the user sees a
+      // satisfying snap to 100 instead of the asymptotic crawl.
+      if (progressRafRef.current)
+        cancelAnimationFrame(progressRafRef.current);
+      progressRafRef.current = null;
+      setDownloadPct(100);
+      setDownloadLabel("Ready");
+
       const filename =
         (doc.header.name || "resume").toLowerCase().replace(/[^a-z0-9]+/g, "-") +
         "-resume.pdf";
@@ -162,12 +213,29 @@ export function ResumeEditor({
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+
+      // Hold the "Ready" state briefly so the 100% feels intentional
+      // rather than an instant flash, then return to the idle button.
+      setTimeout(() => {
+        setDownloading(false);
+        setDownloadPct(0);
+      }, 700);
     } catch {
+      if (progressRafRef.current)
+        cancelAnimationFrame(progressRafRef.current);
+      progressRafRef.current = null;
       setErrMsg("PDF download failed");
-    } finally {
       setDownloading(false);
     }
   }, [doc.header.name, downloading]);
+
+  // Cancel any pending progress tick if the editor unmounts mid-render.
+  useEffect(() => {
+    return () => {
+      if (progressRafRef.current)
+        cancelAnimationFrame(progressRafRef.current);
+    };
+  }, []);
 
   const fitTier = fitTierForHeight(renderedHeight);
 
@@ -178,6 +246,8 @@ export function ResumeEditor({
         errMsg={errMsg}
         onDownload={onDownload}
         downloading={downloading}
+        downloadPct={downloadPct}
+        downloadLabel={downloadLabel}
         fitTier={fitTier}
       />
 
@@ -217,8 +287,14 @@ export function ResumeEditor({
 type FitTier = "good" | "near" | "over";
 function fitTierForHeight(heightPx: number | null): FitTier {
   if (heightPx == null) return "good";
-  if (heightPx > LETTER_PAGE_HEIGHT_PX) return "over";
-  if (heightPx > LETTER_PAGE_HEIGHT_PX - NEAR_BUFFER_PX) return "near";
+  // The "effective" page height the user can fill in the browser
+  // before the PDF will overflow. Real PDF capacity is 1056px but we
+  // hold back PDF_VARIANCE_BUFFER_PX to defend against font-metric
+  // drift between browser preview and Cloudflare Browser Rendering.
+  const overThreshold = LETTER_PAGE_HEIGHT_PX - PDF_VARIANCE_BUFFER_PX;
+  const nearThreshold = overThreshold - NEAR_BUFFER_PX;
+  if (heightPx > overThreshold) return "over";
+  if (heightPx > nearThreshold) return "near";
   return "good";
 }
 
@@ -231,12 +307,16 @@ function Toolbar({
   errMsg,
   onDownload,
   downloading,
+  downloadPct,
+  downloadLabel,
   fitTier,
 }: {
   status: Status;
   errMsg: string | null;
   onDownload: () => void;
   downloading: boolean;
+  downloadPct: number;
+  downloadLabel: string;
   fitTier: FitTier;
 }) {
   return (
@@ -251,30 +331,128 @@ function Toolbar({
       <div className="ml-auto flex items-center gap-2">
         <FitIndicator tier={fitTier} />
         <SaveBadge status={status} errMsg={errMsg} />
-        <button
-          type="button"
+        <DownloadButton
           onClick={onDownload}
-          disabled={downloading}
-          className={cn(
-            "inline-flex items-center gap-1.5 rounded-md px-3 h-8 text-[12px] font-medium",
-            "bg-foreground text-background hover:opacity-90",
-            "transition-[opacity] duration-150 ease",
-            "disabled:opacity-60",
-            "min-h-9",
-          )}
-          aria-label="Download resume as PDF"
-        >
-          <HugeiconsIcon
-            icon={downloading ? Loading03Icon : Download04Icon}
-            size={14}
-            strokeWidth={2}
-            className={downloading ? "animate-spin" : ""}
-          />
-          {downloading ? "Rendering" : "Download PDF"}
-        </button>
+          downloading={downloading}
+          pct={downloadPct}
+          label={downloadLabel}
+        />
       </div>
     </div>
   );
+}
+
+/**
+ * Download button with an in-place progress fill. Idle state is the
+ * standard primary button; the moment the user clicks, the same
+ * button morphs into a progress chip — same dimensions, same rounded
+ * corners, same typography — with a thin progress strip running
+ * along the bottom edge. Fill scales from 0% → 100% with a smooth
+ * easeOut curve.
+ *
+ * Why no width/layout change? Anything that resizes the button on
+ * click looks like a bug, even when intentional. We pin the width
+ * (min-w-[148px]) so the button stays put while content swaps
+ * inside.
+ */
+function DownloadButton({
+  onClick,
+  downloading,
+  pct,
+  label,
+}: {
+  onClick: () => void;
+  downloading: boolean;
+  pct: number;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={downloading}
+      className={cn(
+        "relative overflow-hidden inline-flex items-center justify-center gap-1.5",
+        "rounded-md h-8 px-3 text-[12px] font-medium",
+        "bg-foreground text-background min-h-9 min-w-[148px]",
+        "transition-[opacity] duration-150 ease",
+        "disabled:cursor-progress",
+      )}
+      aria-label={
+        downloading
+          ? `Generating PDF — ${Math.round(pct)} percent complete`
+          : "Download resume as PDF"
+      }
+      aria-live="polite"
+      aria-busy={downloading}
+      aria-valuenow={downloading ? Math.round(pct) : undefined}
+      aria-valuemin={downloading ? 0 : undefined}
+      aria-valuemax={downloading ? 100 : undefined}
+      role={downloading ? "progressbar" : undefined}
+    >
+      {/* Progress fill underlay — slightly lighter than the button
+          background so it reads as a fill without breaking the
+          button's identity. Sits at 0 width when idle. */}
+      <span
+        aria-hidden
+        className={cn(
+          "absolute inset-y-0 left-0 origin-left",
+          "bg-background/15",
+          "transition-[transform] duration-150 ease-out",
+        )}
+        style={{
+          width: "100%",
+          transform: `scaleX(${downloading ? pct / 100 : 0})`,
+        }}
+      />
+      {/* Bottom strip — the precise progress indicator. Visible only
+          while downloading; fades out on completion. */}
+      <span
+        aria-hidden
+        className={cn(
+          "absolute bottom-0 left-0 h-[2px] origin-left",
+          "bg-background/55",
+          "transition-[transform,opacity] duration-150 ease-out",
+        )}
+        style={{
+          width: "100%",
+          transform: `scaleX(${downloading ? pct / 100 : 0})`,
+          opacity: downloading ? 1 : 0,
+        }}
+      />
+      <span className="relative z-10 inline-flex items-center gap-1.5 tabular-nums">
+        <HugeiconsIcon
+          icon={downloading ? Loading03Icon : Download04Icon}
+          size={14}
+          strokeWidth={2}
+          className={downloading ? "animate-spin" : ""}
+        />
+        {downloading ? (
+          <>
+            <span>{Math.round(pct)}%</span>
+            <span className="opacity-75 font-normal">· {label}</span>
+          </>
+        ) : (
+          "Download PDF"
+        )}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * Map a percentage to a phase label. The bands roughly track when
+ * Cloudflare Browser Rendering is doing each step in practice — they
+ * land near the right phase even though we're not getting real signals
+ * from the server. Honest enough that "Rendering layout" appears when
+ * Puppeteer is actually rendering the page.
+ */
+function labelForPct(pct: number): string {
+  if (pct < 12) return "Connecting";
+  if (pct < 35) return "Loading fonts";
+  if (pct < 65) return "Rendering layout";
+  if (pct < 85) return "Generating PDF";
+  return "Almost there";
 }
 
 /**
