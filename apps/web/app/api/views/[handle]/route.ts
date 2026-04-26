@@ -5,8 +5,10 @@ import {
   clientIp,
   geoFromContext,
   hashVisitor,
+  inAppBrowserHost,
   normalizeReferrer,
   parseUserAgent,
+  utmHostFromPath,
 } from "@/lib/visitor";
 
 /**
@@ -62,21 +64,49 @@ export async function POST(
 
     const { country, region, city } = geoFromContext(cf, req.headers);
     const { device, browser, os } = parseUserAgent(ua);
-    const ref = normalizeReferrer(referer, selfHost);
 
-    // path here = the source path the visitor came from (the public
-    // portfolio route), not /api/views. The browser sends a JSON body
-    // with the path on POST; we accept it but tolerate missing.
+    // Body: { path, referrer } — path tells us which portfolio route
+    // they hit, referrer is `document.referrer` from the client (often
+    // populated when the HTTP Referer header was stripped).
     let path: string | null = null;
+    let clientReferrer: string | null = null;
     try {
       const body = (await req.clone().json().catch(() => null)) as {
         path?: string;
+        referrer?: string;
       } | null;
       if (body?.path && typeof body.path === "string") {
         path = body.path.slice(0, 256);
       }
+      if (body?.referrer && typeof body.referrer === "string") {
+        clientReferrer = body.referrer.slice(0, 512);
+      }
     } catch {
-      path = null;
+      // tolerate
+    }
+
+    // Referrer resolution chain (most explicit → most defensive):
+    //   1. utm_source on the landing path (intentional sharing)
+    //   2. HTTP Referer header (desktop + most mobile browsers)
+    //   3. document.referrer from the client (some in-app browsers
+    //      strip the HTTP header but populate the JS API)
+    //   4. UA fingerprint for known in-app browsers (LinkedIn etc.)
+    let refHost: string | null = utmHostFromPath(path);
+    let refUrl: string | null = null;
+    if (!refHost) {
+      const fromHeader = normalizeReferrer(referer, selfHost);
+      if (fromHeader.host) {
+        refHost = fromHeader.host;
+        refUrl = fromHeader.url;
+      } else {
+        const fromClient = normalizeReferrer(clientReferrer, selfHost);
+        if (fromClient.host) {
+          refHost = fromClient.host;
+          refUrl = fromClient.url;
+        } else {
+          refHost = inAppBrowserHost(ua);
+        }
+      }
     }
 
     await env.DB.prepare(
@@ -88,8 +118,8 @@ export async function POST(
       .bind(
         slug,
         visitorHash,
-        ref.host,
-        ref.url,
+        refHost,
+        refUrl,
         country,
         region,
         city,

@@ -160,15 +160,16 @@ export async function getTopReferrers(
   limit: number,
 ): Promise<ReferrerRow[]> {
   const windowStart = Date.now() - days * DAY_MS;
+  // NULL / empty referrer_host bucket as 'direct' — typed-URL traffic,
+  // bookmarks, and stripped-referer in-app browsers all show up there.
   const rows = await db
     .prepare(
       `SELECT
-          referrer_host AS host,
+          COALESCE(NULLIF(referrer_host, ''), 'direct') AS host,
           COUNT(*) AS views,
           COUNT(DISTINCT visitor_hash) AS uniques
         FROM view_events
         WHERE slug = ? AND ts >= ? AND device != 'bot'
-          AND referrer_host IS NOT NULL AND referrer_host != ''
         GROUP BY host
         ORDER BY views DESC
         LIMIT ?`,

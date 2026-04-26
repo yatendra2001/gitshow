@@ -112,6 +112,9 @@ export function formatDateShort(date: string | number): string {
 }
 
 const REFERRER_LABELS: Record<string, string> = {
+  direct: "Direct",
+  email: "Email",
+  newsletter: "Newsletter",
   "linkedin.com": "LinkedIn",
   "twitter.com": "Twitter",
   "x.com": "X (Twitter)",
@@ -131,3 +134,9 @@ const REFERRER_LABELS: Record<string, string> = {
 export function prettyReferrer(host: string): string {
   return REFERRER_LABELS[host] ?? host;
 }
+
+/**
+ * Sentinel hosts that don't have a real domain (so don't try to load
+ * a favicon for them). Anything in here gets a glyph instead.
+ */
+export const SENTINEL_HOSTS = new Set(["direct", "email", "newsletter"]);
