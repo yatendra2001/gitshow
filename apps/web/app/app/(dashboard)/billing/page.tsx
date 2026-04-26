@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getSession } from "@/auth";
-import { Logo } from "@/components/logo";
 import { getSubscription, isActive } from "@/lib/entitlements";
 import { PortalButton } from "./_portal-button";
 
@@ -76,23 +75,8 @@ export default async function BillingPage() {
           : "bg-emerald-500";
 
   return (
-    <main className="min-h-svh bg-background text-foreground">
-      <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border/30 bg-background/80 px-4 backdrop-blur sm:px-6">
-        <div className="flex items-center gap-3">
-          <Logo href="/app" size={24} />
-          <span className="hidden sm:inline font-mono text-[11px] text-muted-foreground">
-            Billing
-          </span>
-        </div>
-        <Link
-          href="/app"
-          className="rounded-lg border border-border/60 bg-card/30 px-3 py-1.5 text-[12px] hover:bg-card/50"
-        >
-          Back to app
-        </Link>
-      </header>
-
-      <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
+    <div className="mx-auto w-full max-w-3xl">
+      <section className="px-4 sm:px-6 lg:px-8 py-10">
         <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
           Plan
         </div>
@@ -179,6 +163,6 @@ export default async function BillingPage() {
           </p>
         ) : null}
       </section>
-    </main>
+    </div>
   );
 }

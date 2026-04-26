@@ -16,6 +16,8 @@ export function TrackView({ handle }: { handle: string }) {
     void fetch(`/api/views/${encodeURIComponent(handle)}`, {
       method: "POST",
       keepalive: true,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: window.location.pathname }),
     }).catch(() => {
       // Swallow — best-effort metric.
     });

@@ -126,6 +126,58 @@
     animation: blink-cursor 1.2s step-end infinite;
   }
 
+  /* Soft accent surface — used by the active sidebar item, the live
+   * "X people viewing" pill, and any hero KPI card that should pop a
+   * little without becoming a solid-coloured rectangle. Reuses the
+   * marketing gradient tokens (blue → purple) at low alpha so the
+   * effect reads as ambient, not loud. */
+  .gs-accent-surface {
+    background-image: linear-gradient(
+      135deg,
+      oklch(from var(--gradient-primary) l c h / 0.10),
+      oklch(from var(--gradient-secondary) l c h / 0.06)
+    );
+    border-color: oklch(from var(--gradient-primary) l c h / 0.22);
+  }
+  .dark .gs-accent-surface {
+    background-image: linear-gradient(
+      135deg,
+      oklch(from var(--gradient-primary) l c h / 0.16),
+      oklch(from var(--gradient-secondary) l c h / 0.10)
+    );
+    border-color: oklch(from var(--gradient-primary) l c h / 0.28);
+  }
+
+  /* Subtle ambient glow used behind the dashboard hero row. Renders as
+   * a single huge radial gradient pinned to the top-left of the main
+   * content area. Pure visual — no interaction. */
+  .gs-ambient {
+    background-image:
+      radial-gradient(
+        60rem 30rem at 0% -20%,
+        oklch(from var(--gradient-primary) l c h / 0.08),
+        transparent 60%
+      ),
+      radial-gradient(
+        50rem 30rem at 100% -10%,
+        oklch(from var(--gradient-secondary) l c h / 0.06),
+        transparent 60%
+      );
+  }
+  .dark .gs-ambient {
+    background-image:
+      radial-gradient(
+        60rem 30rem at 0% -20%,
+        oklch(from var(--gradient-primary) l c h / 0.12),
+        transparent 60%
+      ),
+      radial-gradient(
+        50rem 30rem at 100% -10%,
+        oklch(from var(--gradient-secondary) l c h / 0.10),
+        transparent 60%
+      );
+  }
+
   /* Themed scrollbar for nested scroll containers (Reasoning body,
    * preview panes). Styling-only — no animation, but kept here so
    * everything pipeline-flavoured lives in one block. */

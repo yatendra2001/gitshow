@@ -1,24 +1,34 @@
 import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { isReservedHandle } from "@/lib/profiles";
+import {
+  clientIp,
+  geoFromRequest,
+  hashVisitor,
+  normalizeReferrer,
+  parseUserAgent,
+} from "@/lib/visitor";
 
 /**
- * GET  /api/views/{handle} — returns the current view_count.
  * POST /api/views/{handle} — fire-and-forget +1 for the handle's
- * published profile. Called from the /{handle} layout on mount.
+ * published profile, plus a row in `view_events` for the analytics
+ * dashboard at /app.
  *
- * No auth — anyone can increment, which is accurate for a "page views"
- * counter. No dedup — this is a low-stakes vanity metric on the
- * owner's dashboard. If it ever becomes abusable we'll add IP/day
- * dedup via a second table.
+ * Two writes:
+ *   1) UPDATE user_profiles.view_count (cheap badge counter, kept for
+ *      back-compat with anything reading that field).
+ *   2) INSERT into view_events with enriched per-visit metadata —
+ *      visitor hash, geo (from CF request props), parsed UA, and
+ *      referrer host.
  *
- * Uses `public_slug` for the lookup so the normalized URL form matches
- * what the user pasted. Rejects reserved handles up-front so crawlers
- * hitting /api or /app don't spam the row.
+ * No auth, no dedup at the API layer — uniques are computed at read
+ * time via DISTINCT visitor_hash. Bots are tagged but still recorded;
+ * the dashboard can filter them out at read time if we want a clean
+ * "human views" line.
  */
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ handle: string }> },
 ) {
   const { handle } = await params;
@@ -27,17 +37,68 @@ export async function POST(
   }
 
   const { env } = await getCloudflareContext({ async: true });
+  const slug = handle.toLowerCase();
+
   try {
-    const slug = handle.toLowerCase();
-    // UPDATE-with-WHERE is a no-op for unpublished / nonexistent
-    // profiles. We don't create rows from here — the publish endpoint
-    // owns row creation.
+    // 1) Cheap badge counter — fast path.
     await env.DB.prepare(
       `UPDATE user_profiles
          SET view_count = view_count + 1
          WHERE public_slug = ? AND current_profile_r2_key IS NOT NULL`,
     )
       .bind(slug)
+      .run();
+
+    // 2) Enriched event row. Errors here must NEVER fail the page view,
+    //    so the entire block is best-effort.
+    const ua = req.headers.get("user-agent") ?? "";
+    const referer = req.headers.get("referer");
+    const url = new URL(req.url);
+    const selfHost = url.host;
+
+    const ip = clientIp(req);
+    const salt = env.AUTH_SECRET ?? "gitshow-fallback-salt";
+    const visitorHash = await hashVisitor(salt, ip, ua);
+
+    const { country, region, city } = geoFromRequest(req);
+    const { device, browser, os } = parseUserAgent(ua);
+    const ref = normalizeReferrer(referer, selfHost);
+
+    // path here = the source path the visitor came from (the public
+    // portfolio route), not /api/views. The browser sends a JSON body
+    // with the path on POST; we accept it but tolerate missing.
+    let path: string | null = null;
+    try {
+      const body = (await req.clone().json().catch(() => null)) as {
+        path?: string;
+      } | null;
+      if (body?.path && typeof body.path === "string") {
+        path = body.path.slice(0, 256);
+      }
+    } catch {
+      path = null;
+    }
+
+    await env.DB.prepare(
+      `INSERT INTO view_events
+         (slug, visitor_hash, referrer_host, referrer_url,
+          country, region, city, device, browser, os, path, ts)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        slug,
+        visitorHash,
+        ref.host,
+        ref.url,
+        country,
+        region,
+        city,
+        device,
+        browser,
+        os,
+        path,
+        Date.now(),
+      )
       .run();
   } catch {
     // Never 500 a view-tracking request — it's best-effort.
