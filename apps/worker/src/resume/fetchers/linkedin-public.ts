@@ -479,13 +479,20 @@ function proxyCurlToFacts(data: ProxyCurlProfile, url: string): TypedFact[] {
   }
 
   // ── Work history (WORKED_AT) ──────────────────────────────────────
+  // Pass `e.logo_url` through onto the Company entity. This is the
+  // canonical LinkedIn-hosted brand asset — sharper + more reliable
+  // than the Clearbit/favicon fallback the media stage uses when no
+  // logo URL is on the entity.
   for (const e of data.experiences ?? []) {
     if (!e.company) continue;
     const start = fmtProxyCurlDate(e.starts_at);
     const end = fmtProxyCurlDate(e.ends_at ?? null);
     facts.push({
       kind: "WORKED_AT",
-      company: { canonicalName: e.company },
+      company: {
+        canonicalName: e.company,
+        ...(e.logo_url ? { logoUrl: e.logo_url } : {}),
+      },
       attrs: {
         role: e.title ?? "",
         start,
@@ -503,7 +510,10 @@ function proxyCurlToFacts(data: ProxyCurlProfile, url: string): TypedFact[] {
     if (!e.school) continue;
     facts.push({
       kind: "STUDIED_AT",
-      school: { canonicalName: e.school },
+      school: {
+        canonicalName: e.school,
+        ...(e.logo_url ? { logoUrl: e.logo_url } : {}),
+      },
       attrs: {
         degree: e.degree_name ?? "",
         start: fmtProxyCurlDate(e.starts_at),

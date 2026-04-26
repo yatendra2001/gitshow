@@ -125,6 +125,13 @@ export const CompanySchema = z.object({
   domain: z.string().optional(),
   aliases: z.array(z.string()).default([]),
   description: z.string().optional(),
+  /**
+   * Remote URL of the canonical brand logo (preferred source over
+   * Clearbit / Google favicon when set). Populated by fetchers that
+   * carry first-party brand assets — currently the ProxyCurl /
+   * EnrichLayer LinkedIn extractor (`logo_url` on each experience).
+   */
+  logoUrl: z.string().optional(),
 });
 export type Company = z.infer<typeof CompanySchema>;
 
@@ -133,6 +140,8 @@ export const SchoolSchema = z.object({
   canonicalName: z.string(),
   domain: z.string().optional(),
   aliases: z.array(z.string()).default([]),
+  /** See CompanySchema.logoUrl — same first-party-asset semantics. */
+  logoUrl: z.string().optional(),
 });
 export type School = z.infer<typeof SchoolSchema>;
 
@@ -289,7 +298,7 @@ export const MediaAssetSchema = z.object({
   width: z.number().int().positive().optional(),
   height: z.number().int().positive().optional(),
   /** Where the media came from: og scrape, README image, YouTube thumb, Gemini gen, Clearbit logo. */
-  origin: z.enum(["og", "readme", "youtube", "generated", "clearbit", "favicon", "user-upload"]).optional(),
+  origin: z.enum(["og", "readme", "youtube", "generated", "clearbit", "favicon", "linkedin", "user-upload"]).optional(),
 });
 export type MediaAsset = z.infer<typeof MediaAssetSchema>;
 

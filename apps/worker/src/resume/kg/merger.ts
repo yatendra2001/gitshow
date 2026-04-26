@@ -282,12 +282,17 @@ function upsertCompanies(
         domain: f.company.domain,
         aliases: f.company.aliases ?? [],
         description: f.company.description,
+        logoUrl: f.company.logoUrl,
       };
       kg.entities.companies.push(existing);
     } else {
       if (f.company.domain && !existing.domain) existing.domain = f.company.domain;
       if (f.company.description && !existing.description)
         existing.description = f.company.description;
+      // First non-null logoUrl wins. ProxyCurl is the highest-quality
+      // source today; if a later fact came from a fetcher without
+      // logos we don't want to clobber it.
+      if (f.company.logoUrl && !existing.logoUrl) existing.logoUrl = f.company.logoUrl;
       // accumulate aliases
       const aliasSet = new Set([
         ...(existing.aliases ?? []),
@@ -311,10 +316,12 @@ function upsertSchools(kg: KnowledgeGraph, facts: StudiedAtFact[]): void {
         canonicalName: f.school.canonicalName,
         domain: f.school.domain,
         aliases: f.school.aliases ?? [],
+        logoUrl: f.school.logoUrl,
       };
       kg.entities.schools.push(existing);
     } else {
       if (f.school.domain && !existing.domain) existing.domain = f.school.domain;
+      if (f.school.logoUrl && !existing.logoUrl) existing.logoUrl = f.school.logoUrl;
       const aliasSet = new Set([
         ...(existing.aliases ?? []),
         ...(f.school.aliases ?? []),
@@ -610,6 +617,7 @@ function deterministicMerge(kg: KnowledgeGraph): { merged: number; retained: num
 function mergeCompanyInto(into: Company, from: Company): void {
   if (!into.domain && from.domain) into.domain = from.domain;
   if (!into.description && from.description) into.description = from.description;
+  if (!into.logoUrl && from.logoUrl) into.logoUrl = from.logoUrl;
   const aliasSet = new Set([
     ...(into.aliases ?? []),
     ...(from.aliases ?? []),
@@ -620,6 +628,7 @@ function mergeCompanyInto(into: Company, from: Company): void {
 }
 function mergeSchoolInto(into: School, from: School): void {
   if (!into.domain && from.domain) into.domain = from.domain;
+  if (!into.logoUrl && from.logoUrl) into.logoUrl = from.logoUrl;
   const aliasSet = new Set([
     ...(into.aliases ?? []),
     ...(from.aliases ?? []),
