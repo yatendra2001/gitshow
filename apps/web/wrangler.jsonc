@@ -38,6 +38,12 @@
       }
     ]
   },
+  // Cloudflare Browser Rendering — used by /api/resume/doc/pdf to render
+  // the printable resume to a real PDF via headless Chromium. Requires
+  // the Workers Paid plan ($5/mo). ~$0.001/render.
+  "browser": {
+    "binding": "BROWSER"
+  },
   "vars": {
     "NEXT_PUBLIC_APP_URL": "https://gitshow.io",
     "DEMO_HANDLE": "yatendra2001",

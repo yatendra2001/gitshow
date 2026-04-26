@@ -21,6 +21,13 @@ declare global {
     BUCKET: R2Bucket;
     SESSIONS?: KVNamespace;
     SCAN_LIVE_DO: DurableObjectNamespace;
+    /**
+     * Cloudflare Browser Rendering binding (headless Chromium). Wired
+     * via the `[browser]` block in wrangler.jsonc and consumed by
+     * `/api/resume/doc/pdf`. Optional so local dev (no binding) doesn't
+     * blow up imports — the route handles the missing case.
+     */
+    BROWSER?: Fetcher;
 
     // Bound via `wrangler secret put`:
     AUTH_SECRET?: string;

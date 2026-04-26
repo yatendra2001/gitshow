@@ -32,16 +32,29 @@ import {
   Sun,
   X,
 } from "lucide-react";
+import { HugeiconsIcon } from "@hugeicons/react";
+import { File02Icon } from "@hugeicons/core-free-icons";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { Logo, LogoMark } from "@/components/logo";
 
-interface NavItem {
+/**
+ * Sidebar entries can use either a Lucide icon (existing nav) or a
+ * Hugeicon. New tabs prefer Hugeicons — the resume tab is the first
+ * to do so, hence the discriminated `iconKind` field.
+ */
+type NavIcon =
+  | { iconKind?: "lucide"; icon: LucideIcon }
+  | {
+      iconKind: "hugeicon";
+      icon: Parameters<typeof HugeiconsIcon>[0]["icon"];
+    };
+
+type NavItem = NavIcon & {
   href: string;
   label: string;
-  icon: LucideIcon;
   external?: boolean;
-}
+};
 
 interface NavSection {
   title: string;
@@ -55,6 +68,12 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/app", label: "Analytics", icon: BarChart3 },
       { href: "/app/edit", label: "Edit", icon: PencilLine },
       { href: "/app/preview", label: "Preview", icon: Eye },
+      {
+        href: "/app/resume",
+        label: "Resume",
+        iconKind: "hugeicon",
+        icon: File02Icon,
+      },
     ],
   },
   {
@@ -360,7 +379,6 @@ function SidebarLink({
   active: boolean;
   onNavigate: () => void;
 }) {
-  const Icon = item.icon;
   // Active = solid muted bg + thin left accent strip + foreground text/icon.
   // Hover = subtle bg-color only, single property transition.
   const className = cn(
@@ -378,17 +396,14 @@ function SidebarLink({
     />
   ) : null;
 
+  const iconColor = active ? "text-foreground" : "text-muted-foreground/70";
+  const iconNode = renderNavIcon(item, iconColor);
+
   if (item.external) {
     return (
       <a href={item.href} className={className} onClick={onNavigate}>
         {indicator}
-        <Icon
-          className={cn(
-            "size-4 shrink-0",
-            active ? "text-foreground" : "text-muted-foreground/70",
-          )}
-          strokeWidth={2}
-        />
+        {iconNode}
         <span>{item.label}</span>
       </a>
     );
@@ -397,13 +412,7 @@ function SidebarLink({
   return (
     <Link href={item.href} className={className} onClick={onNavigate}>
       {indicator}
-      <Icon
-        className={cn(
-          "size-4 shrink-0",
-          active ? "text-foreground" : "text-muted-foreground/70",
-        )}
-        strokeWidth={2}
-      />
+      {iconNode}
       <span>{item.label}</span>
     </Link>
   );
@@ -438,4 +447,19 @@ function ThemeToggle() {
 function isActive(currentPath: string, href: string) {
   if (href === "/app") return currentPath === "/app";
   return currentPath === href || currentPath.startsWith(`${href}/`);
+}
+
+function renderNavIcon(item: NavItem, colorClass: string) {
+  if (item.iconKind === "hugeicon") {
+    return (
+      <HugeiconsIcon
+        icon={item.icon}
+        size={16}
+        strokeWidth={2}
+        className={cn("shrink-0", colorClass)}
+      />
+    );
+  }
+  const Icon = item.icon as LucideIcon;
+  return <Icon className={cn("size-4 shrink-0", colorClass)} strokeWidth={2} />;
 }
