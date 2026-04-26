@@ -3,7 +3,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { isReservedHandle } from "@/lib/profiles";
 import {
   clientIp,
-  geoFromRequest,
+  geoFromContext,
   hashVisitor,
   normalizeReferrer,
   parseUserAgent,
@@ -36,7 +36,7 @@ export async function POST(
     return NextResponse.json({ error: "reserved" }, { status: 400 });
   }
 
-  const { env } = await getCloudflareContext({ async: true });
+  const { env, cf } = await getCloudflareContext({ async: true });
   const slug = handle.toLowerCase();
 
   try {
@@ -60,7 +60,7 @@ export async function POST(
     const salt = env.AUTH_SECRET ?? "gitshow-fallback-salt";
     const visitorHash = await hashVisitor(salt, ip, ua);
 
-    const { country, region, city } = geoFromRequest(req);
+    const { country, region, city } = geoFromContext(cf, req.headers);
     const { device, browser, os } = parseUserAgent(ua);
     const ref = normalizeReferrer(referer, selfHost);
 

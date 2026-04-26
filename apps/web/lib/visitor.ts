@@ -88,22 +88,53 @@ export async function hashVisitor(
 }
 
 /**
- * Pulls country / region / city out of the Cloudflare-injected request
- * properties. Locally (no `req.cf`) we get nulls — render the dashboard
- * accordingly.
+ * Pulls country / region / city out of the Cloudflare-injected metadata.
+ *
+ * Two sources:
+ *   1) `cf` from `getCloudflareContext()` — the canonical
+ *      `IncomingRequestCfProperties` bag. Reliable across the OpenNext
+ *      bridge (which can drop `request.cf` while wrapping the inner
+ *      Node-style Request).
+ *   2) `cf-*` headers — Cloudflare always sets these on the edge.
+ *      A safety net for runtimes where (1) comes back empty.
+ *
+ * Returns nulls locally / off-Cloudflare so the dashboard can render
+ * "Unknown" cleanly.
  */
-export function geoFromRequest(req: Request): {
-  country: string | null;
-  region: string | null;
-  city: string | null;
-} {
-  const cf = (req as Request & { cf?: Record<string, string | undefined> }).cf;
-  if (!cf) return { country: null, region: null, city: null };
-  return {
-    country: cf.country ?? null,
-    region: cf.region ?? null,
-    city: cf.city ?? null,
-  };
+export interface CfLike {
+  country?: string | null;
+  city?: string | null;
+  region?: string | null;
+  regionCode?: string | null;
+}
+
+export function geoFromContext(
+  cf: CfLike | null | undefined,
+  headers: Headers,
+): { country: string | null; region: string | null; city: string | null } {
+  const country =
+    cleanCode(cf?.country) ?? cleanCode(headers.get("cf-ipcountry"));
+  const city = cleanText(cf?.city) ?? cleanText(headers.get("cf-ipcity"));
+  const region =
+    cleanText(cf?.region) ??
+    cleanText(headers.get("cf-region")) ??
+    cleanText(cf?.regionCode) ??
+    cleanText(headers.get("cf-region-code"));
+  return { country, region, city };
+}
+
+function cleanCode(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const t = v.trim();
+  // CF uses "XX"/"T1" for unknown / Tor exits — treat as missing.
+  if (!t || t === "XX" || t === "T1") return null;
+  return t.toUpperCase();
+}
+
+function cleanText(v: string | null | undefined): string | null {
+  if (!v) return null;
+  const t = v.trim();
+  return t || null;
 }
 
 /**
