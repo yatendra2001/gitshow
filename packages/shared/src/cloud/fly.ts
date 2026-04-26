@@ -29,7 +29,7 @@ export interface SpawnMachineInput {
   env: Record<string, string>;
   /** Machine name shown in the Fly dashboard. Defaults to `scan-<scanId>`. */
   name?: string;
-  /** Override resources. Defaults to shared-cpu-2x / 4096 MB. */
+  /** Override resources. Defaults to performance-4x / 16384 MB. */
   cpus?: number;
   cpuKind?: "shared" | "performance";
   memoryMb?: number;
@@ -92,15 +92,22 @@ export class FlyClient {
         env: input.env,
         ...(input.initCmd ? { init: { cmd: input.initCmd } } : {}),
         guest: {
-          cpu_kind: input.cpuKind ?? "shared",
-          cpus: input.cpus ?? 2,
-          // 4 GB. Playwright Chromium baseline is ~350 MB; running it in
-          // parallel with blog-import's Kimi reasoning stream and the
-          // other parallel HTTP fetchers regularly OOMed the previous
-          // 2 GB default — every scan died at ~1m30s into the fetchers
-          // phase with no error, just a silent disappearance from
-          // `fly machines list`.
-          memory_mb: input.memoryMb ?? 4096,
+          // performance-4x: 4 dedicated CPUs, no noisy-neighbor jitter.
+          // The per-repo grounding pipeline ([#122]) fans out concurrent
+          // git subprocesses (inventory) + concurrent LLM streams
+          // (judge, evidence, person-report) + the bun event loop —
+          // shared-cpu-2x got pegged at load ~15 with 30+ git
+          // subprocesses on first real scans. Dedicated CPUs eliminate
+          // the contention.
+          cpu_kind: input.cpuKind ?? "performance",
+          cpus: input.cpus ?? 4,
+          // 16 GB. Headroom for parallel partial clones, multi-MB LLM
+          // reasoning streams, the in-memory KG, and the trace packet.
+          // Was 4 GB; under the new pipeline with up to 30 concurrent
+          // Gemini grounded calls + 15 concurrent Kimi judge calls the
+          // peak heap pushed past 3 GB before the bigger workload even
+          // hit the merge stage.
+          memory_mb: input.memoryMb ?? 16384,
         },
         auto_destroy: true,
         restart: { policy: "no" },

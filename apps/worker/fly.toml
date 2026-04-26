@@ -11,5 +11,9 @@ primary_region = "iad"
   NODE_ENV = "production"
 
 [[vm]]
-  size = "shared-cpu-2x"
-  memory = "2048"
+  # Match the per-scan machine size (see packages/shared/src/cloud/fly.ts
+  # spawnScanMachine defaults). Keeps the deploy-time base machine in
+  # the same shape as the ephemeral scan machines so behaviour is
+  # consistent between smoke-boots and real scans.
+  size = "performance-4x"
+  memory = "16384"
