@@ -68,6 +68,75 @@ export function normalizeReferrer(
 }
 
 /**
+ * `utm_source` value → canonical host that the dashboard knows how to
+ * display. Catches the standard tracking convention people add when
+ * they share a URL intentionally (e.g. `?utm_source=linkedin`).
+ *
+ * Returns null for unknown values so the caller can fall through to
+ * the next signal.
+ */
+const UTM_SOURCE_HOSTS: Record<string, string> = {
+  linkedin: "linkedin.com",
+  li: "linkedin.com",
+  twitter: "twitter.com",
+  x: "x.com",
+  github: "github.com",
+  hn: "news.ycombinator.com",
+  hackernews: "news.ycombinator.com",
+  reddit: "reddit.com",
+  facebook: "facebook.com",
+  fb: "facebook.com",
+  instagram: "instagram.com",
+  ig: "instagram.com",
+  youtube: "youtube.com",
+  yt: "youtube.com",
+  google: "google.com",
+  bing: "bing.com",
+  duckduckgo: "duckduckgo.com",
+  email: "email",
+  newsletter: "newsletter",
+};
+
+export function utmHostFromPath(path: string | null): string | null {
+  if (!path || !path.includes("?")) return null;
+  try {
+    const u = new URL(path, "https://x.invalid");
+    const utm = (u.searchParams.get("utm_source") || "").toLowerCase().trim();
+    if (!utm) return null;
+    return UTM_SOURCE_HOSTS[utm] ?? utm;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Detects mobile in-app browsers from the User-Agent. Catches the
+ * common case where the user clicks a link inside the LinkedIn /
+ * Instagram / Facebook / Twitter app and the embedded webview either
+ * strips the HTTP Referer header or sets it to its own origin.
+ *
+ * We don't need this for desktop browsers — those preserve referrers
+ * normally — and we don't need it for `cf-bot` traffic since the
+ * caller filters that out at write time.
+ *
+ * Returns null when the UA doesn't smell like an in-app browser; the
+ * caller falls through to whatever real referrer signal is left.
+ */
+export function inAppBrowserHost(ua: string): string | null {
+  if (!ua) return null;
+  if (/LinkedInApp/i.test(ua)) return "linkedin.com";
+  // Twitter / X iOS app webview marker
+  if (/Twitter for/i.test(ua)) return "twitter.com";
+  // Facebook in-app browser markers (FBAN/FBAV/FB_IAB are Meta's
+  // canonical UA fragments for the FB and Messenger app webviews).
+  if (/FBAN|FBAV|FB_IAB/i.test(ua)) return "facebook.com";
+  if (/Instagram/i.test(ua)) return "instagram.com";
+  if (/Snapchat/i.test(ua)) return "snapchat.com";
+  if (/TikTok/i.test(ua)) return "tiktok.com";
+  return null;
+}
+
+/**
  * sha256 hex of (salt + ip + ua), truncated to 24 hex chars (12 bytes
  * — plenty of entropy for our scale, 1 in ~2^48 collision per profile).
  * Stable per visitor as long as the salt + ip + ua tuple is stable.

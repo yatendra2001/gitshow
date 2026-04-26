@@ -13,7 +13,7 @@
  */
 
 import Link from "next/link";
-import { ArrowDownRight, ArrowUpRight, Globe2 } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Compass, Globe2 } from "lucide-react";
 import type {
   CountryRow,
   DeviceRow,
@@ -28,6 +28,7 @@ import {
   formatCount,
   prettyReferrer,
   relativeTime,
+  SENTINEL_HOSTS,
 } from "./format";
 import { SparklineMini } from "./analytics-charts";
 
@@ -215,37 +216,47 @@ export function ReferrersList({ rows }: { rows: ReferrerRow[] }) {
   if (rows.length === 0) {
     return (
       <EmptyHint>
-        Most visitors are coming directly. Share your link on LinkedIn or
-        Twitter to see sources here.
+        No traffic yet. Share your link on LinkedIn or Twitter to see sources
+        here.
       </EmptyHint>
     );
   }
   const max = Math.max(1, ...rows.map((r) => r.views));
   return (
     <ul className="flex flex-col">
-      {rows.map((r) => (
-        <li key={r.host}>
-          <RankRow
-            leading={
-              <span className="flex size-5 items-center justify-center overflow-hidden rounded-md bg-muted/50 ring-1 ring-border/40">
-                <img
-                  src={faviconUrl(r.host)}
-                  alt=""
-                  width={16}
-                  height={16}
-                  className="size-3.5 object-contain"
-                  loading="lazy"
-                  referrerPolicy="no-referrer"
-                />
-              </span>
-            }
-            label={prettyReferrer(r.host)}
-            sublabel={r.host === prettyReferrer(r.host) ? undefined : r.host}
-            value={r.views}
-            barPct={Math.round((r.views / max) * 100)}
-          />
-        </li>
-      ))}
+      {rows.map((r) => {
+        const isSentinel = SENTINEL_HOSTS.has(r.host);
+        const label = prettyReferrer(r.host);
+        return (
+          <li key={r.host}>
+            <RankRow
+              leading={
+                isSentinel ? (
+                  <span className="flex size-5 items-center justify-center rounded-md bg-muted/50 text-muted-foreground ring-1 ring-border/40">
+                    <Compass className="size-3" strokeWidth={2} />
+                  </span>
+                ) : (
+                  <span className="flex size-5 items-center justify-center overflow-hidden rounded-md bg-muted/50 ring-1 ring-border/40">
+                    <img
+                      src={faviconUrl(r.host)}
+                      alt=""
+                      width={16}
+                      height={16}
+                      className="size-3.5 object-contain"
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                    />
+                  </span>
+                )
+              }
+              label={label}
+              sublabel={isSentinel || r.host === label ? undefined : r.host}
+              value={r.views}
+              barPct={Math.round((r.views / max) * 100)}
+            />
+          </li>
+        );
+      })}
     </ul>
   );
 }
