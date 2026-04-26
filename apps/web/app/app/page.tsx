@@ -13,6 +13,7 @@ import {
 import { getSubscription, isActive } from "@/lib/entitlements";
 import { StartFirstScanButton } from "./_start-button";
 import { DeleteProfileButton } from "./_delete-profile-button";
+import { CancelScanButton } from "./_cancel-scan-button";
 import { SignOutButton } from "./_signout-button";
 import { PublishDraftButton } from "./_publish-draft-button";
 import { CheckoutProcessingAutoRefresh } from "./_checkout-processing";
@@ -362,6 +363,7 @@ function ScanningState({ scan }: { scan: ScanSlim }) {
         >
           See live progress →
         </Link>
+        <CancelScanButton scanId={scan.id} />
       </div>
     </section>
   );
