@@ -185,17 +185,18 @@ function assignTier(repo: RepoRef, commitCount: number): AnalysisTier {
   // Reviewer-only → metadata. No code to show.
   if (rel === "reviewer") return "metadata";
 
-  // External contributor — tier on (reach × evidence-of-contribution).
-  if (rel === "contributor") {
-    // Famous OSS — surface even on a single commit. PR to facebook/react
-    // is the headline regardless of how many lines you wrote.
-    if (stars >= 1000) return "deep";
-    // Notable OSS — needs at least one commit to be worth the agent call.
-    if (stars >= 100 && commitCount >= 1) return "deep";
-    // Anywhere else — needs sustained contribution to matter.
-    if (commitCount >= 2) return "deep";
-    return "metadata";
-  }
+  // External contributor — never clone. The user only authored a tiny
+  // fraction of the source tree, so a clone gives us nothing useful
+  // (blame would read 0.01% authorship). The github-facts fetcher
+  // already emits CONTRIBUTED_TO edges for these via the GitHub API,
+  // which is everything the renderer needs to surface "contributed N
+  // PRs to facebook/react" on the resume. Cloning flutter/engine just
+  // to learn it's flutter/engine is a tax we don't need to pay.
+  //
+  // (Earlier this returned "deep" for 1k+ star contributions, which
+  // dragged in 100+ giant external clones per scan and pegged the
+  // worker at load-15 for an hour.)
+  if (rel === "contributor") return "metadata";
 
   // Owned / collaborator / org_member.
 
