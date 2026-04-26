@@ -645,9 +645,13 @@ async function fetchAuthoredPRs(handle: string): Promise<GitHubPR[]> {
   const all: GitHubPR[] = [];
   const seen = new Set<string>();
 
+  // `gh search prs` doesn't accept `--not-merged` (it's parsed as a value
+  // for `--closed` and rejected as "not a date/time format"). Just ask
+  // for closed PRs; the dedup `seen` set below skips the merged ones the
+  // first pass already captured.
   const passes: Array<{ label: string; extra: string[] }> = [
     { label: "merged", extra: ["--merged"] },
-    { label: "closed", extra: ["--closed", "--not-merged"] },
+    { label: "closed", extra: ["--closed"] },
     { label: "open", extra: ["--state=open"] },
   ];
 
