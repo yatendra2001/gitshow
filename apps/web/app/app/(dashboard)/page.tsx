@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowUpRight, Eye, Globe2, Sparkles, UserRound } from "lucide-react";
+import { ArrowUpRight, Eye } from "lucide-react";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import {
   CheckoutProcessingState,
@@ -35,18 +35,15 @@ import { cn } from "@/lib/utils";
 /**
  * /app — sidebar dashboard home.
  *
- * Surface tree:
- *   - Not Pro                → NonProShowcase (full-bleed inside the shell)
- *   - Just checked out       → CheckoutProcessingState
- *   - Pro, no scan ever      → EmptyState (start your first scan)
- *   - Pro, scan running      → ScanningState (with link to live progress)
- *   - Pro, draft awaiting    → DraftState (review + publish)
- *   - Pro, last failed       → FailedState
- *   - Pro, published         → AnalyticsDashboard (this is the v1 win)
+ * Surface tree (Pro users):
+ *   - Just checked out      → CheckoutProcessingState
+ *   - No scan ever          → EmptyState (start your first scan)
+ *   - Scan running          → ScanningState (link to live progress)
+ *   - Draft awaiting        → DraftState (review + publish)
+ *   - Last failed           → FailedState
+ *   - Published             → AnalyticsDashboard
  *
- * For published users with an active scan running underneath, we show
- * the analytics dashboard with a thin banner pointing to the live
- * progress page.
+ * Non-Pro users see NonProShowcase inside the same shell.
  */
 
 export const dynamic = "force-dynamic";
@@ -126,7 +123,6 @@ export default async function AppHomePage({
     !ctx.isPublished &&
     !draftReady;
 
-  // Pre-published surfaces — same as before, just inside the shell.
   if (isScanning && !ctx.isPublished) return <ScanningState scan={activeScan!} />;
   if (draftReady) {
     const accessSnapshot = latestScan
@@ -163,132 +159,111 @@ export default async function AppHomePage({
     : null;
 
   return (
-    <div className="relative gs-ambient">
-      <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        {/* Page header */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between mb-5 gs-enter">
-          <div>
-            <div className="text-[11.5px] uppercase tracking-wider text-muted-foreground/80 mb-1.5">
-              Your portfolio
-            </div>
-            <h1 className="text-[26px] sm:text-[30px] font-semibold leading-tight tracking-tight">
-              Analytics
-            </h1>
-            <p className="mt-1 text-[13px] text-muted-foreground">
-              {RANGE_LABEL[rangeKey]} · live at{" "}
-              <Link
-                href={`/${slug}`}
-                target="_blank"
-                rel="noreferrer"
-                className="font-mono text-foreground hover:underline underline-offset-2"
-              >
-                gitshow.io/{slug}
-                <ArrowUpRight className="inline size-3 ml-0.5" />
-              </Link>
-            </p>
+    <div className="mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8 py-8 sm:py-10">
+      {/* Page header */}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between mb-6">
+        <div>
+          <div className="text-[10.5px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70 mb-2">
+            Your portfolio
           </div>
-          <RangeTabs current={rangeKey} />
+          <h1 className="text-[28px] sm:text-[32px] font-semibold leading-none tracking-tight">
+            Analytics
+          </h1>
+          <p className="mt-2 text-[12.5px] text-muted-foreground">
+            {RANGE_LABEL[rangeKey]} · live at{" "}
+            <Link
+              href={`/${slug}`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono text-foreground hover:underline underline-offset-2"
+            >
+              gitshow.io/{slug}
+              <ArrowUpRight className="inline size-3 ml-0.5" />
+            </Link>
+          </p>
         </div>
-
-        {isScanning ? <ScanningBanner scanId={activeScan!.id} /> : null}
-        {data.hasAnyEvents ? (
-          <div className="mb-5">
-            <LiveTicker
-              todayViews={todayViews}
-              lastVisitor={data.recent[0] ?? null}
-            />
-          </div>
-        ) : null}
-
-        {/* Hero KPIs */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-3">
-          <KpiCard
-            label="Views"
-            value={data.kpis.views}
-            deltaPct={data.kpis.viewsDeltaPct}
-            sparkline={sparkViews}
-            variant="accent"
-            hint={`${RANGE_LABEL[rangeKey].toLowerCase()}`}
-          />
-          <KpiCard
-            label="Unique visitors"
-            value={data.kpis.uniques}
-            deltaPct={data.kpis.uniquesDeltaPct}
-            sparkline={sparkUniques}
-            hint="distinct people"
-          />
-          <KpiCard
-            label="Countries"
-            value={data.kpis.countriesReached}
-            hint="reached this period"
-          />
-          <KpiCard
-            label="All-time views"
-            value={data.kpis.viewsAllTime}
-            hint="since launch"
-          />
-        </div>
-
-        {/* Big chart */}
-        <div className="mb-3">
-          <SectionCard
-            title="Views over time"
-            subtitle={`Daily totals · ${RANGE_LABEL[rangeKey].toLowerCase()}`}
-            action={
-              data.hasAnyEvents ? (
-                <ChartLegend />
-              ) : (
-                <span className="text-[11px] text-muted-foreground">
-                  no data yet
-                </span>
-              )
-            }
-          >
-            {data.hasAnyEvents ? (
-              <ViewsAreaChart data={data.timeseries} />
-            ) : (
-              <ChartEmptyState slug={slug} />
-            )}
-          </SectionCard>
-        </div>
-
-        {/* Two-up: referrers + countries */}
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 mb-3">
-          <SectionCard
-            title="Top sources"
-            subtitle="Where visitors came from"
-            action={<TinyIconBadge icon={<Sparkles className="size-3" />} />}
-          >
-            <ReferrersList rows={data.referrers} />
-          </SectionCard>
-          <SectionCard
-            title="Top countries"
-            subtitle="Geographic reach"
-            action={<TinyIconBadge icon={<Globe2 className="size-3" />} />}
-          >
-            <CountriesList rows={data.countries} />
-          </SectionCard>
-        </div>
-
-        {/* Three-up: devices + recent (recent spans 2) */}
-        <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-          <SectionCard title="Devices" subtitle="Browsers reading you">
-            <DevicesList rows={data.devices} />
-          </SectionCard>
-          <SectionCard
-            className="lg:col-span-2"
-            title="Recent activity"
-            subtitle="Latest visitors"
-            action={
-              <TinyIconBadge icon={<UserRound className="size-3" />} />
-            }
-          >
-            <RecentActivity rows={data.recent} />
-          </SectionCard>
-        </div>
-
-        <PublishedFooter daysSinceScan={lastScanDays} />
+        <RangeTabs current={rangeKey} />
       </div>
+
+      {isScanning ? <ScanningBanner scanId={activeScan!.id} /> : null}
+
+      {data.hasAnyEvents ? (
+        <div className="mb-6">
+          <LiveTicker
+            todayViews={todayViews}
+            lastVisitor={data.recent[0] ?? null}
+          />
+        </div>
+      ) : null}
+
+      {/* Hero KPIs */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-3">
+        <KpiCard
+          label="Views"
+          value={data.kpis.views}
+          deltaPct={data.kpis.viewsDeltaPct}
+          sparkline={sparkViews}
+          hint={RANGE_LABEL[rangeKey].toLowerCase()}
+        />
+        <KpiCard
+          label="Unique visitors"
+          value={data.kpis.uniques}
+          deltaPct={data.kpis.uniquesDeltaPct}
+          sparkline={sparkUniques}
+          hint="distinct people"
+        />
+        <KpiCard
+          label="Countries"
+          value={data.kpis.countriesReached}
+          hint="reached this period"
+        />
+        <KpiCard
+          label="All-time views"
+          value={data.kpis.viewsAllTime}
+          hint="since launch"
+        />
+      </div>
+
+      {/* Big chart */}
+      <div className="mb-3">
+        <SectionCard
+          title="Views over time"
+          subtitle={`Daily totals · ${RANGE_LABEL[rangeKey].toLowerCase()}`}
+          action={data.hasAnyEvents ? <ChartLegend /> : null}
+        >
+          {data.hasAnyEvents ? (
+            <ViewsAreaChart data={data.timeseries} />
+          ) : (
+            <ChartEmptyState slug={slug} />
+          )}
+        </SectionCard>
+      </div>
+
+      {/* Two-up: referrers + countries */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 mb-3">
+        <SectionCard title="Top sources" subtitle="Where visitors came from">
+          <ReferrersList rows={data.referrers} />
+        </SectionCard>
+        <SectionCard title="Top countries" subtitle="Geographic reach">
+          <CountriesList rows={data.countries} />
+        </SectionCard>
+      </div>
+
+      {/* Three-up: devices + recent (recent spans 2) */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+        <SectionCard title="Devices" subtitle="Browsers reading you">
+          <DevicesList rows={data.devices} />
+        </SectionCard>
+        <SectionCard
+          className="lg:col-span-2"
+          title="Recent activity"
+          subtitle="Latest visitors"
+        >
+          <RecentActivity rows={data.recent} />
+        </SectionCard>
+      </div>
+
+      <PublishedFooter daysSinceScan={lastScanDays} />
     </div>
   );
 }
@@ -297,12 +272,12 @@ export default async function AppHomePage({
 
 function RangeTabs({ current }: { current: string }) {
   const ranges: Array<{ key: string; label: string }> = [
-    { key: "7d", label: "7d" },
-    { key: "30d", label: "30d" },
-    { key: "90d", label: "90d" },
+    { key: "7d", label: "7 days" },
+    { key: "30d", label: "30 days" },
+    { key: "90d", label: "90 days" },
   ];
   return (
-    <div className="inline-flex items-center rounded-xl border border-border/50 bg-card/40 p-0.5 self-start">
+    <div className="inline-flex items-center rounded-lg border border-border/50 bg-card/60 p-0.5 self-start">
       {ranges.map((r) => {
         const active = r.key === current;
         return (
@@ -311,9 +286,10 @@ function RangeTabs({ current }: { current: string }) {
             href={r.key === "30d" ? "/app" : `/app?range=${r.key}`}
             scroll={false}
             className={cn(
-              "px-3 py-1.5 text-[12px] font-medium rounded-lg transition-colors",
+              "px-3 py-1 text-[12px] font-medium rounded-md",
+              "transition-[background-color,color] duration-150 ease",
               active
-                ? "bg-background shadow-sm text-foreground"
+                ? "bg-background text-foreground shadow-[0_0_0_1px_oklch(from_var(--foreground)_l_c_h/0.08)]"
                 : "text-muted-foreground hover:text-foreground",
             )}
           >
@@ -333,24 +309,23 @@ function ChartLegend() {
         Views
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <span className="size-2 rounded-sm bg-[var(--gradient-secondary)]" />
+        <span
+          aria-hidden
+          className="inline-block h-[2px] w-3 bg-[var(--gradient-primary)] opacity-55"
+          style={{
+            backgroundImage:
+              "repeating-linear-gradient(to right, currentColor 0 3px, transparent 3px 6px)",
+          }}
+        />
         Uniques
       </span>
     </div>
   );
 }
 
-function TinyIconBadge({ icon }: { icon: React.ReactNode }) {
-  return (
-    <span className="inline-flex size-6 items-center justify-center rounded-md border border-border/40 bg-card text-muted-foreground">
-      {icon}
-    </span>
-  );
-}
-
 function ChartEmptyState({ slug }: { slug: string }) {
   return (
-    <div className="flex h-[260px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border/40 bg-muted/10 text-center">
+    <div className="flex h-[280px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border/50 bg-muted/10 text-center">
       <Eye className="size-5 text-muted-foreground/70" strokeWidth={2} />
       <div>
         <p className="text-[13px] font-medium">No views yet</p>
@@ -362,7 +337,12 @@ function ChartEmptyState({ slug }: { slug: string }) {
         href={`/${slug}`}
         target="_blank"
         rel="noreferrer"
-        className="inline-flex items-center gap-1 rounded-lg border border-border/60 bg-card/60 px-3 py-1.5 text-[12px] font-medium hover:bg-card transition-colors"
+        className={cn(
+          "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] font-medium",
+          "border border-border/60 bg-card/60 text-foreground",
+          "transition-[background-color] duration-150 ease",
+          "hover:bg-card",
+        )}
       >
         Open your portfolio
         <ArrowUpRight className="size-3.5" />
@@ -375,11 +355,15 @@ function ScanningBanner({ scanId }: { scanId: string }) {
   return (
     <Link
       href={`/app/scan/${scanId}`}
-      className="mb-5 flex items-center gap-2.5 rounded-xl border border-border/40 bg-card/40 px-3.5 py-2 text-[12.5px] hover:bg-card/60 transition-colors gs-enter"
+      className={cn(
+        "mb-6 flex items-center gap-2.5 rounded-lg border border-border/50 bg-card/60 px-3.5 py-2 text-[12.5px]",
+        "transition-[background-color] duration-150 ease",
+        "hover:bg-card",
+      )}
     >
-      <span className="relative flex size-2">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-500 opacity-50" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-amber-500" />
+      <span className="relative flex size-1.5">
+        <span className="absolute inline-flex h-full w-full motion-safe:animate-ping rounded-full bg-amber-500/50" />
+        <span className="relative inline-flex size-1.5 rounded-full bg-amber-500" />
       </span>
       <span className="font-medium">Refresh in progress</span>
       <span className="text-muted-foreground">

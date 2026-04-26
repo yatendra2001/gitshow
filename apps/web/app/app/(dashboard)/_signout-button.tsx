@@ -1,15 +1,18 @@
 "use client";
 
 import * as React from "react";
+import { LogOut } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { cn } from "@/lib/utils";
 
 /**
- * Sign-out button. Calls Better Auth's `authClient.signOut()` — the
- * server clears the session row in D1 + expires the cookie, then we
- * hard-navigate to `/` so the next server render reads the absent
- * session. A plain <form action="/api/auth/signout"> was what broke
- * under the old Auth.js setup: that route expects a CSRF token the
- * form wasn't sending, so signout silently no-op'd.
+ * Sign-out — styled to sit next to the theme toggle in the sidebar
+ * footer. Same nav-row footprint as the rest of the rail so the bottom
+ * strip reads as a coherent group.
+ *
+ * Uses Better Auth's `authClient.signOut()` so the server clears the
+ * session row + expires the cookie; we hard-navigate to `/` afterward
+ * so RSC + cookie caches are fully flushed.
  */
 export function SignOutButton() {
   const [busy, setBusy] = React.useState(false);
@@ -21,8 +24,6 @@ export function SignOutButton() {
       await authClient.signOut({
         fetchOptions: {
           onSuccess() {
-            // Full reload, not router.push — guarantees every RSC /
-            // cookie cache is flushed even if a cached page is served.
             window.location.href = "/";
           },
         },
@@ -38,9 +39,21 @@ export function SignOutButton() {
       type="button"
       onClick={onClick}
       disabled={busy}
-      className="text-[12px] text-muted-foreground hover:text-foreground transition-colors min-h-9 px-2 disabled:opacity-60"
+      aria-label="Sign out"
+      className={cn(
+        "group flex w-full items-center gap-2 rounded-md px-2.5 py-2",
+        "text-[13px] font-medium leading-none",
+        "text-muted-foreground hover:text-foreground",
+        "transition-[background-color,color,opacity] duration-150 ease",
+        "hover:bg-foreground/[0.04]",
+        "disabled:opacity-60 disabled:cursor-progress",
+      )}
     >
-      {busy ? "Signing out…" : "Sign out"}
+      <LogOut
+        className="size-4 shrink-0 text-muted-foreground/70 group-hover:text-foreground"
+        strokeWidth={2}
+      />
+      <span>{busy ? "Signing out…" : "Sign out"}</span>
     </button>
   );
 }

@@ -8,9 +8,8 @@ import { Editor } from "./_editor";
  * /app/edit — full per-section editor over the authenticated user's
  * draft Resume.
  *
- * Server-side boot: loads the draft once so we can show a useful
- * empty/error state if one doesn't exist. All mutations flow through
- * the client Editor via PATCH /api/resume/draft.
+ * Renders inside the dashboard shell so the sidebar persists. We don't
+ * own a <main> wrapper or header — the shell provides both.
  */
 
 export const dynamic = "force-dynamic";
@@ -25,21 +24,15 @@ export default async function EditPage() {
   ]);
 
   if (!resume) {
-    return (
-      <main className="min-h-svh bg-background text-foreground">
-        <EmptyState />
-      </main>
-    );
+    return <EmptyState />;
   }
 
   return (
-    <main className="min-h-svh bg-background text-foreground">
-      <Editor
-        initialResume={resume}
-        handle={handle}
-        initialPublished={Boolean(published)}
-      />
-    </main>
+    <Editor
+      initialResume={resume}
+      handle={handle}
+      initialPublished={Boolean(published)}
+    />
   );
 }
 
@@ -59,7 +52,7 @@ function EmptyState() {
       </p>
       <Link
         href="/app"
-        className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-11"
+        className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 min-h-11"
       >
         Back to dashboard
       </Link>

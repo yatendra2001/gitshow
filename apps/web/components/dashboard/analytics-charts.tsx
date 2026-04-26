@@ -3,13 +3,13 @@
 /**
  * Recharts-backed visuals for the analytics dashboard.
  *
- * Two exports:
- *   - <SparklineMini /> — 36px high, no axes, used inside KPI cards.
- *   - <ViewsAreaChart /> — the big card chart at the top of the page.
- *
- * Both use the existing ChartContainer wrapper so colors come from
- * `--color-chart-*` design tokens. Stays consistent with anything we
- * add later (top-route bar chart, weekly heatmap).
+ * Visual rules:
+ *   - Single accent color (`--gradient-primary`) for everything,
+ *     differentiated by opacity. Two-tone monochrome reads more
+ *     premium than blue + purple.
+ *   - Sparklines have no axes, no labels — just shape.
+ *   - The big chart has hairline gridlines (currentColor at 0.05) so
+ *     the gridlines don't shout over the data.
  */
 
 import {
@@ -30,13 +30,6 @@ import { formatDateShort } from "./format";
 
 // ─── Sparkline (KPI card footer) ──────────────────────────────────
 
-const SPARK_CONFIG: ChartConfig = {
-  value: {
-    label: "Views",
-    color: "var(--gradient-primary)",
-  },
-};
-
 export function SparklineMini({
   data,
   color = "var(--gradient-primary)",
@@ -45,22 +38,19 @@ export function SparklineMini({
   color?: string;
 }) {
   if (!data.length) return null;
+  // Stable id for the gradient definition. Recharts dedupes on this
+  // string so multiple sparklines on the same page don't conflict.
+  const gradientId = `gs-spark-${color.replace(/[^a-zA-Z0-9]/g, "")}`;
   return (
-    <div className="h-9 w-full -mx-1">
+    <div className="h-9 w-full">
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart
           data={data}
           margin={{ top: 4, right: 0, bottom: 0, left: 0 }}
         >
           <defs>
-            <linearGradient
-              id={`spark-fill-${color}`}
-              x1="0"
-              y1="0"
-              x2="0"
-              y2="1"
-            >
-              <stop offset="0%" stopColor={color} stopOpacity={0.5} />
+            <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.28} />
               <stop offset="100%" stopColor={color} stopOpacity={0} />
             </linearGradient>
           </defs>
@@ -68,8 +58,9 @@ export function SparklineMini({
             type="monotone"
             dataKey="value"
             stroke={color}
+            strokeOpacity={0.85}
             strokeWidth={1.5}
-            fill={`url(#spark-fill-${color})`}
+            fill={`url(#${gradientId})`}
             isAnimationActive={false}
           />
         </AreaChart>
@@ -77,8 +68,6 @@ export function SparklineMini({
     </div>
   );
 }
-
-void SPARK_CONFIG; // referenced for type intent; recharts uses inline color
 
 // ─── Big views chart ──────────────────────────────────────────────
 
@@ -88,14 +77,14 @@ const VIEWS_CHART_CONFIG: ChartConfig = {
     color: "var(--gradient-primary)",
   },
   uniques: {
-    label: "Unique visitors",
-    color: "var(--gradient-secondary)",
+    label: "Uniques",
+    color: "var(--gradient-primary)",
   },
 };
 
 export function ViewsAreaChart({
   data,
-  height = 260,
+  height = 280,
 }: {
   data: { date: string; views: number; uniques: number }[];
   height?: number;
@@ -108,14 +97,14 @@ export function ViewsAreaChart({
     >
       <AreaChart
         data={data}
-        margin={{ top: 8, right: 12, bottom: 0, left: -16 }}
+        margin={{ top: 8, right: 8, bottom: 0, left: -16 }}
       >
         <defs>
           <linearGradient id="fill-views" x1="0" y1="0" x2="0" y2="1">
             <stop
               offset="5%"
               stopColor="var(--color-views)"
-              stopOpacity={0.32}
+              stopOpacity={0.22}
             />
             <stop
               offset="95%"
@@ -127,7 +116,7 @@ export function ViewsAreaChart({
             <stop
               offset="5%"
               stopColor="var(--color-uniques)"
-              stopOpacity={0.30}
+              stopOpacity={0.10}
             />
             <stop
               offset="95%"
@@ -139,18 +128,18 @@ export function ViewsAreaChart({
         <CartesianGrid
           vertical={false}
           stroke="currentColor"
-          strokeOpacity={0.08}
+          strokeOpacity={0.05}
         />
         <XAxis
           dataKey="date"
           tickLine={false}
           axisLine={false}
-          tickMargin={8}
-          minTickGap={32}
+          tickMargin={10}
+          minTickGap={48}
           tickFormatter={formatDateShort}
           stroke="currentColor"
-          strokeOpacity={0.4}
-          style={{ fontSize: 11 }}
+          strokeOpacity={0.35}
+          style={{ fontSize: 10.5 }}
         />
         <YAxis
           tickLine={false}
@@ -158,14 +147,14 @@ export function ViewsAreaChart({
           tickMargin={4}
           width={36}
           stroke="currentColor"
-          strokeOpacity={0.4}
-          style={{ fontSize: 11 }}
+          strokeOpacity={0.35}
+          style={{ fontSize: 10.5 }}
           allowDecimals={false}
         />
         <Tooltip
           cursor={{
-            stroke: "var(--color-views)",
-            strokeOpacity: 0.4,
+            stroke: "currentColor",
+            strokeOpacity: 0.20,
             strokeDasharray: "3 3",
           }}
           content={
@@ -181,25 +170,28 @@ export function ViewsAreaChart({
             />
           }
         />
+        {/* Views: primary line, full-strength accent. */}
         <Area
           type="monotone"
           dataKey="views"
           stroke="var(--color-views)"
-          strokeWidth={2}
+          strokeWidth={1.75}
           fill="url(#fill-views)"
-          stackId="a"
           isAnimationActive={true}
-          animationDuration={500}
+          animationDuration={400}
         />
+        {/* Uniques: same hue, lower-strength stroke + fill. */}
         <Area
           type="monotone"
           dataKey="uniques"
           stroke="var(--color-uniques)"
-          strokeWidth={2}
+          strokeOpacity={0.55}
+          strokeWidth={1.5}
+          strokeDasharray="3 3"
           fill="url(#fill-uniques)"
           isAnimationActive={true}
-          animationDuration={500}
-          animationBegin={120}
+          animationDuration={400}
+          animationBegin={80}
         />
       </AreaChart>
     </ChartContainer>
