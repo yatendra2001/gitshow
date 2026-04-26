@@ -165,20 +165,21 @@ const JUDGE_TIMEOUT_MS = 3 * 60_000;
  * defaults `maxIterations` to 10,000 (a "safety valve only" per its
  * own comment) — but a real Kimi run on memlearn was observed
  * spending 279 OpenRouter requests inside ONE judge call before
- * timing out. The model loops reasoning + tool exploration without
- * ever calling submit_judgment.
+ * timing out. The model loops reasoning text without ever emitting
+ * the submit_judgment tool_calls structure.
  *
- * The judge task is structurally simple: read the prompt, emit one
- * `submit_judgment` tool call. 6 iterations is plenty (1 to read,
- * 1 to submit, 4 buffer for any tool-arg validation retry the SDK
- * does). When the cap fires the SDK throws "exceeded step count" —
- * judgeRepo's try/catch then writes a fallback judgment.
+ * 20 leaves comfortable headroom for legitimate analysis (read
+ * prompt → reason through kind/polish/purpose → submit, plus
+ * retries for tool-arg validation) while hard-capping pathological
+ * runs. When the cap fires the SDK throws "exceeded step count" —
+ * judgeRepo's try/catch then writes a fallback judgment from
+ * RepoRef metadata.
  *
  * Combined with JUDGE_TIMEOUT_MS this caps worst-case waste per
- * judge at min(6 iterations × ~30s = 3 min, 3 min wall-clock) ≈
- * 6 OpenRouter requests instead of 279.
+ * judge at min(20 iterations × ~1.5 OpenRouter calls each ≈ 30
+ * requests, 3 min wall-clock).
  */
-const JUDGE_MAX_ITERATIONS = 6;
+const JUDGE_MAX_ITERATIONS = 20;
 
 export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput> {
   const { repo, repoPath, study, session, usage, trace, onProgress, emit } = input;
