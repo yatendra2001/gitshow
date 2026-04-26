@@ -1,22 +1,20 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { renderToStaticMarkup } from "react-dom/server";
 import puppeteer from "@cloudflare/puppeteer";
 import { requireProApi } from "@/lib/entitlements";
 import { loadResumeDoc } from "@/lib/resume-doc-io";
 import {
-  PrintableResume,
+  renderResumeHtml,
   RESUME_PRINT_CSS,
-} from "@/components/resume/printable";
+} from "@/components/resume/printable-html";
 
 /**
  * POST /api/resume/doc/pdf — render the user's ResumeDoc to a PDF via
  * Cloudflare Browser Rendering and return it as an attachment.
  *
- * We render the React tree to static markup, wrap it with an HTML
- * shell that carries the print CSS, and feed the whole thing to
- * `page.setContent()`. No external assets are loaded — the resume is
- * pure typography on white, so the binary cost is minimal and the
- * render is fast.
+ * We render the document to an HTML string (no React-server dep), wrap
+ * it with an HTML shell that carries the print CSS, and feed the whole
+ * thing to `page.setContent()`. No external assets are loaded — the
+ * resume is pure typography on white, so the binary cost is minimal.
  */
 
 export const maxDuration = 60;
@@ -45,7 +43,7 @@ export async function POST() {
     return jsonError("no_doc", 404, "Generate the resume first.");
   }
 
-  const inner = renderToStaticMarkup(<PrintableResume doc={doc} fullPage />);
+  const inner = renderResumeHtml(doc, { fullPage: true });
   const pageSize = doc.page.size === "a4" ? "A4" : "Letter";
   const html = `<!DOCTYPE html>
 <html>
@@ -91,19 +89,18 @@ export async function POST() {
 }
 
 function jsonError(code: string, status: number, detail?: string) {
-  return new Response(
-    JSON.stringify({ error: code, detail }),
-    {
-      status,
-      headers: { "Content-Type": "application/json" },
-    },
-  );
+  return new Response(JSON.stringify({ error: code, detail }), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 function slug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60) || "resume";
+  return (
+    name
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 60) || "resume"
+  );
 }
