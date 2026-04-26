@@ -28,6 +28,7 @@ import { SessionUsage } from "../src/session.js";
 import { D1Client } from "../src/cloud/d1.js";
 import { DOPublishClient } from "@gitshow/shared/cloud/do-client";
 import { DEFAULT_SCAN_MODEL } from "@gitshow/shared/models";
+import { getScanCostSummary } from "@gitshow/shared/cloud/posthog";
 import {
   ResendSender,
   renderScanComplete,
@@ -82,6 +83,18 @@ async function main() {
     process.exit(1);
   }
 
+  // Fly's deploy-time machine boot also runs this entrypoint without
+  // SCAN_ID/HANDLE set — that's not a scan, just the image being
+  // smoke-booted. Exit 0 with a friendly message instead of crashing
+  // (which used to spam loud `missing required env var: SCAN_ID`
+  // logs every deploy).
+  if (!process.env.SCAN_ID || !process.env.HANDLE) {
+    logger.info(
+      "run-scan: SCAN_ID/HANDLE not set — image boot smoke test, exiting cleanly. " +
+        "Real scans get these env vars injected by the Machines API at create time.",
+    );
+    process.exit(0);
+  }
   const scanId = requireEnv("SCAN_ID");
   const handle = requireEnv("HANDLE");
   const model = process.env.MODEL || DEFAULT_SCAN_MODEL;
@@ -271,11 +284,21 @@ async function main() {
     }
 
     clearInterval(heartbeat);
+    // Pull from the PostHog cost aggregator (ground-truth pricing × tokens)
+    // instead of the legacy `usage.estimatedCostUsd` which the agent SDK
+    // never populated. Falls back to legacy when the aggregator is unbound
+    // (CLI runs).
+    const costSummary = getScanCostSummary();
     scanLog.info(
       {
         pipeline: "resume",
-        cost_usd: usage.estimatedCostUsd,
-        llm_calls: usage.llmCalls,
+        cost_usd: costSummary?.total_cost_usd ?? usage.estimatedCostUsd,
+        llm_calls: costSummary?.total_calls ?? usage.llmCalls,
+        input_tokens: costSummary?.total_input_tokens,
+        output_tokens: costSummary?.total_output_tokens,
+        top_model: costSummary?.by_model[0]?.display_name,
+        top_model_cost_usd: costSummary?.by_model[0]?.cost_usd,
+        max_single_call_cost_usd: costSummary?.max_single_call_cost_usd,
         d1_failure_count: d1.failureCount,
       },
       "done",
