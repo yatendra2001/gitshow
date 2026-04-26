@@ -87,11 +87,16 @@ export async function fetchMediaForKG(
   }
 
   for (const company of kg.entities.companies) {
-    if (!company.domain) continue;
+    // Used to skip when domain was missing — but ProxyCurl-sourced
+    // companies often have no clean domain yet a perfectly good
+    // first-party logo URL. Try the entity's logoUrl first, then fall
+    // through to Clearbit/favicon when we also have a domain.
+    if (!company.domain && !company.logoUrl) continue;
     await attachLogo(kg, {
       ownerId: company.id,
       name: company.canonicalName,
       domain: company.domain,
+      preferredLogoUrl: company.logoUrl,
       r2Prefix: "companies",
       trace: opts.trace,
       r2: opts.r2,
@@ -100,11 +105,12 @@ export async function fetchMediaForKG(
   }
 
   for (const school of kg.entities.schools) {
-    if (!school.domain) continue;
+    if (!school.domain && !school.logoUrl) continue;
     await attachLogo(kg, {
       ownerId: school.id,
       name: school.canonicalName,
       domain: school.domain,
+      preferredLogoUrl: school.logoUrl,
       r2Prefix: "schools",
       trace: opts.trace,
       r2: opts.r2,
@@ -308,31 +314,48 @@ async function attachLogo(
   args: {
     ownerId: string;
     name: string;
-    domain: string;
+    /** Optional — used to compose Clearbit / favicon fallback URLs. */
+    domain?: string;
+    /**
+     * First-party logo URL (e.g. ProxyCurl/EnrichLayer's `logo_url`
+     * from a LinkedIn experience). Tried before Clearbit because
+     * LinkedIn-hosted brand assets are sharper and have far better
+     * coverage of the long-tail companies Clearbit doesn't know.
+     */
+    preferredLogoUrl?: string;
     r2Prefix: "companies" | "schools";
     trace?: ScanTrace;
     r2?: MediaFetchOptions["r2"];
     handle: string;
   },
 ): Promise<void> {
-  const urls = [clearbitLogoUrl(args.domain), googleFaviconUrl(args.domain)];
+  const urls: string[] = [];
+  if (args.preferredLogoUrl) urls.push(args.preferredLogoUrl);
+  if (args.domain) {
+    urls.push(clearbitLogoUrl(args.domain), googleFaviconUrl(args.domain));
+  }
+  if (urls.length === 0) return;
   const startedAt = Date.now();
   const got = await downloadFirstAvailable(urls, { timeoutMs: 8000 });
 
   if (!got) {
     args.trace?.mediaDownload({
       mediaKind: `${args.r2Prefix === "companies" ? "company" : "school"}-logo`,
-      url: urls[0] ?? args.domain,
+      url: urls[0],
       ok: false,
       durationMs: Date.now() - startedAt,
-      origin: "clearbit",
+      origin: args.preferredLogoUrl ? "linkedin" : "clearbit",
       error: "all_sources_failed",
     });
     return;
   }
 
   const origin: HeroOrigin =
-    got.url.includes("logo.clearbit.com") ? "clearbit" : "favicon";
+    args.preferredLogoUrl && got.url === args.preferredLogoUrl
+      ? "linkedin"
+      : got.url.includes("logo.clearbit.com")
+        ? "clearbit"
+        : "favicon";
 
   args.trace?.mediaDownload({
     mediaKind: `${args.r2Prefix === "companies" ? "company" : "school"}-logo`,
@@ -351,8 +374,12 @@ async function attachLogo(
   const finalBytes = resized?.buffer ?? got.bytes;
   const finalContentType = resized ? "image/webp" : got.contentType;
 
-  const domainSlug = slug(args.domain.replace(/^https?:\/\//, "").replace(/^www\./, ""));
-  const r2Key = `media/${args.handle}/${args.r2Prefix}/${domainSlug}/logo.webp`;
+  // Slug for the R2 key — prefer the domain when available, otherwise
+  // derive from the canonical entity name so two companies without a
+  // domain don't collide on the same path.
+  const slugSource =
+    args.domain?.replace(/^https?:\/\//, "").replace(/^www\./, "") ?? args.name;
+  const r2Key = `media/${args.handle}/${args.r2Prefix}/${slug(slugSource)}/logo.webp`;
   const uploaded = await uploadToR2(finalBytes, finalContentType, r2Key, args.r2);
 
   pushMediaEdge(kg, {
