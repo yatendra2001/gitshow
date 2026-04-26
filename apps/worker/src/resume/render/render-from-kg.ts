@@ -358,6 +358,16 @@ function projectBuildLog(opts: {
   for (const p of projects) {
     if (NOISE_PROJECT_KINDS.has(p.kind)) continue;
     if (excludeProjectIds?.has(p.id)) continue;
+    // Drop repos the user has zero authorship in (e.g. an external
+    // repo that ended up in their owned-list because of an
+    // unrelated mirror or fork — `ACPixel/Rin` was the canonical
+    // case). The featured grid already excludes these via the
+    // userShare hard rule; the build log inherits the same gate so
+    // it doesn't surface "products" the user never wrote.
+    const userShare = typeof p.userShare === "number" ? p.userShare : null;
+    const userCommits =
+      typeof p.userCommits === "number" ? p.userCommits : null;
+    if (userShare === 0 && (userCommits ?? 0) === 0) continue;
     const repo = p.repoFullName
       ? kg.entities.repositories.find((r) => r.fullName === p.repoFullName)
       : undefined;

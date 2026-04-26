@@ -9,43 +9,7 @@ import { useData } from "@/components/data-provider";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LogoOrInitials } from "@/components/logo-or-initials";
-
-/**
- * Format a date string from the resume schema into something readable.
- * Inputs come from a few sources and arrive in mixed shapes:
- *   "2024-03-01" → "Mar 2024"
- *   "2024-03"    → "Mar 2024"
- *   "2024"       → "2024"
- *   "May 2021"   → unchanged (already pretty)
- *   "Present"    → "Present"
- *   ""           → "Present"  (matches the existing fallback)
- *   anything else unparseable → returned verbatim
- */
-const MONTH_NAMES = [
-  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
-function formatWorkDate(raw: string | null | undefined): string {
-  if (!raw) return "Present";
-  const s = raw.trim();
-  if (!s) return "Present";
-  // ISO-ish: YYYY-MM-DD, YYYY-MM, or YYYY
-  const iso = s.match(/^(\d{4})(?:-(\d{1,2}))?(?:-\d{1,2})?$/);
-  if (iso) {
-    const year = iso[1];
-    const month = iso[2] ? Number(iso[2]) : null;
-    if (month && month >= 1 && month <= 12) return `${MONTH_NAMES[month - 1]} ${year}`;
-    return year;
-  }
-  return s;
-}
-
-function formatWorkRange(start: string | null | undefined, end: string | null | undefined): string {
-  const s = formatWorkDate(start);
-  const e = end == null || end === "" ? "Present" : formatWorkDate(end);
-  if (!s || s === "Present") return e;
-  return `${s} — ${e}`;
-}
+import { formatResumeDateRange } from "@/lib/format-date";
 
 export default function WorkSection() {
   const DATA = useData();
@@ -88,7 +52,7 @@ export default function WorkSection() {
                 </div>
               </div>
               <div className="flex items-center gap-1 text-xs tabular-nums text-muted-foreground text-right flex-none">
-                <span>{formatWorkRange(work.start, work.end)}</span>
+                <span>{formatResumeDateRange(work.start, work.end)}</span>
               </div>
             </div>
           </AccordionTrigger>

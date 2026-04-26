@@ -163,20 +163,26 @@ export function ProjectCard({
           <Markdown>{description}</Markdown>
         </div>
         {webMentions && webMentions.length > 0 && (
-          <div className="pointer-events-auto flex flex-wrap gap-1.5 relative z-10">
-            {webMentions.slice(0, 3).map((m) => (
-              <Link
-                href={m.url}
-                key={m.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 text-[10.5px] font-medium uppercase tracking-wide text-muted-foreground hover:text-foreground border border-border/60 rounded-md px-1.5 py-0.5 bg-background/60 hover:bg-background"
-                title={m.title}
-              >
-                {m.source}
-              </Link>
-            ))}
+          <div className="pointer-events-auto relative z-10 flex flex-col gap-1">
+            <div className="flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[0.08em] text-foreground/70">
+              <span className="size-1 rounded-full bg-[var(--primary)]/80" />
+              Featured at
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {webMentions.slice(0, 5).map((m) => (
+                <Link
+                  href={m.url}
+                  key={m.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 text-[11px] font-medium text-foreground/80 hover:text-foreground border border-border/60 hover:border-[var(--primary)]/50 rounded-md px-2 py-0.5 bg-gradient-to-br from-background/70 to-background hover:from-[var(--primary)]/[0.06] hover:to-background transition-colors"
+                  title={m.title}
+                >
+                  {m.source}
+                </Link>
+              ))}
+            </div>
           </div>
         )}
         {tags && tags.length > 0 && (

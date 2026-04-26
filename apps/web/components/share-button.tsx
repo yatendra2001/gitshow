@@ -5,16 +5,19 @@ import { Check, Copy, Link2, Share2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * Floating share control for the public `/{handle}` page. Renders as
- * a small pill in the top-right; clicks open a dropdown with:
- *   - Copy link — writes the page URL to the clipboard
- *   - Share on X — prefilled tweet with the portfolio URL
- *   - Share on LinkedIn — LinkedIn's sharing URL helper
+ * Floating share control for the public `/{handle}` page. The control
+ * is a small pill in the top-right whose menu opens on **hover** (not
+ * on click) — clicks on the menu items themselves perform the action
+ * (copy link / open X / open LinkedIn). On touch devices, where there
+ * is no hover, the pill is also clickable to toggle the menu.
  *
- * The native `navigator.share` sheet is used when available (iOS /
- * Android / recent macOS) so the UX feels platform-first there, with
- * the dropdown as a fallback.
+ * The native `navigator.share` sheet is intentionally NOT used here —
+ * the user feedback was "tooltip with stuff inside it clickable",
+ * which only makes sense if we keep the menu visible rather than
+ * deferring to the OS sheet.
  */
+
+const HOVER_CLOSE_DELAY_MS = 180;
 
 export function ShareButton({
   handle,
@@ -27,12 +30,15 @@ export function ShareButton({
   const [copied, setCopied] = useState(false);
   const [url, setUrl] = useState<string>("");
   const rootRef = useRef<HTMLDivElement>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
     setUrl(window.location.origin + `/${handle}`);
   }, [handle]);
 
+  // Click-outside + Escape — useful for the touch-device toggle path
+  // where we don't have a hover-leave to close the menu.
   useEffect(() => {
     if (!open) return;
     const onClick = (e: MouseEvent) => {
@@ -51,6 +57,18 @@ export function ShareButton({
     };
   }, [open]);
 
+  const cancelClose = useCallback(() => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+  }, []);
+
+  const scheduleClose = useCallback(() => {
+    cancelClose();
+    closeTimer.current = setTimeout(() => setOpen(false), HOVER_CLOSE_DELAY_MS);
+  }, [cancelClose]);
+
   const onCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(url);
@@ -61,30 +79,6 @@ export function ShareButton({
     }
   }, [url]);
 
-  const tryNativeShare = useCallback(async () => {
-    if (
-      typeof navigator !== "undefined" &&
-      typeof navigator.share === "function"
-    ) {
-      try {
-        await navigator.share({
-          title: `${name} — gitshow`,
-          text: `${name}'s portfolio`,
-          url,
-        });
-        return true;
-      } catch {
-        return false;
-      }
-    }
-    return false;
-  }, [name, url]);
-
-  const onShareClick = useCallback(async () => {
-    const native = await tryNativeShare();
-    if (!native) setOpen((v) => !v);
-  }, [tryNativeShare]);
-
   const xUrl = `https://x.com/intent/tweet?text=${encodeURIComponent(
     `${name}'s portfolio — `,
   )}&url=${encodeURIComponent(url)}`;
@@ -93,10 +87,23 @@ export function ShareButton({
   )}`;
 
   return (
-    <div ref={rootRef} className="fixed top-4 right-4 z-40">
+    <div
+      ref={rootRef}
+      className="fixed top-4 right-4 z-40"
+      onMouseEnter={() => {
+        cancelClose();
+        setOpen(true);
+      }}
+      onMouseLeave={scheduleClose}
+      onFocusCapture={() => {
+        cancelClose();
+        setOpen(true);
+      }}
+      onBlurCapture={scheduleClose}
+    >
       <button
         type="button"
-        onClick={() => void onShareClick()}
+        onClick={() => setOpen((v) => !v)}
         className="inline-flex items-center gap-1.5 rounded-full border border-border/40 bg-card/80 backdrop-blur-sm px-3 py-1.5 text-[12px] text-foreground hover:bg-card transition-colors shadow-[var(--shadow-card)]"
         aria-haspopup="menu"
         aria-expanded={open}
