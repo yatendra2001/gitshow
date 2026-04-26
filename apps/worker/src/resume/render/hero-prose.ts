@@ -45,6 +45,13 @@ export interface HeroProseInput {
   session: ScanSession;
   usage: SessionUsage;
   kg: KnowledgeGraph;
+  /**
+   * Optional grounded "what does the world know about this person"
+   * report from the person-report stage. When supplied, hero-prose
+   * uses it as additional context — every claim still has to map to
+   * either a KG fact or this report.
+   */
+  personReportMarkdown?: string;
   trace?: ScanTrace;
   onProgress?: (text: string) => void;
   /** Optional structured emit (reasoning + tool events). */
@@ -75,7 +82,7 @@ const MAX_FACTS = 12;
 const MAX_PROJECTS = 4;
 
 export async function generateHeroProse(input: HeroProseInput): Promise<HeroProse> {
-  const userInput = buildInput(input.kg);
+  const userInput = buildInput(input.kg, input.personReportMarkdown);
   const t0 = Date.now();
 
   try {
@@ -116,9 +123,26 @@ export async function generateHeroProse(input: HeroProseInput): Promise<HeroPros
   }
 }
 
-function buildInput(kg: KnowledgeGraph): string {
+function buildInput(kg: KnowledgeGraph, personReport?: string): string {
   const person = kg.entities.persons[0];
   const lines: string[] = [];
+
+  if (personReport && personReport.trim().length > 0) {
+    lines.push(`## External signal report (Gemini grounded)`);
+    lines.push(
+      `Use this as context for the description and About paragraph.`,
+    );
+    lines.push(
+      `It is grounded in real URLs — you may reference its claims, but`,
+    );
+    lines.push(
+      `do NOT add anything that's not in this report or the structured`,
+    );
+    lines.push(`facts below.`);
+    lines.push("");
+    lines.push(personReport.slice(0, 4000));
+    lines.push("");
+  }
 
   lines.push(`## Person`);
   lines.push(`handle: ${person?.handle ?? "(unknown)"}`);

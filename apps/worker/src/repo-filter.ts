@@ -29,17 +29,37 @@ import type {
 // ---------------------------------------------------------------------------
 // Scoring weights (for ranking within tiers)
 // ---------------------------------------------------------------------------
+//
+// Depth of contribution outranks raw star count. A user's 200-commit
+// solo project with 10 stars beats a 25-star fork they barely touched.
+// Stars only become decisive at the famous-OSS threshold (1k+) where
+// the external reach is the headline by itself.
 
-const COMMIT_WEIGHT = 1;
-const STAR_WEIGHT = 5;
-const RECENCY_WEIGHT = 20;
-const LANGUAGE_WEIGHT = 3;
-const PRIVATE_BONUS = 10;
+const COMMIT_DEPTH_WEIGHT = 3;
+const STAR_LOG_WEIGHT = 4;
+const RECENCY_WEIGHT = 15;
+const LANGUAGE_WEIGHT = 2;
+const PRIVATE_BONUS = 8;
 /**
- * External contribution bonus — a merged PR to a ~thousand-star repo is
- * more signal than most solo projects. Scaled by log2(stars).
+ * External (contributor) impact: log2(stars) × commits. A merged PR to
+ * a 20k-star repo is a flagship signal even with 1 commit; a PR to a
+ * 50-star repo only matters if you contributed substantially.
  */
-const EXTERNAL_STAR_WEIGHT = 8;
+const EXTERNAL_STAR_WEIGHT = 12;
+
+/**
+ * Stepped bonus for OWNED repos with traction. Your own 200-star
+ * project is a meaningful achievement — bump it well above similar
+ * unstarred work.
+ */
+function ownerFameBonus(stars: number): number {
+  if (stars >= 1000) return 80;
+  if (stars >= 200) return 40;
+  if (stars >= 50) return 20;
+  if (stars >= 20) return 10;
+  if (stars >= 10) return 5;
+  return 0;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -111,59 +131,93 @@ function buildCommitCounts(data: GitHubData): Map<string, number> {
 
 /** Score a repo for ranking purposes. */
 function scoreRepo(repo: RepoRef, commitCount: number): number {
+  const stars = repo.stargazerCount ?? 0;
   const external = isExternal(repo.relationship);
-  const externalBonus = external
-    ? EXTERNAL_STAR_WEIGHT * Math.log2(repo.stargazerCount + 1)
-    : 0;
-  return (
-    COMMIT_WEIGHT * commitCount +
-    STAR_WEIGHT * Math.log2(repo.stargazerCount + 1) +
+
+  // External path — the value is reach × evidence-of-contribution.
+  // 1 commit to a 20k-star OSS project >>> 200 commits in a personal
+  // CRUD app, so we let star-log dominate but require a commit.
+  if (external) {
+    const reach = EXTERNAL_STAR_WEIGHT * Math.log2(stars + 1);
+    const depthMultiplier = Math.max(1, Math.log2(commitCount + 1));
+    return reach * depthMultiplier + RECENCY_WEIGHT * recencyFactor(repo.pushedAt);
+  }
+
+  // Owned / collaborator path — depth dominates, fame is a step bonus.
+  let s =
+    COMMIT_DEPTH_WEIGHT * commitCount +
+    ownerFameBonus(stars) +
+    STAR_LOG_WEIGHT * Math.log2(stars + 1) +
     RECENCY_WEIGHT * recencyFactor(repo.pushedAt) +
     LANGUAGE_WEIGHT * repo.languages.length +
-    (repo.isPrivate ? PRIVATE_BONUS : 0) +
-    externalBonus
-  );
+    (repo.isPrivate ? PRIVATE_BONUS : 0);
+
+  // Fork penalty — a fork you barely touched isn't your work, even if
+  // upstream is famous. Only forks with substantial author commits
+  // escape the cut.
+  if (repo.isFork && commitCount < 10) {
+    s *= 0.3;
+  }
+
+  return s;
 }
 
 /**
  * Assign analysis tier based on what we know about the repo.
  *
- * Philosophy: if a repo has a real programming language and any sign of
- * activity, deep-analyze it. We can't count commits from the API reliably
- * (direct pushes without PRs show as 0), so we err on the side of cloning.
- * The clone + pre-compute is cheap (~10s). The agent call is where cost is,
- * but that's where the value is too.
+ * Two principles:
+ *   1. Depth-of-contribution > raw stars. A barely-touched fork should
+ *      never deep-tier even if it's a fork of a famous project. Stars
+ *      only override that at the genuinely-famous threshold (1k+),
+ *      where the external impact is itself the story.
+ *   2. External contributions get tiered by reach × commits. A merged
+ *      PR to a 20k-star OSS project is a flagship; a 1-commit PR to a
+ *      50-star repo isn't.
  *
- * External (contributor/reviewer) repos skip the full clone — we don't own
- * them, we just want to surface the PR/commit signal for the resume. They
- * always get `deep` so the projects/work agents see the full signal.
+ * The clone is cheap (~10s); the LLM judge is where cost lives. So we
+ * deep-tier whenever there's a credible signal that the user actually
+ * built something here.
  */
 function assignTier(repo: RepoRef, commitCount: number): AnalysisTier {
   const rel = repo.relationship;
+  const stars = repo.stargazerCount ?? 0;
 
   // Reviewer-only → metadata. No code to show.
   if (rel === "reviewer") return "metadata";
 
-  // Drive-by contributor repos → deep (surface external impact on resume),
-  // but inventory-runner skips cloning these. The projects agent still
-  // reads their artifacts + contribution signals.
-  if (rel === "contributor") return "deep";
+  // External contributor — tier on (reach × evidence-of-contribution).
+  if (rel === "contributor") {
+    // Famous OSS — surface even on a single commit. PR to facebook/react
+    // is the headline regardless of how many lines you wrote.
+    if (stars >= 1000) return "deep";
+    // Notable OSS — needs at least one commit to be worth the agent call.
+    if (stars >= 100 && commitCount >= 1) return "deep";
+    // Anywhere else — needs sustained contribution to matter.
+    if (commitCount >= 2) return "deep";
+    return "metadata";
+  }
 
-  // Owned / collaborator / org_member → existing activity-based tiering.
+  // Owned / collaborator / org_member.
 
-  // Pure fork with no visible contributions → metadata
-  if (repo.isFork && commitCount < 2 && daysSince(repo.pushedAt) > 365) return "metadata";
+  // Pure fork with no real contribution → metadata, regardless of
+  // upstream stars or how recently it was pushed. Catches the
+  // "starred-then-forked someone else's project" case.
+  if (repo.isFork && commitCount < 2) return "metadata";
 
-  // Archived with no recent activity → metadata
+  // Archived & stale → metadata
   if (repo.isArchived && daysSince(repo.pushedAt) > 730) return "metadata";
 
-  // No language detected and no commits → metadata (empty/template repos)
-  if (!repo.primaryLanguage && commitCount === 0 && daysSince(repo.pushedAt) > 365) return "metadata";
+  // Substantial owner-side commits → deep no matter what.
+  if (commitCount >= 20) return "deep";
 
-  // Has a real programming language + pushed in last 2 years → deep
+  // Owned with traction (10+ stars on the user's own repo) is a real
+  // signal worth digging into, even if commit count is modest.
+  if (stars >= 10 && (commitCount >= 1 || repo.primaryLanguage)) return "deep";
+
+  // Has a real language + recently pushed → deep
   if (repo.primaryLanguage && daysSince(repo.pushedAt) < 730) return "deep";
 
-  // Has known commits (from PRs/events/contrib) → deep regardless of language
+  // Has commits but no detected language → still deep
   if (commitCount >= 5) return "deep";
 
   // Has a language but stale → light (clone to check, but don't run agent)
@@ -172,7 +226,6 @@ function assignTier(repo: RepoRef, commitCount: number): AnalysisTier {
   // Recent but no language (docs repo, config repo) → light
   if (daysSince(repo.pushedAt) < 365) return "light";
 
-  // Everything else → metadata
   return "metadata";
 }
 

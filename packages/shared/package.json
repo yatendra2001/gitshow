@@ -21,6 +21,10 @@
     "./cloud/r2": "./src/cloud/r2.ts",
     "./cloud/fly": "./src/cloud/fly.ts",
     "./cloud/tinyfish": "./src/cloud/tinyfish.ts",
+    "./cloud/tinyfish-agent": "./src/cloud/tinyfish-agent.ts",
+    "./cloud/gemini-grounded": "./src/cloud/gemini-grounded.ts",
+    "./cloud/posthog": "./src/cloud/posthog.ts",
+    "./cloud/pricing": "./src/cloud/pricing.ts",
     "./cloud/do-client": "./src/cloud/do-client.ts",
     "./notifications/email": "./src/notifications/email.ts"
   },
@@ -29,6 +33,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1032.0",
+    "posthog-node": "^5.30.4",
     "zod": "^4.3.6"
   },
   "devDependencies": {

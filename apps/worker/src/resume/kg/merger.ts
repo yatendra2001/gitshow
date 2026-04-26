@@ -74,16 +74,16 @@ import type { ScanTrace } from "../observability/trace.js";
 
 const SOURCE_PRIORITY: Record<string, number> = {
   intake: 100,
-  "linkedin-pdf": 90,
   "personal-site": 80,
-  "linkedin-public": 60,
+  "repo-judge": 70,
+  "linkedin-public": 65,
   orcid: 55,
+  "evidence-search": 55,
   "semantic-scholar": 50,
   arxiv: 50,
   stackoverflow: 50,
   github: 45,
   "github-fetcher": 45,
-  "evidence-search": 40,
   twitter: 35,
   youtube: 30,
   hn: 30,
@@ -91,7 +91,6 @@ const SOURCE_PRIORITY: Record<string, number> = {
   medium: 30,
   "blog-import": 30,
   "github-hint": 20,
-  "repo-judge": 70,
   "media-fetch": 0,
 };
 

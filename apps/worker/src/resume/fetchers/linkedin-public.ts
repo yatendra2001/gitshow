@@ -1,39 +1,32 @@
 /**
- * linkedin-public fetcher — Tier 1 (TinyFish) + Tier 2 (Jina Reader).
+ * linkedin-public fetcher — three-tier cascade with evaluator gates.
  *
- * Tier 1 runs TinyFish on non-`/in/` LinkedIn URLs (company pages, blog
- * posts linking to LinkedIn). `linkedin.com/in/` always login-walls — we
- * skip it to save a credit.
+ *   Tier 0  ProxyCurl/EnrichLayer   (canonical JSON, no LLM, paid)
+ *   Tier 1  TinyFish Agent          (real-browser, scoped to URL)
+ *   Tier 2  Gemini grounded URL ctx (anti-hallucination, last resort)
  *
- * Tier 2 runs Jina Reader (`https://r.jina.ai/{url}`) on everything. Works
- * on ~30% of public profiles LinkedIn exposes to search engines.
+ * After every successful tier we run an extraction evaluator: if
+ * positions+educations < 2 we treat the result as too thin and try
+ * the next tier. The first tier that produces a credible profile
+ * wins; we never stack tiers.
  *
- * Both tiers feed into a Kimi extraction that emits typed facts:
- * WORKED_AT, STUDIED_AT, HAS_SKILL, PERSON (bio/location).
- *
- * Returns [] when both tiers fail — the caller falls through to
- * Tier 3 (Playwright) and Tier 4 (PDF).
+ * All tiers feed Kimi (bulk role) for the structural extraction step
+ * so the source text format doesn't matter — markdown, scraped HTML,
+ * Gemini's grounded report all work.
  */
 
 import * as z from "zod/v4";
 import { runAgentWithSubmit } from "../../agents/base.js";
 import { modelForRole } from "@gitshow/shared/models";
-import { TinyFishClient } from "@gitshow/shared/cloud/tinyfish";
+import { TinyFishAgentClient } from "@gitshow/shared/cloud/tinyfish-agent";
+import { callGroundedGemini } from "@gitshow/shared/cloud/gemini-grounded";
 import { makeSource } from "@gitshow/shared/kg";
 import type { TypedFact } from "@gitshow/shared/kg";
 import type { ScanSession } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
 import type { ScanTrace } from "../observability/trace.js";
 
-// ─── Wall-detection constants (ported from linkedin.ts) ──────────────
-
-export const MIN_TEXT_CHARS = 800;
-export const LOGIN_WALL_PATTERN =
-  /sign\s*in|sign\s*up|log\s*in|login|authwall|members only|join (?:now|linkedin)|by clicking continue/i;
-export const LOGIN_WALL_TITLES = /^(sign up|sign in|log in|join linkedin)/i;
-
-const JINA_TIMEOUT_MS = 30_000;
-const USER_AGENT = "GitShow/0.2 (+https://github.com/yatendrakumar/gitshow)";
+const MIN_FACTS_FOR_OK = 2;
 
 // ─── Fetcher I/O ─────────────────────────────────────────────────────
 
@@ -113,10 +106,7 @@ export async function runLinkedInPublicFetcher(
   }
 
   try {
-    // Tier 0: ProxyCurl (paid LinkedIn API). Best path when set —
-    // returns canonical structured JSON (positions/educations/skills)
-    // with no LLM extraction needed. Skipped if PROXYCURL_API_KEY
-    // isn't set.
+    // Tier 0: ProxyCurl/EnrichLayer (canonical JSON, no LLM extraction).
     const proxyCurlFacts = await tryProxyCurl({
       url,
       session: input.session,
@@ -124,7 +114,7 @@ export async function runLinkedInPublicFetcher(
       trace,
       log,
     });
-    if (proxyCurlFacts && proxyCurlFacts.length > 0) {
+    if (proxyCurlFacts && evaluateFacts(proxyCurlFacts).ok) {
       trace?.fetcherEnd({
         label,
         durationMs: Date.now() - t0,
@@ -133,54 +123,81 @@ export async function runLinkedInPublicFetcher(
       });
       return proxyCurlFacts;
     }
+    if (proxyCurlFacts && proxyCurlFacts.length > 0) {
+      trace?.note(
+        "linkedin:tier0-thin",
+        `ProxyCurl returned ${proxyCurlFacts.length} facts but failed evaluator — falling through to Tier 1`,
+        { factCount: proxyCurlFacts.length },
+      );
+    }
 
-    // Tier 1: TinyFish (now also tried on /in/ URLs)
-    const tier1Text = await tryTier1({ url, trace, log });
-    // Tier 2: Jina Reader
-    const tier2Text = tier1Text
-      ? null
-      : await tryTier2({ url, trace, log });
+    // Tier 1: TinyFish Agent (real browser, scoped strictly to the URL).
+    const tier1Text = await tryTinyFishAgent({ url, trace, log });
+    if (tier1Text) {
+      const facts = await extractAndBuild({
+        text: tier1Text,
+        url,
+        session: input.session,
+        usage: input.usage,
+        tier: 1,
+        trace,
+        log,
+      });
+      const evalResult = evaluateFacts(facts);
+      if (evalResult.ok) {
+        trace?.fetcherEnd({
+          label,
+          durationMs: Date.now() - t0,
+          factsEmitted: facts.length,
+          status: "ok",
+        });
+        return facts;
+      }
+      trace?.note(
+        "linkedin:tier1-thin",
+        `TinyFish Agent extraction too thin: ${evalResult.reason} — falling through to Tier 2 (Gemini grounded)`,
+        { factCount: facts.length, reason: evalResult.reason },
+      );
+    }
 
-    const usableText = tier1Text ?? tier2Text;
-    const tier = tier1Text ? 1 : tier2Text ? 2 : 0;
-
-    if (!usableText) {
+    // Tier 2: Gemini grounded with URL context. Always runs when
+    // earlier tiers fail or come back thin — Gemini is the
+    // anti-hallucination guarded last-resort.
+    const tier2Text = await tryGeminiGrounded({ url, trace, log });
+    if (tier2Text) {
+      const facts = await extractAndBuild({
+        text: tier2Text,
+        url,
+        session: input.session,
+        usage: input.usage,
+        tier: 2,
+        trace,
+        log,
+      });
+      const evalResult = evaluateFacts(facts);
       trace?.fetcherEnd({
         label,
         durationMs: Date.now() - t0,
-        factsEmitted: 0,
-        status: "empty",
+        factsEmitted: facts.length,
+        status: evalResult.ok ? "ok" : facts.length > 0 ? "ok" : "empty",
       });
-      return [];
+      if (!evalResult.ok && facts.length > 0) {
+        trace?.note(
+          "linkedin:tier2-thin",
+          `Gemini grounded extraction was thin (${evalResult.reason}) but is the last tier — returning what we have`,
+          { factCount: facts.length, reason: evalResult.reason },
+        );
+      }
+      return facts;
     }
-
-    // LLM extraction
-    const extraction = await extract({
-      text: usableText,
-      url,
-      session: input.session,
-      usage: input.usage,
-      trace,
-      log,
-    });
-
-    const facts = buildFacts({ extraction, url, label });
-
-    trace?.linkedInFactsEmitted({
-      tier,
-      positions: extraction.positions.length,
-      educations: extraction.educations.length,
-      skills: extraction.skills.length,
-    });
-    emitFactsToTrace(trace, label, facts);
 
     trace?.fetcherEnd({
       label,
       durationMs: Date.now() - t0,
-      factsEmitted: facts.length,
-      status: facts.length > 0 ? "ok" : "empty",
+      factsEmitted: 0,
+      status: "empty",
     });
-    return facts;
+    return [];
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     log(`[${label}] error: ${msg}\n`);
@@ -610,152 +627,245 @@ function proxyCurlToFacts(data: ProxyCurlProfile, url: string): TypedFact[] {
   return facts;
 }
 
-// ─── Tier 1: TinyFish ────────────────────────────────────────────────
+// ─── Tier 1: TinyFish Agent (real browser, scoped goal) ───────────
 
-async function tryTier1(args: {
+const TINYFISH_AGENT_GOAL = `You are extracting a single LinkedIn profile.
+
+Visit the provided URL. Stay strictly on this LinkedIn profile URL only —
+do NOT navigate to other people's profiles, company pages, or external
+links. If the page shows a sign-in wall and no profile content is
+visible, report that explicitly.
+
+Read the WHOLE profile (scroll if needed). Then return a markdown
+report with these sections (omit a section when the profile doesn't
+expose it):
+
+# Name and headline
+Name and current headline / occupation, verbatim.
+
+# About / Bio
+The user's About / Summary paragraph, verbatim.
+
+# Location
+City, region, country if shown.
+
+# Experience
+For each position, in profile order:
+- Company name | Title | Start — End (or "Present") | Location
+  Description (verbatim from profile, can be multi-line).
+
+# Education
+For each entry:
+- School | Degree | Field of study | Start — End
+
+# Skills
+Top 20 named skills (just names, comma-separated).
+
+# Awards / Certifications / Publications
+Anything else surfaced in dedicated sections.
+
+If the profile is fully login-walled and you cannot read any content,
+return only: PROFILE_WALLED`;
+
+async function tryTinyFishAgent(args: {
   url: string;
   trace?: ScanTrace;
   log: (s: string) => void;
 }): Promise<string | null> {
   const { url, trace, log } = args;
-  // We used to skip TinyFish on /in/ URLs based on an early-run
-  // observation that it always returned the wall. That was stale —
-  // TinyFish is a proxy-rotating headless service designed for
-  // exactly this case, and skipping it left the only working
-  // public-side option on the table. We let it run on every
-  // LinkedIn URL now and gate the result on the actual content
-  // (`looksLikeLinkedinWall()` below).
-
-  const tf = TinyFishClient.fromEnv();
+  const tf = TinyFishAgentClient.fromEnv();
   if (!tf) {
     trace?.linkedInTierAttempt({
       tier: 1,
-      method: "tinyfish",
+      method: "tinyfish-agent",
       ok: false,
       durationMs: 0,
       reason: "no-api-key",
     });
     return null;
   }
-
   const t0 = Date.now();
-  const resp = await tf.fetchUrls([url], { format: "markdown" });
+  const resp = await tf.run({ url, goal: TINYFISH_AGENT_GOAL });
   const ms = Date.now() - t0;
-  trace?.tinyfishFetch({
-    urls: [url],
-    ok: resp.ok,
-    durationMs: ms,
-    perUrl: resp.results.map((r) => ({
-      url: r.url,
-      finalUrl: r.finalUrl,
-      title: r.title,
-      textChars: r.text.length,
-      language: r.language,
-    })),
-    requestError: resp.requestError,
-  });
   if (!resp.ok) {
     trace?.linkedInTierAttempt({
       tier: 1,
-      method: "tinyfish",
+      method: "tinyfish-agent",
       ok: false,
       durationMs: ms,
-      reason: resp.requestError ?? "request-failed",
+      reason: resp.error ?? "agent-failed",
+    });
+    log(`[linkedin] tier 1 (TinyFish Agent) failed: ${resp.error ?? "unknown"}\n`);
+    return null;
+  }
+  const text = stringifyAgentResult(resp.result);
+  if (!text || /^PROFILE_WALLED\s*$/.test(text)) {
+    trace?.linkedInTierAttempt({
+      tier: 1,
+      method: "tinyfish-agent",
+      ok: false,
+      durationMs: ms,
+      reason: "walled-or-empty",
     });
     return null;
   }
-  const first = resp.results[0];
-  if (first && isUsable(first.text, first.title)) {
-    trace?.linkedInTierAttempt({
-      tier: 1,
-      method: "tinyfish",
-      ok: true,
-      durationMs: ms,
-    });
-    return first.text;
-  }
   trace?.linkedInTierAttempt({
     tier: 1,
-    method: "tinyfish",
-    ok: false,
+    method: "tinyfish-agent",
+    ok: true,
     durationMs: ms,
-    reason: "walled-or-thin",
   });
-  return null;
+  return text;
 }
 
-// ─── Tier 2: Jina Reader ─────────────────────────────────────────────
+function stringifyAgentResult(raw: unknown): string {
+  if (typeof raw === "string") return raw.trim();
+  if (raw && typeof raw === "object") {
+    // TinyFish agent results sometimes nest the markdown payload.
+    const obj = raw as Record<string, unknown>;
+    if (typeof obj.text === "string") return obj.text.trim();
+    if (typeof obj.content === "string") return obj.content.trim();
+    if (typeof obj.markdown === "string") return obj.markdown.trim();
+    if (typeof obj.output === "string") return obj.output.trim();
+    try {
+      return JSON.stringify(raw);
+    } catch {
+      return "";
+    }
+  }
+  return "";
+}
 
-async function tryTier2(args: {
+// ─── Tier 2: Gemini grounded URL context ─────────────────────────
+
+const GEMINI_LINKEDIN_PROMPT = `You are reading a single LinkedIn profile via your URL context tool.
+
+Read ONLY the LinkedIn profile URL provided in the prompt. Do not
+follow links to company pages, other people's profiles, or unrelated
+content. If your URL context tool cannot access the profile content,
+do not invent details — return the NO_INFO_FOUND sentinel per the
+anti-hallucination contract.
+
+When you can read the profile, produce a markdown report with these
+sections (omit empty ones):
+
+# Name and headline
+# About / Bio
+# Location
+# Experience
+- Company | Title | Start — End | Location
+  Description (from the profile, no embellishment)
+# Education
+- School | Degree | Field | Start — End
+# Skills
+Top 20 named skills, comma-separated.
+# Awards / Certifications / Publications
+
+Stay grounded in what the profile actually says.`;
+
+async function tryGeminiGrounded(args: {
   url: string;
   trace?: ScanTrace;
   log: (s: string) => void;
 }): Promise<string | null> {
-  const { url, trace } = args;
+  const { url, trace, log } = args;
   const t0 = Date.now();
   try {
-    const res = await fetch(`https://r.jina.ai/${url}`, {
-      redirect: "follow",
-      headers: {
-        Accept: "text/plain",
-        "User-Agent": USER_AGENT,
-      },
-      signal: AbortSignal.timeout(JINA_TIMEOUT_MS),
+    const result = await callGroundedGemini({
+      systemPrompt: GEMINI_LINKEDIN_PROMPT,
+      userPrompt: `LinkedIn profile URL to read: ${url}\n\nProduce the markdown report.`,
+      urls: [url],
+      effort: "medium",
+      label: "linkedin:gemini-grounded",
     });
     const ms = Date.now() - t0;
-    if (!res.ok) {
+    if (result.noInfoFound) {
       trace?.linkedInTierAttempt({
         tier: 2,
-        method: "jina",
+        method: "gemini-grounded",
         ok: false,
         durationMs: ms,
-        reason: `http ${res.status}`,
+        reason: "no-info-found",
       });
       return null;
     }
-    const text = await res.text();
-    if (!isUsable(text)) {
+    if (!result.text || result.text.length < 100) {
       trace?.linkedInTierAttempt({
         tier: 2,
-        method: "jina",
+        method: "gemini-grounded",
         ok: false,
         durationMs: ms,
-        reason: "walled-or-thin",
+        reason: "thin-response",
       });
       return null;
     }
     trace?.linkedInTierAttempt({
       tier: 2,
-      method: "jina",
+      method: "gemini-grounded",
       ok: true,
       durationMs: ms,
     });
-    return text;
+    return result.text;
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     trace?.linkedInTierAttempt({
       tier: 2,
-      method: "jina",
+      method: "gemini-grounded",
       ok: false,
       durationMs: Date.now() - t0,
-      reason: `threw: ${msg}`,
+      reason: `threw: ${msg.slice(0, 200)}`,
     });
+    log(`[linkedin] tier 2 (Gemini grounded) failed: ${msg.slice(0, 200)}\n`);
     return null;
   }
 }
 
-// ─── Wall detection (identical to linkedin.ts) ──────────────────────
+// ─── Evaluator gate ──────────────────────────────────────────────
 
-export function isUsable(
-  text: string | null | undefined,
-  title?: string,
-): boolean {
-  if (!text) return false;
-  if (title && LOGIN_WALL_TITLES.test(title.trim())) return false;
-  if (text.length < MIN_TEXT_CHARS) {
-    return !LOGIN_WALL_PATTERN.test(text);
+interface FactEvalResult {
+  ok: boolean;
+  reason: string;
+}
+
+function evaluateFacts(facts: TypedFact[]): FactEvalResult {
+  const positions = facts.filter((f) => f.kind === "WORKED_AT").length;
+  const educations = facts.filter((f) => f.kind === "STUDIED_AT").length;
+  const total = positions + educations;
+  if (total >= MIN_FACTS_FOR_OK) {
+    return { ok: true, reason: `${positions} positions + ${educations} educations` };
   }
-  return true;
+  return {
+    ok: false,
+    reason: `only ${positions} positions + ${educations} educations (need ≥${MIN_FACTS_FOR_OK} combined)`,
+  };
+}
+
+async function extractAndBuild(args: {
+  text: string;
+  url: string;
+  session: ScanSession;
+  usage: SessionUsage;
+  tier: 1 | 2;
+  trace?: ScanTrace;
+  log: (s: string) => void;
+}): Promise<TypedFact[]> {
+  const extraction = await extract({
+    text: args.text,
+    url: args.url,
+    session: args.session,
+    usage: args.usage,
+    trace: args.trace,
+    log: args.log,
+  });
+  const facts = buildFacts({ extraction, url: args.url, label: "linkedin-public" });
+  args.trace?.linkedInFactsEmitted({
+    tier: args.tier,
+    positions: extraction.positions.length,
+    educations: extraction.educations.length,
+    skills: extraction.skills.length,
+  });
+  emitFactsToTrace(args.trace, "linkedin-public", facts);
+  return facts;
 }
 
 // ─── LLM extraction ──────────────────────────────────────────────────
@@ -787,12 +897,12 @@ async function extract(args: {
   return result;
 }
 
-// ─── Fact builder (shared across tier 1-3, same source template) ────
+// ─── Fact builder (shared across tiers, same source template) ──────
 
 export function buildFacts(args: {
   extraction: LinkedInExtraction;
   url?: string;
-  label: "linkedin-public" | "linkedin-pdf";
+  label: "linkedin-public";
   confidence?: "high" | "medium" | "low";
 }): TypedFact[] {
   const { extraction, url, label } = args;
@@ -802,7 +912,7 @@ export function buildFacts(args: {
   const src = (snippet?: string) =>
     makeSource({
       fetcher: label,
-      method: label === "linkedin-pdf" ? "llm-extraction" : "scrape",
+      method: "scrape",
       confidence,
       url,
       snippet,
