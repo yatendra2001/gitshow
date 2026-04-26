@@ -160,6 +160,26 @@ const REASONING_EFFORT = "low" as const;
  */
 const JUDGE_TIMEOUT_MS = 3 * 60_000;
 
+/**
+ * Hard cap on agent-loop iterations per judge call. The agent SDK
+ * defaults `maxIterations` to 10,000 (a "safety valve only" per its
+ * own comment) — but a real Kimi run on memlearn was observed
+ * spending 279 OpenRouter requests inside ONE judge call before
+ * timing out. The model loops reasoning + tool exploration without
+ * ever calling submit_judgment.
+ *
+ * The judge task is structurally simple: read the prompt, emit one
+ * `submit_judgment` tool call. 6 iterations is plenty (1 to read,
+ * 1 to submit, 4 buffer for any tool-arg validation retry the SDK
+ * does). When the cap fires the SDK throws "exceeded step count" —
+ * judgeRepo's try/catch then writes a fallback judgment.
+ *
+ * Combined with JUDGE_TIMEOUT_MS this caps worst-case waste per
+ * judge at min(6 iterations × ~30s = 3 min, 3 min wall-clock) ≈
+ * 6 OpenRouter requests instead of 279.
+ */
+const JUDGE_MAX_ITERATIONS = 6;
+
 export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput> {
   const { repo, repoPath, study, session, usage, trace, onProgress, emit } = input;
   const t0 = Date.now();
@@ -205,6 +225,7 @@ export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput>
       submitSchema: RepoJudgmentSchema,
       reasoning: { effort: REASONING_EFFORT },
       timeoutMs: JUDGE_TIMEOUT_MS,
+      maxIterations: JUDGE_MAX_ITERATIONS,
       session,
       usage,
       onProgress,
@@ -245,13 +266,13 @@ export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput>
  * 16 GB and was sitting at 586 MB / 3.7% utilization at peak, so
  * memory's not the constraint either.
  *
- * 50 is a generous fan-out: 53 candidate repos × 1 in-flight call
- * each ≈ basically every judge runs in parallel. Combined with
- * JUDGE_TIMEOUT_MS, the worst-case wall-clock for the whole stage
- * is ~3 min instead of "however long the slowest of N calls
- * happens to take" (which was 31 min in the last trace).
+ * 100 is a generous fan-out: for any realistic scan (≤200 deep
+ * repos) basically every judge runs in parallel. Combined with
+ * JUDGE_TIMEOUT_MS + JUDGE_MAX_ITERATIONS, worst-case wall-clock
+ * for the whole stage is ~3 min and worst-case wasted spend is
+ * ~6 requests per stuck repo (was 279 before the iteration cap).
  */
-const JUDGE_CONCURRENCY = 50;
+const JUDGE_CONCURRENCY = 100;
 
 export interface JudgeAllOptions {
   session: ScanSession;

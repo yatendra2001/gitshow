@@ -73,7 +73,7 @@ const SKIP_EVIDENCE_KINDS = new Set([
  * The retry policy in gemini-grounded.ts absorbs occasional 429s
  * without losing data, so going wide here is genuinely free.
  */
-const PER_REPO_CONCURRENCY = 75;
+const PER_REPO_CONCURRENCY = 100;
 
 const SYSTEM_PROMPT = `You investigate a software project and produce a short, fact-grounded
 external-traction report.
