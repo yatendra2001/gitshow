@@ -42,9 +42,15 @@ export function renderResumeHtml(
   const dim = PAGE_DIMENSIONS[doc.page.size];
   const visible = visibleResumeSections(doc);
 
+  // PDF rendering wants `min-height: 11in` so the article fills the
+  // page even when content is short. The editor preview deliberately
+  // omits it — we want scrollHeight to report the *true* content
+  // height, so the fit indicator and page-break line can detect real
+  // overflow. With min-height the card always looks 11in tall and we
+  // can't tell if the content fits.
   const inlineStyle = opts.fullPage
     ? `width:${dim.width};min-height:${dim.height};`
-    : `width:${dim.width};min-height:${dim.height};box-shadow:0 1px 2px rgba(0,0,0,0.04),0 8px 32px rgba(0,0,0,0.08);background:#ffffff;`;
+    : `width:${dim.width};box-shadow:0 1px 2px rgba(0,0,0,0.04),0 8px 32px rgba(0,0,0,0.08);background:#ffffff;`;
 
   const sections = visible
     .map((key) => renderSection(key, doc))

@@ -46,10 +46,13 @@ import type {
   PublicationDocEntry,
   ResumeSectionKey,
 } from "@gitshow/shared/resume-doc";
-import {
-  estimateContentLines,
-  ONE_PAGE_LINE_BUDGET,
-} from "@gitshow/shared/resume-doc";
+// Letter page height at 96dpi (the canonical browser unit). Used for
+// the DOM-measurement-based fit indicator. We compare the resume's
+// rendered scrollHeight against this — it's the only honest signal
+// since the line-count heuristic systematically undercounted wrapped
+// bullets and lied about whether the doc fits one page.
+const LETTER_PAGE_HEIGHT_PX = 11 * 96;
+const NEAR_BUFFER_PX = 50;
 import { cn } from "@/lib/utils";
 import {
   PrintableResume,
@@ -69,6 +72,10 @@ export function ResumeEditor({
   const [status, setStatus] = useState<Status>("idle");
   const [errMsg, setErrMsg] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  // The actual rendered height of the resume in CSS pixels. Updated by
+  // a ResizeObserver in PreviewPane. `null` until the first measurement
+  // lands — we treat null as "good" so the chip doesn't flicker.
+  const [renderedHeight, setRenderedHeight] = useState<number | null>(null);
 
   const pendingRef = useRef<Record<string, unknown>>({});
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -162,8 +169,7 @@ export function ResumeEditor({
     }
   }, [doc.header.name, downloading]);
 
-  const lineCount = useMemo(() => estimateContentLines(doc), [doc]);
-  const fitTier = fitTierFor(lineCount);
+  const fitTier = fitTierForHeight(renderedHeight);
 
   return (
     <div className="flex flex-col min-h-[calc(100svh-3.5rem)]">
@@ -172,7 +178,6 @@ export function ResumeEditor({
         errMsg={errMsg}
         onDownload={onDownload}
         downloading={downloading}
-        lineCount={lineCount}
         fitTier={fitTier}
       />
 
@@ -193,22 +198,27 @@ export function ResumeEditor({
         </div>
 
         {/* Preview pane */}
-        <PreviewPane doc={doc} />
+        <PreviewPane doc={doc} fitTier={fitTier} onMeasure={setRenderedHeight} />
       </div>
     </div>
   );
 }
 
 /**
- * Three tiers driven by the line-count estimate vs. the one-page
- * budget. Subtle by design — comfortable is silent, near is amber,
- * over is red. We don't strobe; the tier just colors the indicator
- * and a tooltip explains the next step.
+ * Three tiers driven by the resume's actual rendered height. Subtle
+ * by design — comfortable is silent, near is amber, over is red. We
+ * don't strobe; the tier just colors the indicator and the tooltip
+ * explains the next step.
+ *
+ * Threshold: the Letter page is 11in (= 1056px at 96dpi). We grant a
+ * ~50px safety buffer (≈3 typeset lines) before flipping to "near"
+ * so the user gets a heads-up before they cross over.
  */
 type FitTier = "good" | "near" | "over";
-function fitTierFor(count: number): FitTier {
-  if (count > ONE_PAGE_LINE_BUDGET) return "over";
-  if (count > ONE_PAGE_LINE_BUDGET - 6) return "near";
+function fitTierForHeight(heightPx: number | null): FitTier {
+  if (heightPx == null) return "good";
+  if (heightPx > LETTER_PAGE_HEIGHT_PX) return "over";
+  if (heightPx > LETTER_PAGE_HEIGHT_PX - NEAR_BUFFER_PX) return "near";
   return "good";
 }
 
@@ -221,14 +231,12 @@ function Toolbar({
   errMsg,
   onDownload,
   downloading,
-  lineCount,
   fitTier,
 }: {
   status: Status;
   errMsg: string | null;
   onDownload: () => void;
   downloading: boolean;
-  lineCount: number;
   fitTier: FitTier;
 }) {
   return (
@@ -241,7 +249,7 @@ function Toolbar({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <FitIndicator count={lineCount} tier={fitTier} />
+        <FitIndicator tier={fitTier} />
         <SaveBadge status={status} errMsg={errMsg} />
         <button
           type="button"
@@ -269,28 +277,64 @@ function Toolbar({
   );
 }
 
-function FitIndicator({ count, tier }: { count: number; tier: FitTier }) {
+/**
+ * Dashed line + label at the Letter page boundary (11in down inside
+ * the scaled wrapper). Renders only when the doc actually crosses
+ * the boundary — when everything fits there's no break to mark.
+ *
+ * The label sits to the right of the line so it doesn't collide with
+ * resume content. Pointer-events disabled so click-through to the
+ * resume keeps working.
+ */
+function PageBreakGuide({ overflowing }: { overflowing: boolean }) {
+  if (!overflowing) return null;
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none absolute left-0 right-0 z-20"
+      style={{
+        top: "11in",
+        height: "0",
+        borderTop: "1.5pt dashed rgb(220, 38, 38)",
+      }}
+    >
+      <span
+        className="absolute right-0 -translate-y-1/2 px-1.5 py-0.5 rounded text-[9pt] font-semibold uppercase tracking-wider"
+        style={{
+          top: "0",
+          background: "rgb(220, 38, 38)",
+          color: "#fff",
+          letterSpacing: "0.6pt",
+        }}
+      >
+        Page 1 ends · content below is page 2
+      </span>
+    </div>
+  );
+}
+
+function FitIndicator({ tier }: { tier: FitTier }) {
   // Subtle 3-tier styling. The tier change is the only signal — no
-  // pulse, no flash. Keep it calm, the user reads the chip when they
-  // want to know.
+  // pulse, no flash. Label is short and actionable; tooltip carries
+  // the next-step nudge.
   const tierStyle = {
     good: {
       cls: "bg-foreground/[0.04] text-muted-foreground",
       icon: Tick02Icon,
-      title: "Fits on one page",
+      label: "Fits 1 page",
+      title: "Within the one-page budget — looks good for export",
     },
     near: {
-      // Amber/yellow tint that reads in both light + dark mode.
       cls: "bg-amber-400/10 text-amber-700 dark:text-amber-400",
       icon: AlertCircleIcon,
-      title: "Close to the one-page limit — consider trimming",
+      label: "Tight fit",
+      title: "Close to the one-page limit — consider trimming a bullet or two",
     },
     over: {
-      // Red tint, also subtle. We pair with the title text so the user
-      // gets the actionable hint when they hover.
       cls: "bg-red-500/10 text-red-700 dark:text-red-400",
       icon: AlertCircleIcon,
-      title: "Over one page — cut bullets or hide a section",
+      label: "Over 1 page",
+      title: "Content exceeds one page — cut bullets or hide a section",
     },
   } as const;
   const t = tierStyle[tier];
@@ -306,9 +350,7 @@ function FitIndicator({ count, tier }: { count: number; tier: FitTier }) {
       aria-live="polite"
     >
       <HugeiconsIcon icon={t.icon} size={12} strokeWidth={2} />
-      <span style={{ fontVariantNumeric: "tabular-nums" }}>
-        {count}/{ONE_PAGE_LINE_BUDGET}
-      </span>
+      <span>{t.label}</span>
     </div>
   );
 }
@@ -1306,7 +1348,33 @@ function BulletsInput({
 // Preview
 // ──────────────────────────────────────────────────────────────
 
-function PreviewPane({ doc }: { doc: ResumeDoc }) {
+function PreviewPane({
+  doc,
+  fitTier,
+  onMeasure,
+}: {
+  doc: ResumeDoc;
+  fitTier: FitTier;
+  onMeasure: (heightPx: number) => void;
+}) {
+  // Watch the rendered .resume-doc element's actual height so the
+  // editor's fit indicator reflects reality, not a heuristic. The
+  // ResizeObserver fires on every content change, font load, etc.
+  // Transforms (the scale 0.78x) don't affect layout dimensions, so
+  // scrollHeight gives us the natural page-equivalent pixels.
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const wrapper = wrapperRef.current;
+    if (!wrapper) return;
+    const article = wrapper.querySelector<HTMLElement>(".resume-doc");
+    if (!article) return;
+    const measure = () => onMeasure(article.scrollHeight);
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(article);
+    return () => ro.disconnect();
+  }, [doc, onMeasure]);
+
   return (
     <div className="bg-foreground/[0.015] dark:bg-foreground/[0.04] hidden lg:block lg:overflow-y-auto lg:max-h-[calc(100svh-3.5rem-3.5rem)] gs-pane-scroll">
       {/* Plain <style> tag with dangerouslySetInnerHTML — styled-jsx
@@ -1317,13 +1385,21 @@ function PreviewPane({ doc }: { doc: ResumeDoc }) {
       <style dangerouslySetInnerHTML={{ __html: RESUME_PRINT_CSS }} />
       <div className="flex justify-center px-6 py-8">
         <div
-          className="origin-top"
+          className="origin-top relative"
           style={{
             transform: "scale(var(--resume-scale, 0.78))",
             transformOrigin: "top center",
           }}
         >
-          <PrintableResume doc={doc} />
+          {/* Page-break guide at the 11in mark. Lives inside the
+              scaled wrapper so it tracks the resume's coordinate
+              space. The line + label only render when content
+              actually crosses the boundary — when everything fits,
+              there's no overflow to flag. */}
+          <PageBreakGuide overflowing={fitTier === "over"} />
+          <div ref={wrapperRef}>
+            <PrintableResume doc={doc} />
+          </div>
         </div>
       </div>
     </div>
