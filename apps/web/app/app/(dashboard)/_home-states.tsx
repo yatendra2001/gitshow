@@ -1,43 +1,29 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { Check, ExternalLink, Lock, Users, GitPullRequest } from "lucide-react";
-import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { getSession } from "@/auth";
-import { NotificationBell } from "@/components/notifications/bell";
-import { PushEnableButton } from "@/components/notifications/push-enable";
-import { Logo } from "@/components/logo";
-import {
-  loadDraftResume,
-  loadPublishedResume,
-} from "@/lib/resume-io";
-import { getSubscription, isActive } from "@/lib/entitlements";
-import { StartFirstScanButton } from "./_start-button";
-import { DeleteProfileButton } from "./_delete-profile-button";
-import { CancelScanButton } from "./_cancel-scan-button";
-import { SignOutButton } from "./_signout-button";
-import { PublishDraftButton } from "./_publish-draft-button";
-import { CheckoutProcessingAutoRefresh } from "./_checkout-processing";
 import {
   AccessStateCard,
   type AccessState,
   type DataSources,
 } from "@/components/scan/access-state-card";
+import { StartFirstScanButton } from "./_start-button";
+import { DeleteProfileButton } from "./_delete-profile-button";
+import { CancelScanButton } from "./_cancel-scan-button";
+import { PublishDraftButton } from "./_publish-draft-button";
+import { CheckoutProcessingAutoRefresh } from "./_checkout-processing";
 
 /**
- * /app — the authenticated home. Single-person model.
+ * Pre-analytics state surfaces for `/app`.
  *
- * States (resume pipeline era):
- *   - No scan ever → "Get started" CTA → URL-collection intake flow
- *   - Scan running/queued → "Working on it" + email-when-ready copy
- *   - Scan succeeded, draft exists, nothing published → "Review draft" +
- *     "Publish" action (calls /api/profile/publish-resume)
- *   - Published → "Live at /{handle}" + Refresh / Delete
- *   - Scan failed → "Try again" with the error
+ * The dashboard layout always wraps these in the sidebar shell. The
+ * page chooses which one to render based on whether the user has a
+ * published profile, a draft pending review, an in-progress scan,
+ * a failed scan, or none of the above.
+ *
+ * `NonProShowcase` and `CheckoutProcessingState` render full-bleed
+ * outside the shell — see `(dashboard)/page.tsx`.
  */
 
-export const dynamic = "force-dynamic";
-
-interface ScanSlim {
+export interface ScanSlim {
   id: string;
   status: "queued" | "running" | "succeeded" | "failed" | "cancelled";
   handle: string;
@@ -49,7 +35,7 @@ interface ScanSlim {
   data_sources: string | null;
 }
 
-function safeParse<T>(raw: string | null): T | null {
+export function safeParse<T>(raw: string | null): T | null {
   if (!raw) return null;
   try {
     return JSON.parse(raw) as T;
@@ -58,181 +44,11 @@ function safeParse<T>(raw: string | null): T | null {
   }
 }
 
-interface ProfileRow {
-  handle: string;
-  public_slug: string;
-  last_scan_at: number | null;
-  view_count: number | null;
-}
+// ─── Empty (no scan yet) ──────────────────────────────────────────
 
-export default async function AppHomePage({
-  searchParams,
-}: {
-  searchParams?: Promise<{ checkout?: string | string[] }>;
-}) {
-  const session = await getSession();
-  if (!session?.user?.id) redirect("/signin");
-  const userId = session.user.id;
-  const githubHandle = (session.user.login ?? session.user.name ?? "").trim();
-
-  const sp = (await searchParams) ?? {};
-  const checkoutParam = Array.isArray(sp.checkout) ? sp.checkout[0] : sp.checkout;
-  const justCheckedOut = checkoutParam === "success";
-
-  const { env } = await getCloudflareContext({ async: true });
-
-  // Gate: non-Pro users land on the showcase state with the upgrade
-  // CTA. /app/billing stays accessible for cancelled users (via the
-  // Billing link in the header), but everything else on /app is Pro.
-  // Middleware additionally blocks deep /app/* routes (scan, edit,
-  // preview, intake) so there's no back-door past this page.
-  const subscription = await getSubscription(env.DB, userId);
-  const isPro = isActive(subscription);
-
-  // For non-Pro users we still want to show them their already-
-  // published profile (read-only) if one exists — that's the
-  // "cancelled user keeps their artifact" promise from the plan.
-  const publishedResumeNonPro =
-    !isPro && githubHandle
-      ? await loadPublishedResume(env.BUCKET, githubHandle)
-      : null;
-  if (!isPro) {
-    return (
-      <main className="min-h-svh bg-background text-foreground">
-        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border/30 bg-background/80 px-4 backdrop-blur sm:px-6">
-          <div className="flex items-center gap-3">
-            <Logo href="/" size={24} />
-            <span className="hidden sm:inline font-mono text-[11px] text-muted-foreground">
-              @{githubHandle || "you"}
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/app/billing"
-              className="rounded-lg border border-border/60 bg-card/30 px-3 py-1.5 text-[12px] hover:bg-card/50"
-            >
-              Billing
-            </Link>
-            <SignOutButton />
-          </div>
-        </header>
-        {justCheckedOut ? (
-          <CheckoutProcessingState />
-        ) : (
-          <NonProShowcase
-            handle={githubHandle}
-            hasPublished={Boolean(publishedResumeNonPro)}
-            wasCancelled={subscription?.status === "cancelled"}
-          />
-        )}
-      </main>
-    );
-  }
-
-  const [profileRow, latestScan, activeScan] = await Promise.all([
-    env.DB.prepare(
-      `SELECT handle, public_slug, last_scan_at, view_count
-         FROM user_profiles WHERE user_id = ? LIMIT 1`,
-    )
-      .bind(userId)
-      .first<ProfileRow>(),
-    env.DB.prepare(
-      `SELECT id, status, handle, current_phase, error, created_at, completed_at,
-              access_state, data_sources
-         FROM scans WHERE user_id = ?
-         ORDER BY created_at DESC LIMIT 1`,
-    )
-      .bind(userId)
-      .first<ScanSlim>(),
-    env.DB.prepare(
-      `SELECT id, status, handle, current_phase, error, created_at, completed_at,
-              access_state, data_sources
-         FROM scans
-         WHERE user_id = ? AND status IN ('queued','running')
-         ORDER BY created_at DESC LIMIT 1`,
-    )
-      .bind(userId)
-      .first<ScanSlim>(),
-  ]);
-
-  // Ground truth lives in R2. Checking D1 isn't enough — the
-  // user_profiles row is optimistic; R2 can have a published.json even
-  // if we haven't back-filled the row.
-  const [publishedResume, draftResume] = await Promise.all([
-    githubHandle ? loadPublishedResume(env.BUCKET, githubHandle) : null,
-    githubHandle ? loadDraftResume(env.BUCKET, githubHandle) : null,
-  ]);
-
-  const hasPublished = Boolean(publishedResume);
-  const hasDraft = Boolean(draftResume);
-  const isScanning = Boolean(activeScan);
-
-  const draftReady = hasDraft && !hasPublished && !isScanning;
-  const lastFailed =
-    latestScan?.status === "failed" && !activeScan && !hasPublished && !draftReady;
-
-  const accessSnapshot = latestScan
-    ? {
-        accessState: safeParse<AccessState>(latestScan.access_state),
-        dataSources: safeParse<DataSources>(latestScan.data_sources),
-      }
-    : null;
-
+export function EmptyState({ handle }: { handle: string }) {
   return (
-    <main className="min-h-svh bg-background text-foreground">
-      <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border/30 bg-background/80 px-4 backdrop-blur sm:px-6">
-        <div className="flex items-center gap-3">
-          <Logo href="/" size={24} />
-          <span className="hidden sm:inline font-mono text-[11px] text-muted-foreground">
-            @{githubHandle || "you"}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <PushEnableButton />
-          <NotificationBell />
-          <Link
-            href="/app/billing"
-            className="rounded-lg border border-border/60 bg-card/30 px-3 py-1.5 text-[12px] hover:bg-card/50"
-          >
-            Billing
-          </Link>
-          <SignOutButton />
-        </div>
-      </header>
-
-      {isScanning ? (
-        <ScanningState scan={activeScan!} />
-      ) : hasPublished ? (
-        <PublishedState
-          handle={githubHandle}
-          slug={profileRow?.public_slug ?? githubHandle.toLowerCase()}
-          lastScanAt={profileRow?.last_scan_at ?? null}
-          viewCount={profileRow?.view_count ?? 0}
-          access={accessSnapshot}
-        />
-      ) : draftReady ? (
-        <DraftState
-          handle={githubHandle}
-          access={accessSnapshot}
-        />
-      ) : lastFailed ? (
-        <FailedState scan={latestScan!} />
-      ) : (
-        <EmptyState handle={githubHandle} />
-      )}
-
-      <footer className="mx-auto w-full max-w-3xl px-4 sm:px-6 pb-12 flex items-center justify-end gap-3 text-[11px] text-muted-foreground">
-        <span className="font-mono">gitshow.io</span>
-      </footer>
-    </main>
-  );
-}
-
-// ─── States ─────────────────────────────────────────────────────────
-
-function EmptyState({ handle }: { handle: string }) {
-  return (
-    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
+    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16 gs-enter">
       <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
         Welcome
       </div>
@@ -333,10 +149,12 @@ function ScopeRow({
   );
 }
 
-function ScanningState({ scan }: { scan: ScanSlim }) {
+// ─── Scan running ────────────────────────────────────────────────
+
+export function ScanningState({ scan }: { scan: ScanSlim }) {
   const elapsedMin = Math.max(1, Math.round((Date.now() - scan.created_at) / 60000));
   return (
-    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
+    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16 gs-enter">
       <div className="flex items-center gap-2 text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
         <span className="h-1.5 w-1.5 rounded-full bg-[var(--primary)] gs-pulse" />
         <span>Working on it</span>
@@ -369,7 +187,9 @@ function ScanningState({ scan }: { scan: ScanSlim }) {
   );
 }
 
-function DraftState({
+// ─── Draft awaiting publish ──────────────────────────────────────
+
+export function DraftState({
   handle,
   access,
 }: {
@@ -384,7 +204,7 @@ function DraftState({
       (o) => o.state === "sso_required" || o.state === "oauth_restricted",
     );
   return (
-    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
+    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16 gs-enter">
       <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
         Draft ready
       </div>
@@ -437,9 +257,11 @@ function DraftState({
   );
 }
 
-function FailedState({ scan }: { scan: ScanSlim }) {
+// ─── Last scan failed ────────────────────────────────────────────
+
+export function FailedState({ scan }: { scan: ScanSlim }) {
   return (
-    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
+    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16 gs-enter">
       <div className="text-[12px] uppercase tracking-wide text-[var(--destructive)]/80 mb-2">
         Didn&apos;t finish
       </div>
@@ -458,25 +280,13 @@ function FailedState({ scan }: { scan: ScanSlim }) {
   );
 }
 
-function PublishedState({
-  handle,
-  slug,
-  lastScanAt,
-  viewCount,
-  access,
+// ─── Published — used as the page footer beneath analytics ──────
+
+export function PublishedFooter({
+  daysSinceScan,
 }: {
-  handle: string;
-  slug: string;
-  lastScanAt: number | null;
-  viewCount: number;
-  access: {
-    accessState: AccessState | null;
-    dataSources: DataSources | null;
-  } | null;
+  daysSinceScan: number | null;
 }) {
-  const daysSinceScan = lastScanAt
-    ? Math.floor((Date.now() - lastScanAt) / (1000 * 60 * 60 * 24))
-    : null;
   const refreshedLabel =
     daysSinceScan === null
       ? null
@@ -487,73 +297,30 @@ function PublishedState({
           : `${daysSinceScan} days ago`;
 
   return (
-    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
-      <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
-        Live
-      </div>
-      <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
-        Your portfolio is live
-      </h1>
-      <p className="text-[14px] leading-relaxed text-muted-foreground mb-4">
-        Published at{" "}
-        <Link
-          href={`/${slug}`}
-          target="_blank"
-          rel="noreferrer"
-          className="font-mono text-foreground underline-offset-2 hover:underline"
-        >
-          gitshow.io/{handle}
-        </Link>
-        {refreshedLabel ? (
-          <span className="text-muted-foreground/80"> · last refreshed {refreshedLabel}</span>
-        ) : null}
-        .
-      </p>
-      <div className="mb-7 inline-flex items-center gap-2 rounded-xl border border-border/40 bg-card/30 px-3 py-1.5 text-[12px] text-muted-foreground">
-        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-        <span>
-          <span className="text-foreground font-medium tabular-nums">
-            {viewCount.toLocaleString()}
-          </span>{" "}
-          {viewCount === 1 ? "view" : "views"}
+    <div className="mt-10 border-t border-border/30 pt-6 flex flex-col gap-4">
+      {refreshedLabel ? (
+        <p className="text-[12px] text-muted-foreground">
+          Last refreshed {refreshedLabel}.
+        </p>
+      ) : null}
+      <div className="flex flex-col gap-2 text-[12px] text-muted-foreground">
+        <span className="text-foreground font-medium text-[13px]">
+          Delete profile
         </span>
+        <span>
+          Wipes scans and the public page. You&apos;ll start over from intake.
+        </span>
+        <DeleteProfileButton />
       </div>
-      <div className="flex flex-wrap gap-2">
-        <Link
-          href={`/${slug}`}
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-11"
-        >
-          View public portfolio ↗
-        </Link>
-        <Link
-          href="/app/edit"
-          className="inline-flex items-center rounded-xl border border-border/60 bg-card/30 px-4 py-2 text-[13px] font-medium hover:bg-card/50 transition-colors min-h-11"
-        >
-          Edit
-        </Link>
-      </div>
-
-      <div className="mt-6 border-t border-border/30 pt-5">
-        <div className="flex flex-col gap-2 text-[12px] text-muted-foreground">
-          <span className="text-foreground font-medium">Delete profile</span>
-          <span>
-            Wipes scans and the public page. You&apos;ll start over from
-            intake.
-          </span>
-          <DeleteProfileButton />
-        </div>
-      </div>
-    </section>
+    </div>
   );
 }
 
-// ─── Post-checkout, pre-webhook ─────────────────────────────────────
+// ─── Post-checkout, pre-webhook ─────────────────────────────────
 
-function CheckoutProcessingState() {
+export function CheckoutProcessingState() {
   return (
-    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
+    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16 gs-enter">
       <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
         Subscription
       </div>
@@ -570,7 +337,7 @@ function CheckoutProcessingState() {
   );
 }
 
-// ─── Non-Pro showcase ───────────────────────────────────────────────
+// ─── Non-Pro showcase ───────────────────────────────────────────
 
 const PRO_FEATURES = [
   "AI-generated portfolio from your GitHub history",
@@ -581,7 +348,7 @@ const PRO_FEATURES = [
   "Resume + PDF export",
 ] as const;
 
-function NonProShowcase({
+export function NonProShowcase({
   handle,
   hasPublished,
   wasCancelled,
@@ -591,7 +358,7 @@ function NonProShowcase({
   wasCancelled: boolean;
 }) {
   return (
-    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
+    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16 gs-enter">
       <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
         {wasCancelled ? "Welcome back" : "Upgrade to Pro"}
       </div>
