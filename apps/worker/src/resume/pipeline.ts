@@ -98,13 +98,14 @@ import type { Resume } from "@gitshow/shared/resume";
  */
 const INVENTORY_CAP = 200;
 /**
- * Inventory cloning is bandwidth + disk-I/O bound. The performance-4x
- * worker has 4 dedicated CPUs, 16 GB RAM, and Fly's gigabit network —
- * 16 parallel git clones still leave headroom on every dimension.
- * Bumped from 8 after seeing a real scan finish inventory in well
- * under the previous timing budget with full memory and CPU to spare.
+ * Inventory cloning is bandwidth + disk-I/O bound. With dedicated CPUs
+ * + 16 GB RAM + Fly's gigabit network, 24 parallel git clones still
+ * leaves headroom. Each clone peaks at ~50 MB resident; 24 × 50 MB ≈
+ * 1.2 GB — comfortable on a 16 GB box. Disk I/O is the real ceiling
+ * (NVMe is fast but not infinite); bump higher only if traces show
+ * inventory still gating scan duration.
  */
-const INVENTORY_CONCURRENCY = 16;
+const INVENTORY_CONCURRENCY = 24;
 const JUDGE_MAX_CANDIDATES = 200;
 
 /**
