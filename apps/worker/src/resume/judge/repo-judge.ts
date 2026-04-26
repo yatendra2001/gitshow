@@ -370,13 +370,29 @@ function scoreRepo(r: RepoRef): number {
 }
 
 function fallbackJudgment(repo: RepoRef, err: Error): RepoJudgment {
+  // Prefer the repo's own description (always written by the user
+  // themselves, so it reads well in the rendered build log). Fall
+  // back to a language-aware one-liner instead of the previous
+  // "Repository X (judge unavailable)" string, which leaked into the
+  // public portfolio when Kimi judges timed out — bad UX.
+  const fromGithubDescription = repo.description?.trim();
+  const langTag = repo.primaryLanguage?.trim();
+  const friendlyName = repo.fullName.split("/").pop()?.replace(/[-_]+/g, " ") ?? repo.fullName;
+  const purpose =
+    fromGithubDescription && fromGithubDescription.length >= 8
+      ? fromGithubDescription.slice(0, 200)
+      : langTag
+        ? `${friendlyName} — ${langTag} project on GitHub.`
+        : `${friendlyName} — public repository on GitHub.`;
   return {
     kind: "experiment",
     authorship: "primary",
     effort: "light",
     polish: "wip",
-    purpose: repo.description?.slice(0, 200) ?? `Repository ${repo.fullName} (judge unavailable)`,
+    purpose,
     shouldFeature: false,
+    // Internal-only — surfaced in trace.json + kg.judgments. Never
+    // rendered into the public portfolio.
     reason: `Judge failed: ${err.message.slice(0, 200)} — defaulted to non-featured experiment`,
     technologies: (repo.languages ?? []).slice(0, 6),
   };

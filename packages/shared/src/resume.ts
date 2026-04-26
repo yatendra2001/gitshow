@@ -266,8 +266,12 @@ export const ProjectSchema = z.object({
    */
   userShare: z.number().min(0).max(1).optional(),
   userCommits: z.number().int().nonnegative().optional(),
-  /** Up to 3 web mentions, populated for the 6 projects in the grid. */
-  webMentions: z.array(ProjectWebMentionSchema).max(3).optional(),
+  /**
+   * Up to 5 web mentions, populated for projects in the grid by the
+   * Gemini grounded evidence pass. Editable via /app/edit so the
+   * owner can curate / add their own.
+   */
+  webMentions: z.array(ProjectWebMentionSchema).max(5).optional(),
 });
 export type Project = z.infer<typeof ProjectSchema>;
 
