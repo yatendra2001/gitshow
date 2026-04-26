@@ -42,15 +42,9 @@ export function renderResumeHtml(
   const dim = PAGE_DIMENSIONS[doc.page.size];
   const visible = visibleResumeSections(doc);
 
-  // PDF rendering wants `min-height: 11in` so the article fills the
-  // page even when content is short. The editor preview deliberately
-  // omits it — we want scrollHeight to report the *true* content
-  // height, so the fit indicator and page-break line can detect real
-  // overflow. With min-height the card always looks 11in tall and we
-  // can't tell if the content fits.
   const inlineStyle = opts.fullPage
     ? `width:${dim.width};min-height:${dim.height};`
-    : `width:${dim.width};box-shadow:0 1px 2px rgba(0,0,0,0.04),0 8px 32px rgba(0,0,0,0.08);background:#ffffff;`;
+    : `width:${dim.width};min-height:${dim.height};box-shadow:0 1px 2px rgba(0,0,0,0.04),0 8px 32px rgba(0,0,0,0.08);background:#ffffff;`;
 
   const sections = visible
     .map((key) => renderSection(key, doc))
@@ -245,18 +239,6 @@ function esc(value: string): string {
  * the page is rendered at 96dpi with 1:1 scaling before transform.
  */
 export const RESUME_PRINT_CSS = `
-  /* Inter from Google Fonts — the ONE thing that gives the editor
-     preview and the PDF a true one-to-one mapping. Both surfaces
-     fetch the same woff2 from fonts.gstatic.com, so the glyph
-     metrics are byte-identical. Without this, the browser preview
-     uses macOS Helvetica (compact) and the PDF uses Linux Liberation
-     Sans (wider) — same HTML wraps to different line counts and the
-     fit indicator can't be trusted. With Inter on both, every bullet
-     wraps in the same place in both surfaces. The PDF route also
-     awaits document.fonts.ready before printing as a belt-and-
-     suspenders guarantee that Inter is loaded. */
-  @import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
-
   /* The resume is a forced-light island. The dashboard ships its own
      dark-mode foreground/background variables which cascade into this
      component via inheritance — without these overrides the resume
@@ -268,7 +250,7 @@ export const RESUME_PRINT_CSS = `
     color: #000 !important;
     background: #fff !important;
     color-scheme: light;
-    font-family: 'Inter', Arial, "Liberation Sans", sans-serif;
+    font-family: "Helvetica Neue", Helvetica, Arial, "Liberation Sans", sans-serif;
     font-size: 10.5pt;
     line-height: 1.4;
     padding: 0.6in 0.7in;
