@@ -10,6 +10,7 @@ import { FlickeringGrid } from "@/components/magicui/flickering-grid";
 import Navbar from "@/components/navbar";
 import { LogoMark } from "@/components/logo";
 import { cn } from "@/lib/utils";
+import { PreviewPublishButton } from "./_publish-button-compact";
 
 /**
  * /app/preview — owner-only draft preview.
@@ -118,6 +119,7 @@ function DraftBanner({
           )}
         </span>
       </div>
+      <PreviewPublishButton isPublished={isPublished} />
     </div>
   );
 }

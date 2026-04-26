@@ -72,16 +72,28 @@ export interface StudyOptions {
   fullName: string;
   /** GitHub handle — used as the primary author match. */
   handle: string;
+  /**
+   * Additional verified email addresses associated with this GitHub
+   * account (from `gh api user/emails`). Each email is added as a
+   * separate `git log --author=<email>` filter so commits made under
+   * a real personal email (e.g. `someuser@gmail.com`) get counted
+   * even when the email doesn't contain the GitHub handle as a
+   * substring. Without this, `git log --author=<handle>` misses every
+   * commit authored under an unrelated email — and Sonnet's
+   * "userShare < 0.10 hard-exclude" rule then drops the repo from
+   * the My Projects grid entirely.
+   */
+  userEmails?: string[];
   log: (text: string) => void;
 }
 
 const GIT_TIMEOUT_MS = 60_000;
 
 export async function studyRepo(opts: StudyOptions): Promise<RepoStudy> {
-  const { repoPath, fullName, handle, log } = opts;
+  const { repoPath, fullName, handle, userEmails, log } = opts;
 
   const [blame, manifestDeps] = await Promise.all([
-    blameStats({ repoPath, handle, log }).catch((err) => {
+    blameStats({ repoPath, handle, userEmails, log }).catch((err) => {
       log(
         `[study:${fullName}] blame failed: ${(err as Error).message.slice(0, 120)}\n`,
       );
@@ -123,20 +135,27 @@ function defaultBlame(): BlameStats {
 async function blameStats(args: {
   repoPath: string;
   handle: string;
+  userEmails?: string[];
   log: (s: string) => void;
 }): Promise<BlameStats> {
-  const { repoPath, handle } = args;
-  // We match on `handle` AND `handle@users.noreply.github.com` — the
-  // typical noreply email format. Real-name commits where the user
-  // signs `Yatendra Kumar <real@email>` won't match, but downstream
-  // we're chasing the identity verifiable from GitHub data.
-  const author = handle;
+  const { repoPath, handle, userEmails } = args;
+  // Build the full author filter set:
+  //   - handle               (matches noreply emails like `<id>+handle@users.noreply.github.com`)
+  //   - each verified email  (matches commits authored under personal / work emails)
+  // git log treats multiple --author flags as OR, so a commit matches
+  // if ANY of these substrings appears in author name OR email. This
+  // catches the common case where a developer commits under their
+  // real email (e.g. `realname@gmail.com`) which doesn't contain
+  // their GitHub handle as a substring — without this fix, every one
+  // of those commits is missed and the repo reads as 0% authored.
+  const authorFilters = uniqueStrings([handle, ...(userEmails ?? [])]);
+  const authorArgs = authorFilters.map((a) => `--author=${a}`);
 
   const userNumstat = await runGit(
     [
       "log",
       "--no-merges",
-      `--author=${author}`,
+      ...authorArgs,
       "--pretty=tformat:",
       "--numstat",
     ],
@@ -150,7 +169,7 @@ async function blameStats(args: {
   const totalLines = sumAdds(allNumstat);
 
   const userCommitOneline = await runGit(
-    ["log", "--no-merges", `--author=${author}`, "--oneline"],
+    ["log", "--no-merges", ...authorArgs, "--oneline"],
     repoPath,
   );
   const allCommitOneline = await runGit(
@@ -165,7 +184,7 @@ async function blameStats(args: {
         [
           "log",
           "--no-merges",
-          `--author=${author}`,
+          ...authorArgs,
           "--reverse",
           "--pretty=format:%aI",
         ],
@@ -185,6 +204,18 @@ async function blameStats(args: {
     firstUserCommit,
     lastUserCommit,
   };
+}
+
+function uniqueStrings(arr: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const s of arr) {
+    const t = s.trim();
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+  }
+  return out;
 }
 
 async function runGit(args: string[], cwd: string): Promise<string> {
