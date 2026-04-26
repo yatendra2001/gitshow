@@ -62,16 +62,18 @@ const SKIP_EVIDENCE_KINDS = new Set([
 /**
  * Per-repo Gemini grounded calls fan out wide.
  *
- * Each call sits idle ~10-30s while Gemini does its Search + URL
- * context fetching, so JS isn't the bottleneck — OpenRouter rate
- * limits + Gemini wall-clock are. 30 concurrent finishes a 200-repo
- * scan in ~2 min wall-clock. The retry policy in gemini-grounded.ts
- * absorbs occasional 429s without losing data.
+ * Empirical evidence from the last full scan (47 calls, 4-14s each,
+ * 0 throttling): OpenRouter handles concurrent Gemini grounded
+ * traffic without complaint, and the worker had 96% memory free at
+ * peak. Bumped from 30 → 75 to use that headroom — for a 50-repo
+ * evidence pass, 75 concurrent means basically every call runs in
+ * parallel and the wall-clock for the stage is bounded by a single
+ * call's latency (~10s) rather than batching.
  *
- * If real scans show OpenRouter throttling at this rate, drop to 15;
- * if they finish under-utilised, bump higher.
+ * The retry policy in gemini-grounded.ts absorbs occasional 429s
+ * without losing data, so going wide here is genuinely free.
  */
-const PER_REPO_CONCURRENCY = 30;
+const PER_REPO_CONCURRENCY = 75;
 
 const SYSTEM_PROMPT = `You investigate a software project and produce a short, fact-grounded
 external-traction report.

@@ -132,7 +132,33 @@ technologies: extracted from manifests + obvious framework usage (max 10).
 
 Output ONLY by calling submit_judgment.`;
 
-const REASONING_EFFORT = "medium" as const;
+/**
+ * Repo-judge is a structural-classification call: read sample files,
+ * pick a `kind`, set `polish`, write a one-sentence purpose. It does
+ * NOT need long reasoning chains. Bumping from "medium" to "low"
+ * because traces showed Kimi K2.6 streaming reasoning for 30+ minutes
+ * on a handful of large codebases (aimuse=1885s, autotext_v4=1063s,
+ * memcast-v2=850s) with only ~600 chars of final output. Whether
+ * Kimi actually respects this knob varies by model build, but it
+ * never hurts to ask for less.
+ */
+const REASONING_EFFORT = "low" as const;
+
+/**
+ * Hard wall-clock cap per judge call. The agent SDK's default is
+ * 86,400,000 ms (24h) — fine in theory ("the agent decides when to
+ * stop") but in practice a single wedged Kimi call would pin a
+ * concurrency slot for half an hour while the model streamed
+ * reasoning in a black box with no events emitted. 3 minutes is well
+ * past p95 (~14 min in the worst trace, but that includes retries).
+ *
+ * On timeout the agent throws, judgeRepo's try/catch fires, and
+ * `fallbackJudgment` writes a synthetic verdict from RepoRef metadata
+ * + repo description. We lose Kimi's per-repo judgment for that one
+ * repo — but we lose it cheaply, and the project-ranker can still
+ * rank it (just with less rich evidence).
+ */
+const JUDGE_TIMEOUT_MS = 3 * 60_000;
 
 export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput> {
   const { repo, repoPath, study, session, usage, trace, onProgress, emit } = input;
@@ -178,6 +204,7 @@ export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput>
         "Submit the structured Judgment for this repository. Call exactly once.",
       submitSchema: RepoJudgmentSchema,
       reasoning: { effort: REASONING_EFFORT },
+      timeoutMs: JUDGE_TIMEOUT_MS,
       session,
       usage,
       onProgress,
@@ -210,13 +237,21 @@ export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput>
 }
 
 /**
- * Cap how many repos we judge in parallel. Kimi handles the parallelism
- * fine on the OpenRouter side; the limit keeps memory pressure bounded
- * since each judgment loads ~20KB of file samples. Bumped to 15 — Kimi
- * calls run ~5-10s and the per-judgment file-sample buffer is small
- * enough to stack 15 deep without OOM on Fly's default 1GB worker.
+ * Cap how many repos we judge in parallel.
+ *
+ * OpenRouter has effectively no rate limit at our scale for paid
+ * accounts (a recent scan ran 53 Kimi + 47 Gemini grounded calls
+ * concurrent with zero 429s). The Fly worker is performance-4x /
+ * 16 GB and was sitting at 586 MB / 3.7% utilization at peak, so
+ * memory's not the constraint either.
+ *
+ * 50 is a generous fan-out: 53 candidate repos × 1 in-flight call
+ * each ≈ basically every judge runs in parallel. Combined with
+ * JUDGE_TIMEOUT_MS, the worst-case wall-clock for the whole stage
+ * is ~3 min instead of "however long the slowest of N calls
+ * happens to take" (which was 31 min in the last trace).
  */
-const JUDGE_CONCURRENCY = 15;
+const JUDGE_CONCURRENCY = 50;
 
 export interface JudgeAllOptions {
   session: ScanSession;
