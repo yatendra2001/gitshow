@@ -245,6 +245,18 @@ function esc(value: string): string {
  * the page is rendered at 96dpi with 1:1 scaling before transform.
  */
 export const RESUME_PRINT_CSS = `
+  /* Inter from Google Fonts — the ONE thing that gives the editor
+     preview and the PDF a true one-to-one mapping. Both surfaces
+     fetch the same woff2 from fonts.gstatic.com, so the glyph
+     metrics are byte-identical. Without this, the browser preview
+     uses macOS Helvetica (compact) and the PDF uses Linux Liberation
+     Sans (wider) — same HTML wraps to different line counts and the
+     fit indicator can't be trusted. With Inter on both, every bullet
+     wraps in the same place in both surfaces. The PDF route also
+     awaits document.fonts.ready before printing as a belt-and-
+     suspenders guarantee that Inter is loaded. */
+  @import url('https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap');
+
   /* The resume is a forced-light island. The dashboard ships its own
      dark-mode foreground/background variables which cascade into this
      component via inheritance — without these overrides the resume
@@ -256,15 +268,7 @@ export const RESUME_PRINT_CSS = `
     color: #000 !important;
     background: #fff !important;
     color-scheme: light;
-    /* Arial first by design — it's the only sans-serif that ships
-       with both macOS (where the editor preview renders) AND Linux
-       Chromium (where Cloudflare Browser Rendering generates the
-       PDF). Without it, macOS would pick Helvetica (compact metrics)
-       and Linux would fall back to Liberation Sans (slightly wider),
-       and bullets that wrap to N lines in browser silently wrap to
-       N+1 in the PDF. The fit indicator then lies. Arial → Liberation
-       Sans is metric-compatible if Arial is missing on Linux. */
-    font-family: Arial, "Liberation Sans", "Helvetica Neue", Helvetica, sans-serif;
+    font-family: 'Inter', Arial, "Liberation Sans", sans-serif;
     font-size: 10.5pt;
     line-height: 1.4;
     padding: 0.6in 0.7in;

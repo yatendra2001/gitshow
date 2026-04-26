@@ -50,19 +50,14 @@ import type {
 // the DOM-measurement-based fit indicator.
 const LETTER_PAGE_HEIGHT_PX = 11 * 96; // 1056
 
-// Cloudflare Browser Rendering (Linux Chromium) renders the same HTML
-// at slightly different font metrics than the user's local browser
-// (typically macOS) — Liberation Sans wraps a touch wider than Arial,
-// system kerning differs, etc. The cumulative effect on a resume with
-// 30+ bullets is real: a doc that measures 1040px in the editor can
-// land at ~1100px in the PDF, spilling onto page 2 even though the
-// chip says "fits".
-//
-// We give back ~50px to account for that drift. Anything within 50px
-// of the page boundary is flagged "over" defensively. Worst case the
-// user sees an overly-cautious warning; better than confidently
-// shipping a 2-page resume.
-const PDF_VARIANCE_BUFFER_PX = 50;
+// With Inter loaded from Google Fonts on both surfaces (editor preview
+// + Cloudflare Browser Rendering), the glyph metrics are byte-
+// identical and the editor's scrollHeight should match the PDF's
+// content height almost exactly. We still keep a small buffer for
+// any residual rounding (sub-pixel rendering, anti-aliasing) — 16px
+// is well under one line and prevents borderline cases from
+// embarrassing us.
+const PDF_VARIANCE_BUFFER_PX = 16;
 const NEAR_BUFFER_PX = 60;
 import { cn } from "@/lib/utils";
 import {
