@@ -14,47 +14,39 @@
  * left indicator. No gradient — that read as muddy and "not gitshow"
  * per design feedback. Hover is a flat bg-color transition (Emil:
  * specific properties only, ease for hover).
+ *
+ * Icons: HugeIcons (free rounded-stroke pack). Stroke-weight 1.75
+ * across the rail for a calmer feel than lucide's default 2.
  */
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
-  ArrowUpRight,
-  BarChart3,
-  CreditCard,
-  Eye,
-  HelpCircle,
-  type LucideIcon,
-  Menu,
-  Moon,
-  PencilLine,
-  Sun,
-  X,
-} from "lucide-react";
-import { HugeiconsIcon } from "@hugeicons/react";
-import { File02Icon } from "@hugeicons/core-free-icons";
+  Analytics01Icon,
+  ArrowUpRight01Icon,
+  Cancel01Icon,
+  CreditCardIcon,
+  File02Icon,
+  HelpCircleIcon,
+  Menu01Icon,
+  MoonIcon,
+  PencilEdit01Icon,
+  SunIcon,
+  ViewIcon,
+} from "@hugeicons/core-free-icons";
+import type { IconSvgElement } from "@hugeicons/react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { Logo, LogoMark } from "@/components/logo";
+import { Icon } from "./icon";
 
-/**
- * Sidebar entries can use either a Lucide icon (existing nav) or a
- * Hugeicon. New tabs prefer Hugeicons — the resume tab is the first
- * to do so, hence the discriminated `iconKind` field.
- */
-type NavIcon =
-  | { iconKind?: "lucide"; icon: LucideIcon }
-  | {
-      iconKind: "hugeicon";
-      icon: Parameters<typeof HugeiconsIcon>[0]["icon"];
-    };
-
-type NavItem = NavIcon & {
+interface NavItem {
   href: string;
   label: string;
+  icon: IconSvgElement;
   external?: boolean;
-};
+}
 
 interface NavSection {
   title: string;
@@ -65,25 +57,20 @@ const NAV_SECTIONS: NavSection[] = [
   {
     title: "Workspace",
     items: [
-      { href: "/app", label: "Analytics", icon: BarChart3 },
-      { href: "/app/edit", label: "Edit", icon: PencilLine },
-      { href: "/app/preview", label: "Preview", icon: Eye },
-      {
-        href: "/app/resume",
-        label: "Resume",
-        iconKind: "hugeicon",
-        icon: File02Icon,
-      },
+      { href: "/app", label: "Analytics", icon: Analytics01Icon },
+      { href: "/app/edit", label: "Edit", icon: PencilEdit01Icon },
+      { href: "/app/preview", label: "Preview", icon: ViewIcon },
+      { href: "/app/resume", label: "Resume", icon: File02Icon },
     ],
   },
   {
     title: "Account",
     items: [
-      { href: "/app/billing", label: "Billing", icon: CreditCard },
+      { href: "/app/billing", label: "Billing", icon: CreditCardIcon },
       {
         href: "mailto:hi@gitshow.io",
         label: "Support",
-        icon: HelpCircle,
+        icon: HelpCircleIcon,
         external: true,
       },
     ],
@@ -189,7 +176,7 @@ export function DashboardShell({
             "hover:bg-foreground/[0.04]",
           )}
         >
-          <X className="size-4" strokeWidth={2} />
+          <Icon icon={Cancel01Icon} className="size-4" />
         </button>
         {railContent}
       </aside>
@@ -209,7 +196,7 @@ export function DashboardShell({
                 "hover:bg-foreground/[0.04]",
               )}
             >
-              <Menu className="size-4" strokeWidth={2} />
+              <Icon icon={Menu01Icon} className="size-4" />
             </button>
             <span className="md:hidden">
               <LogoMark size={22} />
@@ -337,7 +324,7 @@ function UserCard({
           )}
         >
           <span className="truncate">gitshow.io/{publicSlug}</span>
-          <ArrowUpRight className="size-3 shrink-0" strokeWidth={2} />
+          <Icon icon={ArrowUpRight01Icon} className="size-3" />
         </Link>
       ) : null}
     </div>
@@ -396,8 +383,15 @@ function SidebarLink({
     />
   ) : null;
 
-  const iconColor = active ? "text-foreground" : "text-muted-foreground/70";
-  const iconNode = renderNavIcon(item, iconColor);
+  const iconNode = (
+    <Icon
+      icon={item.icon}
+      className={cn(
+        "size-4",
+        active ? "text-foreground" : "text-muted-foreground/70",
+      )}
+    />
+  );
 
   if (item.external) {
     return (
@@ -424,7 +418,8 @@ function SidebarLink({
  */
 function ThemeToggle() {
   const { theme, setTheme, resolvedTheme } = useTheme();
-  const isDark = (theme === "dark" || (theme === "system" && resolvedTheme === "dark"));
+  const isDark =
+    theme === "dark" || (theme === "system" && resolvedTheme === "dark");
   return (
     <button
       type="button"
@@ -438,8 +433,8 @@ function ThemeToggle() {
         "hover:bg-foreground/[0.04]",
       )}
     >
-      <Sun className="size-4 hidden dark:block" strokeWidth={2} />
-      <Moon className="size-4 dark:hidden" strokeWidth={2} />
+      <Icon icon={SunIcon} className="size-4 hidden dark:block" />
+      <Icon icon={MoonIcon} className="size-4 dark:hidden" />
     </button>
   );
 }
@@ -447,19 +442,4 @@ function ThemeToggle() {
 function isActive(currentPath: string, href: string) {
   if (href === "/app") return currentPath === "/app";
   return currentPath === href || currentPath.startsWith(`${href}/`);
-}
-
-function renderNavIcon(item: NavItem, colorClass: string) {
-  if (item.iconKind === "hugeicon") {
-    return (
-      <HugeiconsIcon
-        icon={item.icon}
-        size={16}
-        strokeWidth={2}
-        className={cn("shrink-0", colorClass)}
-      />
-    );
-  }
-  const Icon = item.icon as LucideIcon;
-  return <Icon className={cn("size-4 shrink-0", colorClass)} strokeWidth={2} />;
 }

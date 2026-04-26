@@ -97,7 +97,7 @@ export function ViewsAreaChart({
     >
       <AreaChart
         data={data}
-        margin={{ top: 8, right: 8, bottom: 0, left: -16 }}
+        margin={{ top: 8, right: 8, bottom: 0, left: 4 }}
       >
         <defs>
           <linearGradient id="fill-views" x1="0" y1="0" x2="0" y2="1">

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowUpRight, Eye } from "lucide-react";
+import { ArrowUpRight01Icon, ViewIcon } from "@hugeicons/core-free-icons";
+import { Icon } from "@/components/dashboard/icon";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import {
   CheckoutProcessingState,
@@ -178,7 +179,10 @@ export default async function AppHomePage({
               className="font-mono text-foreground hover:underline underline-offset-2"
             >
               gitshow.io/{slug}
-              <ArrowUpRight className="inline size-3 ml-0.5" />
+              <Icon
+                icon={ArrowUpRight01Icon}
+                className="inline size-3 ml-0.5"
+              />
             </Link>
           </p>
         </div>
@@ -326,7 +330,7 @@ function ChartLegend() {
 function ChartEmptyState({ slug }: { slug: string }) {
   return (
     <div className="flex h-[280px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-border/50 bg-muted/10 text-center">
-      <Eye className="size-5 text-muted-foreground/70" strokeWidth={2} />
+      <Icon icon={ViewIcon} className="size-5 text-muted-foreground/70" />
       <div>
         <p className="text-[13px] font-medium">No views yet</p>
         <p className="mt-0.5 text-[11.5px] text-muted-foreground">
@@ -345,7 +349,7 @@ function ChartEmptyState({ slug }: { slug: string }) {
         )}
       >
         Open your portfolio
-        <ArrowUpRight className="size-3.5" />
+        <Icon icon={ArrowUpRight01Icon} className="size-3.5" />
       </Link>
     </div>
   );
@@ -369,7 +373,10 @@ function ScanningBanner({ scanId }: { scanId: string }) {
       <span className="text-muted-foreground">
         Your dashboard updates the moment it lands.
       </span>
-      <ArrowUpRight className="ml-auto size-3.5 text-muted-foreground" />
+      <Icon
+        icon={ArrowUpRight01Icon}
+        className="ml-auto size-3.5 text-muted-foreground"
+      />
     </Link>
   );
 }

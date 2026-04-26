@@ -13,7 +13,13 @@
  */
 
 import Link from "next/link";
-import { ArrowDownRight, ArrowUpRight, Compass, Globe2 } from "lucide-react";
+import {
+  ArrowDownRight01Icon,
+  ArrowUpRight01Icon,
+  Compass01Icon,
+  GlobeIcon,
+} from "@hugeicons/core-free-icons";
+import { Icon } from "./icon";
 import type {
   CountryRow,
   DeviceRow,
@@ -135,7 +141,6 @@ function DeltaBadge({ pct }: { pct: number }) {
     );
   }
   const isUp = pct > 0;
-  const Icon = isUp ? ArrowUpRight : ArrowDownRight;
   return (
     <span
       className={cn(
@@ -145,7 +150,11 @@ function DeltaBadge({ pct }: { pct: number }) {
           : "bg-red-500/10 text-red-700 dark:text-red-400",
       )}
     >
-      <Icon className="size-2.5" strokeWidth={2.5} />
+      <Icon
+        icon={isUp ? ArrowUpRight01Icon : ArrowDownRight01Icon}
+        className="size-2.5"
+        strokeWidth={2.25}
+      />
       {isUp ? "+" : ""}
       {pct}%
     </span>
@@ -233,7 +242,7 @@ export function ReferrersList({ rows }: { rows: ReferrerRow[] }) {
               leading={
                 isSentinel ? (
                   <span className="flex size-5 items-center justify-center rounded-md bg-muted/50 text-muted-foreground ring-1 ring-border/40">
-                    <Compass className="size-3" strokeWidth={2} />
+                    <Icon icon={Compass01Icon} className="size-3" />
                   </span>
                 ) : (
                   <span className="flex size-5 items-center justify-center overflow-hidden rounded-md bg-muted/50 ring-1 ring-border/40">
@@ -446,7 +455,10 @@ function Dim({ children }: { children: React.ReactNode }) {
 function EmptyHint({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex items-center gap-2 rounded-lg border border-dashed border-border/50 bg-muted/15 px-3 py-3 text-[12px] text-muted-foreground">
-      <Globe2 className="size-3.5 shrink-0 text-muted-foreground/60" strokeWidth={2} />
+      <Icon
+        icon={GlobeIcon}
+        className="size-3.5 text-muted-foreground/60"
+      />
       <span>{children}</span>
     </div>
   );
