@@ -45,24 +45,15 @@ export async function POST() {
 
   const inner = renderResumeHtml(doc, { fullPage: true });
   const pageSize = doc.page.size === "a4" ? "A4" : "Letter";
-  // CRITICAL: RESUME_PRINT_CSS must come FIRST in the <style> block.
-  // Its @import for Inter has to be the first rule in the stylesheet
-  // — anything before it (like @page or body resets) makes the
-  // browser silently drop the @import, and we'd be rendering the PDF
-  // with Linux Liberation Sans instead of Inter, breaking the editor↔
-  // PDF parity guarantee. The preconnect link is there to start the
-  // font fetch as early as possible.
   const html = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8" />
 <title>Resume</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <style>
-${RESUME_PRINT_CSS}
-@page { size: ${pageSize}; margin: 0; }
-html, body { margin: 0; padding: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @page { size: ${pageSize}; margin: 0; }
+  html, body { margin: 0; padding: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  ${RESUME_PRINT_CSS}
 </style>
 </head>
 <body>${inner}</body>
@@ -73,15 +64,6 @@ html, body { margin: 0; padding: 0; background: #fff; -webkit-print-color-adjust
     browser = await puppeteer.launch(env.BROWSER as Fetcher);
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
-    // Belt-and-suspenders for the editor↔PDF parity guarantee. The CSS
-    // @import for Inter usually finishes before networkidle0 fires, but
-    // if it doesn't, a swap could happen mid-render and the PDF would
-    // be laid out with Arial fallback metrics — mismatching what the
-    // editor preview measured. Awaiting document.fonts.ready blocks
-    // page.pdf() until every @font-face is fully usable.
-    await page
-      .evaluate(() => (document as Document).fonts.ready)
-      .catch(() => {});
     const buffer = await page.pdf({
       format: pageSize,
       printBackground: true,

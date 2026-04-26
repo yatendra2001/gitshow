@@ -22,7 +22,7 @@
  * dynamic numbers (tabular-nums on the page-fit indicator).
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
@@ -46,19 +46,10 @@ import type {
   PublicationDocEntry,
   ResumeSectionKey,
 } from "@gitshow/shared/resume-doc";
-// Letter page height at 96dpi (the canonical browser unit). Used for
-// the DOM-measurement-based fit indicator.
-const LETTER_PAGE_HEIGHT_PX = 11 * 96; // 1056
-
-// With Inter loaded from Google Fonts on both surfaces (editor preview
-// + Cloudflare Browser Rendering), the glyph metrics are byte-
-// identical and the editor's scrollHeight should match the PDF's
-// content height almost exactly. We still keep a small buffer for
-// any residual rounding (sub-pixel rendering, anti-aliasing) — 16px
-// is well under one line and prevents borderline cases from
-// embarrassing us.
-const PDF_VARIANCE_BUFFER_PX = 16;
-const NEAR_BUFFER_PX = 60;
+import {
+  estimateContentLines,
+  ONE_PAGE_LINE_BUDGET,
+} from "@gitshow/shared/resume-doc";
 import { cn } from "@/lib/utils";
 import {
   PrintableResume,
@@ -84,10 +75,6 @@ export function ResumeEditor({
   // crosses each band so the user always knows what's happening.
   const [downloadPct, setDownloadPct] = useState(0);
   const [downloadLabel, setDownloadLabel] = useState("Starting");
-  // The actual rendered height of the resume in CSS pixels. Updated by
-  // a ResizeObserver in PreviewPane. `null` until the first measurement
-  // lands — we treat null as "good" so the chip doesn't flicker.
-  const [renderedHeight, setRenderedHeight] = useState<number | null>(null);
 
   const pendingRef = useRef<Record<string, unknown>>({});
   const progressRafRef = useRef<number | null>(null);
@@ -232,7 +219,8 @@ export function ResumeEditor({
     };
   }, []);
 
-  const fitTier = fitTierForHeight(renderedHeight);
+  const lineCount = useMemo(() => estimateContentLines(doc), [doc]);
+  const overBudget = lineCount > ONE_PAGE_LINE_BUDGET;
 
   return (
     <div className="flex flex-col min-h-[calc(100svh-3.5rem)]">
@@ -243,7 +231,8 @@ export function ResumeEditor({
         downloading={downloading}
         downloadPct={downloadPct}
         downloadLabel={downloadLabel}
-        fitTier={fitTier}
+        lineCount={lineCount}
+        overBudget={overBudget}
       />
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(0,520px)_minmax(0,1fr)]">
@@ -263,34 +252,10 @@ export function ResumeEditor({
         </div>
 
         {/* Preview pane */}
-        <PreviewPane doc={doc} fitTier={fitTier} onMeasure={setRenderedHeight} />
+        <PreviewPane doc={doc} />
       </div>
     </div>
   );
-}
-
-/**
- * Three tiers driven by the resume's actual rendered height. Subtle
- * by design — comfortable is silent, near is amber, over is red. We
- * don't strobe; the tier just colors the indicator and the tooltip
- * explains the next step.
- *
- * Threshold: the Letter page is 11in (= 1056px at 96dpi). We grant a
- * ~50px safety buffer (≈3 typeset lines) before flipping to "near"
- * so the user gets a heads-up before they cross over.
- */
-type FitTier = "good" | "near" | "over";
-function fitTierForHeight(heightPx: number | null): FitTier {
-  if (heightPx == null) return "good";
-  // The "effective" page height the user can fill in the browser
-  // before the PDF will overflow. Real PDF capacity is 1056px but we
-  // hold back PDF_VARIANCE_BUFFER_PX to defend against font-metric
-  // drift between browser preview and Cloudflare Browser Rendering.
-  const overThreshold = LETTER_PAGE_HEIGHT_PX - PDF_VARIANCE_BUFFER_PX;
-  const nearThreshold = overThreshold - NEAR_BUFFER_PX;
-  if (heightPx > overThreshold) return "over";
-  if (heightPx > nearThreshold) return "near";
-  return "good";
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -304,7 +269,8 @@ function Toolbar({
   downloading,
   downloadPct,
   downloadLabel,
-  fitTier,
+  lineCount,
+  overBudget,
 }: {
   status: Status;
   errMsg: string | null;
@@ -312,7 +278,8 @@ function Toolbar({
   downloading: boolean;
   downloadPct: number;
   downloadLabel: string;
-  fitTier: FitTier;
+  lineCount: number;
+  overBudget: boolean;
 }) {
   return (
     <div className="sticky top-14 z-10 flex items-center gap-3 border-b border-border/30 bg-background/85 backdrop-blur px-5 h-14">
@@ -324,7 +291,7 @@ function Toolbar({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <FitIndicator tier={fitTier} />
+        <FitIndicator count={lineCount} over={overBudget} />
         <SaveBadge status={status} errMsg={errMsg} />
         <DownloadButton
           onClick={onDownload}
@@ -450,80 +417,30 @@ function labelForPct(pct: number): string {
   return "Almost there";
 }
 
-/**
- * Dashed line + label at the Letter page boundary (11in down inside
- * the scaled wrapper). Renders only when the doc actually crosses
- * the boundary — when everything fits there's no break to mark.
- *
- * The label sits to the right of the line so it doesn't collide with
- * resume content. Pointer-events disabled so click-through to the
- * resume keeps working.
- */
-function PageBreakGuide({ overflowing }: { overflowing: boolean }) {
-  if (!overflowing) return null;
-  return (
-    <div
-      aria-hidden
-      className="pointer-events-none absolute left-0 right-0 z-20"
-      style={{
-        top: "11in",
-        height: "0",
-        borderTop: "1.5pt dashed rgb(220, 38, 38)",
-      }}
-    >
-      <span
-        className="absolute right-0 -translate-y-1/2 px-1.5 py-0.5 rounded text-[9pt] font-semibold uppercase tracking-wider"
-        style={{
-          top: "0",
-          background: "rgb(220, 38, 38)",
-          color: "#fff",
-          letterSpacing: "0.6pt",
-        }}
-      >
-        Page 1 ends · content below is page 2
-      </span>
-    </div>
-  );
-}
-
-function FitIndicator({ tier }: { tier: FitTier }) {
-  // Subtle 3-tier styling. The tier change is the only signal — no
-  // pulse, no flash. Label is short and actionable; tooltip carries
-  // the next-step nudge.
-  const tierStyle = {
-    good: {
-      cls: "bg-foreground/[0.04] text-muted-foreground",
-      icon: Tick02Icon,
-      label: "Fits 1 page",
-      title: "Within the one-page budget — looks good for export",
-    },
-    near: {
-      cls: "bg-amber-400/10 text-amber-700 dark:text-amber-400",
-      icon: AlertCircleIcon,
-      label: "Tight fit",
-      title: "Close to the one-page limit — consider trimming a bullet or two",
-    },
-    over: {
-      cls: "bg-red-500/10 text-red-700 dark:text-red-400",
-      icon: AlertCircleIcon,
-      label: "Over 1 page",
-      title: "Content exceeds one page — cut bullets or hide a section",
-    },
-  } as const;
-  const t = tierStyle[tier];
+function FitIndicator({ count, over }: { count: number; over: boolean }) {
   return (
     <div
       className={cn(
         "hidden sm:inline-flex items-center gap-1.5 rounded-md px-2 h-7 text-[11px] font-medium",
         "transition-[background-color,color] duration-200 ease-out",
-        t.cls,
+        over
+          ? "bg-foreground/[0.06] text-foreground"
+          : "bg-foreground/[0.04] text-muted-foreground",
       )}
-      title={t.title}
-      role="status"
-      aria-live="polite"
+      title={
+        over
+          ? "Content likely exceeds one page — trim bullets or hide a section"
+          : "Fits on one page"
+      }
     >
-      <HugeiconsIcon icon={t.icon} size={12} strokeWidth={2} />
-      <span>{t.label}</span>
+      <HugeiconsIcon
+        icon={over ? AlertCircleIcon : Tick02Icon}
+        size={12}
+        strokeWidth={2}
+      />
+      <span style={{ fontVariantNumeric: "tabular-nums" }}>
+        {count}/{ONE_PAGE_LINE_BUDGET}
+      </span>
     </div>
   );
 }
@@ -1521,33 +1438,7 @@ function BulletsInput({
 // Preview
 // ──────────────────────────────────────────────────────────────
 
-function PreviewPane({
-  doc,
-  fitTier,
-  onMeasure,
-}: {
-  doc: ResumeDoc;
-  fitTier: FitTier;
-  onMeasure: (heightPx: number) => void;
-}) {
-  // Watch the rendered .resume-doc element's actual height so the
-  // editor's fit indicator reflects reality, not a heuristic. The
-  // ResizeObserver fires on every content change, font load, etc.
-  // Transforms (the scale 0.78x) don't affect layout dimensions, so
-  // scrollHeight gives us the natural page-equivalent pixels.
-  const wrapperRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const wrapper = wrapperRef.current;
-    if (!wrapper) return;
-    const article = wrapper.querySelector<HTMLElement>(".resume-doc");
-    if (!article) return;
-    const measure = () => onMeasure(article.scrollHeight);
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(article);
-    return () => ro.disconnect();
-  }, [doc, onMeasure]);
-
+function PreviewPane({ doc }: { doc: ResumeDoc }) {
   return (
     <div className="bg-foreground/[0.015] dark:bg-foreground/[0.04] hidden lg:block lg:overflow-y-auto lg:max-h-[calc(100svh-3.5rem-3.5rem)] gs-pane-scroll">
       {/* Plain <style> tag with dangerouslySetInnerHTML — styled-jsx
@@ -1558,21 +1449,13 @@ function PreviewPane({
       <style dangerouslySetInnerHTML={{ __html: RESUME_PRINT_CSS }} />
       <div className="flex justify-center px-6 py-8">
         <div
-          className="origin-top relative"
+          className="origin-top"
           style={{
             transform: "scale(var(--resume-scale, 0.78))",
             transformOrigin: "top center",
           }}
         >
-          {/* Page-break guide at the 11in mark. Lives inside the
-              scaled wrapper so it tracks the resume's coordinate
-              space. The line + label only render when content
-              actually crosses the boundary — when everything fits,
-              there's no overflow to flag. */}
-          <PageBreakGuide overflowing={fitTier === "over"} />
-          <div ref={wrapperRef}>
-            <PrintableResume doc={doc} />
-          </div>
+          <PrintableResume doc={doc} />
         </div>
       </div>
     </div>
