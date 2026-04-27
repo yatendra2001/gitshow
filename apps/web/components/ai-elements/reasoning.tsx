@@ -4,8 +4,7 @@ import * as React from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
-import { Matrix } from "@/components/ui/matrix";
-import { breathingDot } from "@/components/ui/matrix-loaders";
+import { DotMatrix } from "@/components/ui/dot-matrix";
 
 /**
  * Reasoning — the "Thought for Xs" collapsible. Streams text in while
@@ -33,6 +32,8 @@ export interface ReasoningProps extends React.HTMLAttributes<HTMLDivElement> {
   label?: string;
   /** Stay open after streaming ends (useful for debugging). Default false. */
   keepOpenAfterDone?: boolean;
+  /** Stable identifier used to pick a varied loader pattern. */
+  seed?: string;
 }
 
 export function Reasoning({
@@ -41,6 +42,7 @@ export function Reasoning({
   elapsedMs,
   label = "Thinking",
   keepOpenAfterDone = false,
+  seed,
   className,
   ...props
 }: ReasoningProps) {
@@ -90,23 +92,16 @@ export function Reasoning({
         className="flex w-full items-center gap-2.5 py-1.5 text-left group"
       >
         {streaming ? (
-          // breathingDot at size=3 — 5×5 SVG cells, 19px square. The
-          // earlier "loader" preset at size=2 was ~10px and visually
-          // disappeared at low contrast. Foreground palette + larger
-          // cells make it actually readable.
-          <Matrix
-            rows={5}
-            cols={5}
-            frames={breathingDot}
-            fps={6}
-            size={3}
-            gap={1}
-            palette={{
-              on: "var(--foreground)",
-              off: "transparent",
-            }}
+          // 5×5 dot-matrix from the `thinking` pool. Seeded by `seed` (or
+          // the label) so every Reasoning block on screen tends to show a
+          // distinct pattern — Thinking, Stream, Cipher, Listening — and
+          // the timeline doesn't read as one repeated loader.
+          <DotMatrix
+            variant="thinking"
+            seed={seed ?? label}
+            size={18}
             ariaLabel="Thinking"
-            className="shrink-0"
+            className="text-foreground"
           />
         ) : (
           // Solid check on a small foreground-tinted disc — clearly

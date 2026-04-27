@@ -6,8 +6,7 @@ import { useRouter } from "next/navigation";
 import { Check, AlertTriangle, Circle } from "lucide-react";
 import { LogoMark } from "@/components/logo";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
-import { Matrix } from "@/components/ui/matrix";
-import { concentricBreath, breathingDot } from "@/components/ui/matrix-loaders";
+import { DotMatrix } from "@/components/ui/dot-matrix";
 import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Tool, type ToolStatus } from "@/components/ai-elements/tool";
 import {
@@ -634,7 +633,7 @@ function PhaseRow({
           )}
         />
       ) : null}
-      <PhaseDot status={node.status} />
+      <PhaseDot status={node.status} seed={node.id} />
       <div className="flex-1 min-w-0 pb-1">
         <PhaseHeader node={node} now={now} />
         {node.errorMessage ? (
@@ -712,6 +711,7 @@ function AgentRunBlock({
               : undefined
           }
           label={friendly}
+          seed={`${run.agent}:${lastReasoning.reasoningId}`}
         />
       ) : null}
       {visibleTools.length > 0 ? (
@@ -725,6 +725,7 @@ function AgentRunBlock({
               input={t.inputPreview}
               output={t.outputPreview}
               error={t.errorMessage}
+              seed={t.toolId}
             />
           ))}
         </div>
@@ -784,27 +785,14 @@ function PhaseHeader({ node, now }: { node: PhaseNode; now: number }) {
   );
 }
 
-function PhaseDot({ status }: { status: NodeStatus }) {
+function PhaseDot({ status, seed }: { status: NodeStatus; seed: string }) {
   if (status === "running") {
-    // 5×5 concentric-breath at size=3 (≈19 px) — sized to fill the
-    // 22 px slot the done/pending dots occupy. `palette.on =
-    // foreground` instead of currentColor so the wave reads at full
-    // contrast regardless of inherited text color (was rendering
-    // near-invisible against muted-foreground in the previous pass).
-    // fps=10 is intentional — slower than the model's default
-    // loader; calmer to look at over a 30-minute scan.
+    // Each phase rolls a different agent-pool pattern keyed off its id,
+    // so a long live timeline reads as varied "AI is working" indicators
+    // instead of the same dot pulsing 14 times in a row.
     return (
-      <span className="flex size-[22px] shrink-0 items-center justify-center">
-        <Matrix
-          rows={5}
-          cols={5}
-          frames={concentricBreath}
-          fps={6}
-          size={3}
-          gap={1}
-          palette={{ on: "var(--foreground)", off: "transparent" }}
-          ariaLabel="In progress"
-        />
+      <span className="flex size-[22px] shrink-0 items-center justify-center text-foreground">
+        <DotMatrix variant="agent" seed={seed} size={20} ariaLabel="In progress" />
       </span>
     );
   }
@@ -835,7 +823,7 @@ function PhaseDot({ status }: { status: NodeStatus }) {
 function SubPhaseRow({ node }: { node: PhaseNode }) {
   return (
     <li className="gs-enter flex items-baseline gap-2.5 pl-1">
-      <SubDot status={node.status} />
+      <SubDot status={node.status} seed={node.id} />
       <span
         className={cn(
           "text-[12.5px] leading-snug",
@@ -867,23 +855,14 @@ function SubPhaseRow({ node }: { node: PhaseNode }) {
   );
 }
 
-function SubDot({ status }: { status: NodeStatus }) {
+function SubDot({ status, seed }: { status: NodeStatus; seed: string }) {
   if (status === "running") {
-    // 5×5 breathing-dot at size=2. Smaller than PhaseDot (parent vs
-    // child hierarchy) but still big enough to read — earlier
-    // version at size=1 was 9 px and visually disappeared.
+    // Smaller register than PhaseDot — children sit under a parent that
+    // already carries the "agent" pattern, so we draw from the quieter
+    // `subtle` pool to avoid two competing motions stacked together.
     return (
-      <span className="flex size-3.5 shrink-0 items-center justify-center">
-        <Matrix
-          rows={5}
-          cols={5}
-          frames={breathingDot}
-          fps={6}
-          size={2}
-          gap={0}
-          palette={{ on: "var(--foreground)", off: "transparent" }}
-          ariaLabel="In progress"
-        />
+      <span className="flex size-3.5 shrink-0 items-center justify-center text-foreground">
+        <DotMatrix variant="subtle" seed={seed} size={14} ariaLabel="In progress" />
       </span>
     );
   }
