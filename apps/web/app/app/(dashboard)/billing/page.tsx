@@ -132,7 +132,7 @@ export default async function BillingPage() {
               {!active ? (
                 <Link
                   href="/pricing"
-                  className="inline-flex items-center justify-center rounded-xl border border-border/60 bg-card/30 px-4 py-2 text-[13px] font-medium hover:bg-card/50 min-h-11"
+                  className="inline-flex items-center justify-center min-h-11 rounded-xl border border-border/60 bg-card/30 px-4 py-2 text-[13px] font-medium select-none transition-[background-color,border-color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:bg-card/50 hover:border-foreground/25 active:scale-[0.97] active:duration-[80ms] outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   Re-subscribe
                 </Link>
@@ -148,7 +148,7 @@ export default async function BillingPage() {
             </p>
             <Link
               href="/pricing"
-              className="inline-flex items-center justify-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 min-h-11"
+              className="inline-flex items-center justify-center min-h-11 rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium select-none shadow-[inset_0_1px_0_rgb(255_255_255_/_0.10),0_1px_2px_-1px_oklch(0_0_0_/_0.20)] transition-[background-color,box-shadow,transform,opacity] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.14),0_2px_8px_-3px_oklch(0_0_0_/_0.24)] active:scale-[0.97] active:duration-[80ms] outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
             >
               See pricing →
             </Link>

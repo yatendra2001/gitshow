@@ -21,7 +21,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
+import { motion, LayoutGroup } from "motion/react";
 import {
   Analytics01Icon,
   ArrowUpRight01Icon,
@@ -38,7 +39,9 @@ import {
 import type { IconSvgElement } from "@hugeicons/react";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
+import { flipTheme } from "@/lib/theme-helpers";
 import { Logo, LogoMark } from "@/components/logo";
+import { PageTransition } from "@/components/ui/motion";
 import { Icon } from "./icon";
 
 interface NavItem {
@@ -143,7 +146,8 @@ export function DashboardShell({
         {railContent}
       </aside>
 
-      {/* Mobile drawer overlay */}
+      {/* Mobile drawer overlay — overlay + drawer share easing/duration
+          (paired-elements rule). 220ms ease-out-cubic. */}
       <button
         type="button"
         aria-label="Close menu"
@@ -151,7 +155,7 @@ export function DashboardShell({
         tabIndex={mobileOpen ? 0 : -1}
         className={cn(
           "md:hidden fixed inset-0 z-40 bg-background/70 backdrop-blur-sm",
-          "transition-[opacity] duration-150 ease-out",
+          "transition-opacity duration-[220ms] ease-[cubic-bezier(0.215,0.61,0.355,1)]",
           mobileOpen ? "opacity-100" : "pointer-events-none opacity-0",
         )}
         onClick={() => setMobileOpen(false)}
@@ -161,7 +165,7 @@ export function DashboardShell({
         aria-hidden={!mobileOpen}
         className={cn(
           "md:hidden fixed inset-y-0 left-0 z-50 w-[260px] flex flex-col border-r border-border/50 bg-sidebar shadow-2xl",
-          "transition-transform duration-200 ease-out",
+          "transition-transform duration-[220ms] ease-[cubic-bezier(0.215,0.61,0.355,1)]",
           mobileOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
@@ -172,8 +176,9 @@ export function DashboardShell({
           className={cn(
             "absolute right-3 top-3 inline-flex size-8 items-center justify-center rounded-lg",
             "text-muted-foreground hover:text-foreground",
-            "transition-[background-color,color] duration-150 ease",
-            "hover:bg-foreground/[0.04]",
+            "transition-[background-color,color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+            "hover:bg-foreground/[0.06] active:scale-90 active:duration-[80ms]",
+            "outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
           )}
         >
           <Icon icon={Cancel01Icon} className="size-4" />
@@ -183,7 +188,7 @@ export function DashboardShell({
 
       {/* Right column */}
       <div className="md:pl-[240px]">
-        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border/30 bg-background/80 px-4 backdrop-blur sm:px-6">
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between gap-3 border-b border-border/30 bg-background/75 px-4 backdrop-blur-md sm:px-6">
           <div className="flex items-center gap-3">
             <button
               type="button"
@@ -192,8 +197,9 @@ export function DashboardShell({
               className={cn(
                 "md:hidden inline-flex size-9 items-center justify-center rounded-lg",
                 "text-muted-foreground hover:text-foreground",
-                "transition-[background-color,color] duration-150 ease",
-                "hover:bg-foreground/[0.04]",
+                "transition-[background-color,color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+                "hover:bg-foreground/[0.06] active:scale-90 active:duration-[80ms]",
+                "outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
               )}
             >
               <Icon icon={Menu01Icon} className="size-4" />
@@ -205,7 +211,9 @@ export function DashboardShell({
           <div className="flex items-center gap-2">{topbarTrailing}</div>
         </header>
 
-        <main className="relative">{children}</main>
+        <main className="relative">
+          <PageTransition>{children}</PageTransition>
+        </main>
       </div>
     </div>
   );
@@ -249,27 +257,31 @@ function SidebarBody({
         />
       </div>
 
-      {/* Nav */}
-      <nav className="flex-1 overflow-y-auto px-2 pt-2 pb-3 gs-pane-scroll">
-        {NAV_SECTIONS.map((section) => (
-          <div key={section.title} className="mt-3 first:mt-1">
-            <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/60">
-              {section.title}
+      {/* Nav — LayoutGroup lets the active highlight morph between
+          rows instead of disappearing/re-appearing. Spring is
+          intentionally tame (low bounce) — this is product UI. */}
+      <LayoutGroup id="dashboard-nav">
+        <nav className="flex-1 overflow-y-auto px-2 pt-2 pb-3 gs-pane-scroll">
+          {NAV_SECTIONS.map((section) => (
+            <div key={section.title} className="mt-3 first:mt-1">
+              <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/60">
+                {section.title}
+              </div>
+              <ul className="flex flex-col gap-px">
+                {section.items.map((item) => (
+                  <li key={item.href}>
+                    <SidebarLink
+                      item={item}
+                      active={isActive(currentPath, item.href)}
+                      onNavigate={onNavigate}
+                    />
+                  </li>
+                ))}
+              </ul>
             </div>
-            <ul className="flex flex-col gap-px">
-              {section.items.map((item) => (
-                <li key={item.href}>
-                  <SidebarLink
-                    item={item}
-                    active={isActive(currentPath, item.href)}
-                    onNavigate={onNavigate}
-                  />
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))}
-      </nav>
+          ))}
+        </nav>
+      </LayoutGroup>
 
       {/* Footer */}
       <div className="border-t border-border/30 p-2">
@@ -317,14 +329,21 @@ function UserCard({
           rel="noreferrer"
           onClick={onNavigate}
           className={cn(
-            "mt-2.5 flex items-center justify-between gap-2 rounded-md px-2 py-1.5",
+            "group mt-2.5 flex items-center justify-between gap-2 rounded-md px-2 py-1.5",
             "text-[11.5px] font-mono text-muted-foreground",
             "hover:bg-foreground/[0.04] hover:text-foreground",
-            "transition-[background-color,color] duration-150 ease",
+            "transition-[background-color,color] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+            "outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset",
           )}
         >
           <span className="truncate">gitshow.io/{publicSlug}</span>
-          <Icon icon={ArrowUpRight01Icon} className="size-3" />
+          <Icon
+            icon={ArrowUpRight01Icon}
+            className={cn(
+              "size-3 transition-transform duration-[180ms] ease-[cubic-bezier(0.215,0.61,0.355,1)]",
+              "group-hover:-translate-y-px group-hover:translate-x-px",
+            )}
+          />
         </Link>
       ) : null}
     </div>
@@ -366,75 +385,117 @@ function SidebarLink({
   active: boolean;
   onNavigate: () => void;
 }) {
-  // Active = solid muted bg + thin left accent strip + foreground text/icon.
-  // Hover = subtle bg-color only, single property transition.
+  // Hover = bg-color fade only. The active highlight is rendered
+  // via motion.span+layoutId so it morphs smoothly when the route
+  // changes — no two rows are ever both "active" mid-transition.
   const className = cn(
     "group relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium leading-none",
-    "transition-[background-color,color] duration-150 ease",
+    "transition-[color,background-color] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+    "outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset",
     active
-      ? "bg-foreground/[0.06] text-foreground"
+      ? "text-foreground"
       : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground",
   );
 
-  const indicator = active ? (
-    <span
-      aria-hidden
-      className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-r-full bg-foreground"
-    />
+  const highlight = active ? (
+    <>
+      <motion.span
+        layoutId="dashboard-nav-bg"
+        aria-hidden
+        className="absolute inset-0 rounded-md bg-foreground/[0.06]"
+        transition={{ type: "spring", duration: 0.34, bounce: 0.12 }}
+      />
+      <motion.span
+        layoutId="dashboard-nav-indicator"
+        aria-hidden
+        className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-r-full bg-foreground"
+        transition={{ type: "spring", duration: 0.34, bounce: 0.12 }}
+      />
+    </>
   ) : null;
 
   const iconNode = (
     <Icon
       icon={item.icon}
       className={cn(
-        "size-4",
-        active ? "text-foreground" : "text-muted-foreground/70",
+        "relative size-4 transition-colors duration-[140ms]",
+        active
+          ? "text-foreground"
+          : "text-muted-foreground/70 group-hover:text-foreground/80",
       )}
     />
   );
 
+  const labelNode = <span className="relative">{item.label}</span>;
+
   if (item.external) {
     return (
       <a href={item.href} className={className} onClick={onNavigate}>
-        {indicator}
+        {highlight}
         {iconNode}
-        <span>{item.label}</span>
+        {labelNode}
       </a>
     );
   }
 
   return (
     <Link href={item.href} className={className} onClick={onNavigate}>
-      {indicator}
+      {highlight}
       {iconNode}
-      <span>{item.label}</span>
+      {labelNode}
     </Link>
   );
 }
 
 /**
  * Two-state sun/moon toggle styled to match the sidebar's nav-row
- * footprint. Avoids the orphan-icon-button look the prior layout had.
+ * footprint. Uses flipTheme() so transitions don't all fire at
+ * once on theme change (see DESIGN.md §10).
+ *
+ * The icon swap is wrapped in a brief rotation+fade — feels like
+ * the icon morphs rather than snapping. Subtle but noticeable.
  */
 function ThemeToggle() {
   const { theme, setTheme, resolvedTheme } = useTheme();
+  const id = useId();
   const isDark =
     theme === "dark" || (theme === "system" && resolvedTheme === "dark");
   return (
     <button
       type="button"
-      onClick={() => setTheme(isDark ? "light" : "dark")}
+      onClick={() => flipTheme(setTheme, isDark ? "light" : "dark")}
       aria-label="Toggle theme"
       title={isDark ? "Switch to light" : "Switch to dark"}
       className={cn(
-        "inline-flex size-9 items-center justify-center rounded-md",
+        "group relative inline-flex size-9 items-center justify-center overflow-hidden rounded-md",
         "text-muted-foreground hover:text-foreground",
-        "transition-[background-color,color] duration-150 ease",
-        "hover:bg-foreground/[0.04]",
+        "transition-[background-color,color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+        "hover:bg-foreground/[0.06] active:scale-90 active:duration-[80ms]",
+        "outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
       )}
     >
-      <Icon icon={SunIcon} className="size-4 hidden dark:block" />
-      <Icon icon={MoonIcon} className="size-4 dark:hidden" />
+      <span
+        key={`${id}-sun`}
+        className={cn(
+          "absolute inset-0 grid place-items-center transition-all duration-[280ms] ease-[cubic-bezier(0.215,0.61,0.355,1)]",
+          isDark
+            ? "rotate-0 scale-100 opacity-100"
+            : "rotate-45 scale-50 opacity-0",
+        )}
+      >
+        <Icon icon={SunIcon} className="size-4" />
+      </span>
+      <span
+        key={`${id}-moon`}
+        className={cn(
+          "absolute inset-0 grid place-items-center transition-all duration-[280ms] ease-[cubic-bezier(0.215,0.61,0.355,1)]",
+          isDark
+            ? "-rotate-45 scale-50 opacity-0"
+            : "rotate-0 scale-100 opacity-100",
+        )}
+      >
+        <Icon icon={MoonIcon} className="size-4" />
+      </span>
     </button>
   );
 }

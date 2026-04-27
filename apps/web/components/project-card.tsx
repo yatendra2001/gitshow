@@ -86,7 +86,14 @@ export function ProjectCard({
   return (
     <div
       className={cn(
-        "group relative flex flex-col h-full border border-border rounded-xl overflow-hidden hover:ring-2 hover:ring-muted transition-all duration-200",
+        "group relative flex flex-col h-full border border-border rounded-xl overflow-hidden",
+        // Premium hover: -1px lift + soft drop + slight border tint.
+        // Active = bounce-back. Hover effects gated to fine pointers
+        // so touch devices don't get a stuck-hover state.
+        "transition-[transform,box-shadow,border-color] duration-[180ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+        "hover:border-foreground/15 hover:shadow-[0_2px_4px_-2px_oklch(0_0_0_/_0.08),0_8px_24px_-8px_oklch(0_0_0_/_0.12)]",
+        "[@media(hover:hover)_and_(pointer:fine)]:hover:-translate-y-px",
+        "active:translate-y-0 active:duration-[80ms]",
         className,
       )}
     >

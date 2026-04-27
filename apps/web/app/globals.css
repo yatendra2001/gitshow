@@ -77,6 +77,89 @@
       opacity: 0;
     }
   }
+
+  /* ─── Motion design tokens ────────────────────────────────────────
+   *
+   * One source of truth for every easing curve, duration, and
+   * spring used across the app. See DESIGN.md for the decision
+   * tree (which curve to use when, etc.). Always reference these
+   * tokens — don't hand-roll cubic-beziers in components. */
+
+  /* Easing — entering / exiting screen (most common) */
+  --ease-out-quad:    cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  --ease-out-cubic:   cubic-bezier(0.215, 0.61, 0.355, 1);
+  --ease-out-quart:   cubic-bezier(0.165, 0.84, 0.44, 1);
+  --ease-out-quint:   cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-out-expo:    cubic-bezier(0.19, 1, 0.22, 1);
+  --ease-out-circ:    cubic-bezier(0.075, 0.82, 0.165, 1);
+
+  /* Easing — on-screen movement / morphing */
+  --ease-in-out-quad:  cubic-bezier(0.455, 0.03, 0.515, 0.955);
+  --ease-in-out-cubic: cubic-bezier(0.645, 0.045, 0.355, 1);
+  --ease-in-out-quart: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-in-out-quint: cubic-bezier(0.86, 0, 0.07, 1);
+  --ease-in-out-expo:  cubic-bezier(1, 0, 0, 1);
+
+  /* Easing — gentle hover / color changes */
+  --ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Durations (use the tag, not the ms) */
+  --duration-instant: 80ms;   /* tap feedback, focus rings */
+  --duration-fast:    140ms;  /* hover, color transitions */
+  --duration-base:    220ms;  /* dropdowns, tooltips, popovers */
+  --duration-slow:    320ms;  /* dialogs, drawers */
+  --duration-page:    420ms;  /* page-level reveals */
+
+  /* Premium hover tokens — soft lift + ring */
+  --shadow-lift-sm: 0 1px 2px -1px oklch(from var(--foreground) l c h / 0.10),
+                    0 2px 6px -2px oklch(from var(--foreground) l c h / 0.06);
+  --shadow-lift-md: 0 2px 4px -2px oklch(from var(--foreground) l c h / 0.10),
+                    0 8px 24px -8px oklch(from var(--foreground) l c h / 0.12),
+                    0 0 0 1px oklch(from var(--foreground) l c h / 0.06);
+  --shadow-lift-lg: 0 4px 8px -4px oklch(from var(--foreground) l c h / 0.12),
+                    0 16px 40px -12px oklch(from var(--foreground) l c h / 0.16),
+                    0 0 0 1px oklch(from var(--foreground) l c h / 0.06);
+
+  /* Hairline border — half pixel on retina, 1px elsewhere */
+  --border-hairline: 1px;
+
+  /* Page-level reveal — used by motion-primitives and section reveals */
+  --animate-reveal-up: reveal-up var(--duration-base) var(--ease-out-cubic) both;
+  --animate-reveal-fade: reveal-fade var(--duration-base) var(--ease-out-cubic) both;
+  --animate-shimmer: shimmer 2.4s linear infinite;
+  --animate-shine: shine 1.6s ease-out;
+
+  @keyframes reveal-up {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 8px, 0);
+    }
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  @keyframes reveal-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  @keyframes shine {
+    0% { transform: translate3d(-120%, 0, 0) skewX(-12deg); }
+    100% { transform: translate3d(220%, 0, 0) skewX(-12deg); }
+  }
+}
+
+@media (min-resolution: 2dppx) {
+  :root {
+    --border-hairline: 0.5px;
+  }
 }
 
 /* ─── Pipeline / scan-progress motion utilities ──────────────────────
@@ -97,6 +180,140 @@
  * keeps them overridable from the className side.
  */
 @layer utilities {
+  /* ─── Premium micro-interaction primitives ──────────────────────
+   * Reusable utilities. Components prefer these over hand-rolled
+   * cubic-beziers so behaviour stays consistent across the app. */
+
+  /* Soft hover lift — for cards / interactive surfaces */
+  .lift-on-hover {
+    transition:
+      transform var(--duration-fast) var(--ease-soft),
+      box-shadow var(--duration-fast) var(--ease-soft),
+      border-color var(--duration-fast) var(--ease-soft);
+    will-change: transform;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .lift-on-hover:hover {
+      transform: translate3d(0, -1px, 0);
+      box-shadow: var(--shadow-lift-md);
+    }
+  }
+  .lift-on-hover:active {
+    transform: translate3d(0, 0, 0);
+    transition-duration: var(--duration-instant);
+  }
+
+  /* Press feedback — scale-down on active. Pair with any clickable. */
+  .press {
+    transition: transform var(--duration-fast) var(--ease-soft);
+    will-change: transform;
+  }
+  .press:active {
+    transform: scale(0.97);
+    transition-duration: var(--duration-instant);
+  }
+
+  /* Soft hover background — subtle bg fade on hover (specific
+   * properties only; never `transition: all`). Pair with a
+   * background-color class on hover. */
+  .soft-hover {
+    transition:
+      background-color var(--duration-fast) var(--ease-soft),
+      color var(--duration-fast) var(--ease-soft),
+      border-color var(--duration-fast) var(--ease-soft);
+  }
+
+  /* Premium focus ring — replaces the default outline. Use on
+   * any interactive element that doesn't already use the button's
+   * focus-visible:ring tokens. */
+  .focus-ring {
+    outline: none;
+  }
+  .focus-ring:focus-visible {
+    box-shadow:
+      0 0 0 2px var(--background),
+      0 0 0 4px oklch(from var(--foreground) l c h / 0.20);
+    transition: box-shadow var(--duration-fast) var(--ease-soft);
+  }
+
+  /* Reveal-on-scroll utility — pairs with IntersectionObserver in
+   * <Reveal>. JSX adds .is-visible when the element enters view. */
+  .reveal {
+    opacity: 0;
+    transform: translate3d(0, 12px, 0);
+    transition:
+      opacity var(--duration-base) var(--ease-out-cubic),
+      transform var(--duration-base) var(--ease-out-cubic);
+    will-change: opacity, transform;
+  }
+  .reveal.is-visible {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+
+  /* Shine sweep — for premium CTAs. Layer ::after on a relative
+   * container with overflow-hidden. */
+  .shine-on-hover {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+  }
+  .shine-on-hover::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 30%,
+      oklch(1 0 0 / 0.18) 50%,
+      transparent 70%
+    );
+    transform: translate3d(-120%, 0, 0) skewX(-12deg);
+    pointer-events: none;
+    z-index: 1;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .shine-on-hover:hover::after {
+      animation: shine 0.9s var(--ease-out-cubic);
+    }
+  }
+
+  /* Tabular numbers — counters, prices, timers. Prevents jitter. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Hairline border — adapts to retina. */
+  .border-hairline {
+    border-width: var(--border-hairline);
+  }
+
+  /* Mask-fade for scrollers (top/bottom edges) */
+  .mask-fade-y {
+    mask-image: linear-gradient(
+      to bottom,
+      transparent 0,
+      black 24px,
+      black calc(100% - 24px),
+      transparent 100%
+    );
+  }
+
+  /* Subtle grain — adds film-grain texture for premium surfaces */
+  .grain {
+    position: relative;
+  }
+  .grain::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    opacity: 0.4;
+    mix-blend-mode: overlay;
+    z-index: 0;
+  }
+
   .gs-enter {
     animation: gs-enter 220ms cubic-bezier(0.215, 0.61, 0.355, 1) both;
   }
@@ -190,9 +407,28 @@
   .gs-fade,
   .gs-pulse,
   .gs-caret,
-  .gs-stream > * {
+  .gs-stream > *,
+  .reveal,
+  .lift-on-hover,
+  .press,
+  .shine-on-hover::after {
     animation: none !important;
+    transition: none !important;
+    transform: none !important;
   }
+  .reveal {
+    opacity: 1;
+  }
+}
+
+/* Disable transitions during theme switches — prevents the
+ * "everything fades at once" flash when next-themes flips the
+ * .dark class. The .theme-switching class is added briefly by
+ * the toggle, then removed on the next frame. */
+.theme-switching,
+.theme-switching * {
+  transition: none !important;
+  animation: none !important;
 }
 
 :root {
@@ -278,8 +514,59 @@
     @apply border-border;
   }
 
+  html {
+    /* Premium font rendering — applies everywhere. */
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    /* Smooth scrolling for in-page anchors (still respects
+     * prefers-reduced-motion via the rule below). */
+    scroll-behavior: smooth;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+
   body {
     @apply bg-background text-foreground;
+    /* Slight kerning improvement for sans-serif body copy. */
+    font-feature-settings: "ss01", "ss02", "cv01", "cv11";
+  }
+
+  /* Tighter tracking on display headings — pairs with text-balance.
+   * Marketing & dashboard headings already use tracking-tight /
+   * tracking-tighter; this is the unstyled fallback. */
+  h1, h2, h3 {
+    text-wrap: balance;
+  }
+
+  p, li {
+    text-wrap: pretty;
+  }
+
+  /* Numbers everywhere: tabular by default in code & badges so
+   * counters stop jittering. */
+  code, kbd, samp, [data-tabular] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Selection styling — premium accent (subtle, not loud). */
+  ::selection {
+    background-color: oklch(from var(--foreground) l c h / 0.18);
+    color: var(--foreground);
+  }
+
+  /* Native focus outline — only when keyboard-driven. */
+  :focus-visible {
+    outline: 2px solid oklch(from var(--ring) l c h / 0.6);
+    outline-offset: 2px;
+  }
+  /* Mouse / touch don't show the outline. */
+  :focus:not(:focus-visible) {
+    outline: none;
   }
 
   /* Shiki dual theme support */

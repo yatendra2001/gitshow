@@ -96,9 +96,9 @@ export function KpiCard({
   return (
     <div
       className={cn(
-        "relative overflow-hidden rounded-2xl border border-border/50 bg-card/60 p-5",
-        "transition-[background-color] duration-150 ease",
-        "hover:bg-card",
+        "group relative overflow-hidden rounded-2xl border border-border/50 bg-card/60 p-5",
+        "transition-[background-color,border-color,box-shadow] duration-[180ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+        "hover:bg-card hover:border-border/70 hover:shadow-[0_2px_8px_-4px_oklch(0_0_0_/_0.06)]",
       )}
     >
       <div className="flex items-start justify-between gap-2">
@@ -395,8 +395,8 @@ export function RecentActivity({ rows }: { rows: RecentVisitorRow[] }) {
               className={cn(
                 "hidden sm:inline-flex shrink-0 self-center items-center rounded-md px-2 py-1",
                 "text-[10.5px] font-mono text-muted-foreground/80",
-                "transition-[background-color,color] duration-150 ease",
-                "hover:bg-foreground/[0.04] hover:text-foreground",
+                "transition-[background-color,color] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+                "hover:bg-foreground/[0.06] hover:text-foreground",
               )}
             >
               {r.path.length > 32 ? r.path.slice(0, 32) + "…" : r.path}

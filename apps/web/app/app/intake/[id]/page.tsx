@@ -209,9 +209,24 @@ export default function IntakePage({
               type="button"
               onClick={onSubmit}
               disabled={submitting}
-              className="inline-flex items-center justify-center rounded-xl bg-foreground text-background px-5 py-3 text-[14px] font-medium shadow-[var(--shadow-card)] transition-opacity duration-200 hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed min-h-11"
+              className={
+                "inline-flex items-center justify-center min-h-11 rounded-xl bg-foreground text-background px-5 py-3 text-[14px] font-medium select-none " +
+                "shadow-[inset_0_1px_0_rgb(255_255_255_/_0.10),0_1px_2px_-1px_oklch(0_0_0_/_0.20)] " +
+                "transition-[background-color,box-shadow,transform,opacity] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] " +
+                "hover:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.14),0_2px_8px_-3px_oklch(0_0_0_/_0.24)] " +
+                "active:scale-[0.97] active:duration-[80ms] " +
+                "outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background " +
+                "disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
+              }
             >
-              {submitting ? "Starting scan…" : "Start scan"}
+              {submitting ? (
+                <span className="inline-flex items-center gap-2">
+                  <span aria-hidden className="size-3.5 rounded-full border-[1.5px] border-background/40 border-t-background animate-spin" />
+                  <span className="tabular">Starting scan…</span>
+                </span>
+              ) : (
+                "Start scan"
+              )}
             </button>
           </div>
           <p className="text-[12px] text-muted-foreground/80">
@@ -316,7 +331,7 @@ function ProfileInputsCard({
             <button
               type="button"
               onClick={addBlog}
-              className="text-[12px] text-muted-foreground hover:text-foreground transition-colors underline underline-offset-2"
+              className="text-[12px] text-muted-foreground underline underline-offset-2 transition-colors duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background rounded-sm"
             >
               + Add another
             </button>
@@ -345,7 +360,7 @@ function ProfileInputsCard({
                   type="button"
                   onClick={() => removeBlog(i)}
                   aria-label={`Remove blog URL ${i + 1}`}
-                  className="rounded-xl border border-border/40 px-3 py-2 text-[13px] text-muted-foreground hover:text-foreground hover:border-border transition-colors min-h-11"
+                  className="min-h-11 rounded-xl border border-border/40 px-3 py-2 text-[13px] text-muted-foreground select-none transition-[background-color,border-color,color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:text-foreground hover:border-foreground/30 hover:bg-foreground/[0.04] active:scale-[0.97] active:duration-[80ms] outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 >
                   ✕
                 </button>
@@ -471,7 +486,7 @@ function SkipReposCard({
                   key={fullName}
                   type="button"
                   onClick={() => toggle(fullName)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--destructive)]/30 bg-[var(--destructive)]/[0.06] px-2 py-1 text-[12px] font-mono text-foreground hover:bg-[var(--destructive)]/[0.12] transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-[var(--destructive)]/30 bg-[var(--destructive)]/[0.06] px-2 py-1 text-[12px] font-mono text-foreground select-none transition-[background-color,border-color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:bg-[var(--destructive)]/[0.12] hover:border-[var(--destructive)]/50 active:scale-[0.97] active:duration-[80ms] outline-none focus-visible:ring-2 focus-visible:ring-destructive/40"
                   aria-label={`Remove ${fullName} from skip list`}
                 >
                   {fullName}
@@ -503,10 +518,11 @@ function SkipReposCard({
                   <label
                     key={r.full_name}
                     className={[
-                      "flex items-start gap-3 px-3 py-2 text-[12.5px] cursor-pointer transition-colors",
+                      "flex items-start gap-3 px-3 py-2 text-[12.5px] cursor-pointer select-none",
+                      "transition-[background-color,border-color] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
                       isSel
-                        ? "bg-[var(--destructive)]/[0.06]"
-                        : "hover:bg-accent/30",
+                        ? "bg-[var(--destructive)]/[0.06] hover:bg-[var(--destructive)]/[0.10]"
+                        : "hover:bg-foreground/[0.04]",
                     ].join(" ")}
                   >
                     <input
