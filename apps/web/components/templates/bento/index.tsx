@@ -1,56 +1,59 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import Markdown from "react-markdown";
 import { motion } from "motion/react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
+import { useState } from "react";
 import { useResume, useHandle } from "@/components/data-provider";
 import { allSocials } from "@gitshow/shared/resume";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { LogoOrInitials } from "@/components/logo-or-initials";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { resolveSkillIcon } from "@/components/skill-icons";
-import { ArrowUpRight, Sparkles } from "lucide-react";
+import { Icons } from "@/components/icons";
+import { formatResumeDate, formatResumeDateRange } from "@/lib/format-date";
+import {
+  ArrowUpRight,
+  Check,
+  Copy,
+  Github,
+  Linkedin,
+  Mail,
+  Twitter,
+  Youtube,
+} from "lucide-react";
 
 /**
- * Bento — Apple/Vercel-style bento grid.
+ * Bento — designer-portfolio bento.
  *
- * Cards of intentionally varied size that tile together with no
- * leftover empty columns. Rows are composed dynamically based on what
- * data the user has — hackathons + publications + buildLog only render
- * when present, and the row layout adapts so we never have a 4-col card
- * sitting next to 8 empty columns.
+ * Black background, restrained typography, real photos and project
+ * mockups as the visual content. The hero is a big bold typographic
+ * name (Wayne Harkwood reference). The avatar gets its own real-photo
+ * card. The experience column shows full entries inline, not a
+ * minified timeline. "FEATURED WORK" labels a project mockup grid,
+ * skills become an icon row, socials become a 2x3 icon grid, and
+ * a "Wanna get in touch?" card holds the primary email CTA with a
+ * one-tap copy button.
  *
- * Best for: full-stack devs, product engineers, and visual thinkers.
+ * Best for: full-stack devs, product engineers, and designers who
+ * care about visual rhythm.
  */
 const STAGGER = 0.04;
+const ACCENT = "#3b82f6"; // blue-500 — single accent, sparing use
 
 export default function BentoTemplate() {
   const r = useResume();
   const handle = useHandle();
   const hidden = new Set(r.sections.hidden);
   const socials = allSocials(r);
-  const projects = r.projects;
-  const featured = projects[0];
-  const sideProjects = projects.slice(1, 4);
-  const stats = useMemo(
-    () => computeStats(r),
-    [r.skills.length, r.projects.length, r.work.length, r.buildLog.length, r.publications.length],
-  );
 
   const showWork = !hidden.has("work") && r.work.length > 0;
   const showEdu = !hidden.has("education") && r.education.length > 0;
   const showHack = !hidden.has("hackathons") && r.hackathons.length > 0;
   const showPubs = !hidden.has("publications") && r.publications.length > 0;
   const showBuild = !hidden.has("buildLog") && r.buildLog.length > 0;
+  const showProjects = !hidden.has("projects") && r.projects.length > 0;
 
-  // Dynamic row composition for "extras": fill 12 cols regardless of
-  // how many of hackathons/publications/buildLog are present.
+  const projects = r.projects;
+  const featuredProjects = projects.slice(0, 5);
+
   const extras = [
     showHack && { id: "hack" as const },
     showPubs && { id: "pubs" as const },
@@ -64,131 +67,149 @@ export default function BentoTemplate() {
         : "col-span-12 md:col-span-4";
 
   return (
-    <div className="min-h-dvh bg-[#070708] text-neutral-100 selection:bg-violet-400/30 antialiased">
+    <div className="min-h-dvh bg-[#0a0a0a] text-neutral-100 antialiased selection:bg-blue-500/30">
       <Aurora />
 
-      <div className="relative z-10 mx-auto max-w-[1400px] px-3 sm:px-6 py-6 sm:py-10">
-        <TopBar handle={handle} socials={socials} />
+      <TopBar handle={handle} />
 
-        {/* Density goes up: smaller min row height, tighter gaps */}
-        <div className="grid grid-cols-12 gap-3 auto-rows-[100px]">
-          {/* Row 1: hero (8) + avatar/currently combo (4) */}
-          <Card className="col-span-12 md:col-span-8 row-span-3 p-6 sm:p-9 flex flex-col justify-between" tone="bright" delay={1}>
-            <Hero r={r} />
+      <div className="relative z-10 mx-auto max-w-[1280px] px-3 sm:px-5 pb-24">
+        <div className="grid grid-cols-12 gap-3 auto-rows-[110px]">
+          {/* Row 1 — hero name + avatar + experience column */}
+          <Card
+            className="col-span-12 md:col-span-7 row-span-3 p-7 sm:p-10 flex flex-col justify-between"
+            delay={1}
+          >
+            <NameDisplay name={r.person.name} />
+            <HeroFooter
+              description={r.person.description}
+              location={r.person.location}
+            />
           </Card>
 
-          <Card className="col-span-6 md:col-span-4 row-span-3 p-0 overflow-hidden" delay={2}>
+          <Card
+            className="col-span-6 md:col-span-2 row-span-3 p-0 overflow-hidden"
+            delay={2}
+          >
             <AvatarCard r={r} />
           </Card>
 
-          {/* Row 2: 4-up stat strip — always fills 12 */}
-          {stats.map((s, i) => (
+          {showWork && (
             <Card
-              key={s.label}
-              className="col-span-6 md:col-span-3 row-span-1 px-4 py-3 flex flex-col justify-between"
-              delay={3 + i}
-              tone={s.tone}
+              className="col-span-6 md:col-span-3 row-span-5 p-6 sm:p-7 flex flex-col"
+              delay={3}
             >
-              <StatCard {...s} />
-            </Card>
-          ))}
-
-          {/* Row 3: about (7) + featured project (5) — fills 12 always.
-               If no featured project, about expands to full width. */}
-          {featured ? (
-            <>
-              <Card className="col-span-12 md:col-span-7 row-span-3 p-5 sm:p-6" delay={7}>
-                <AboutCard summary={r.person.summary} />
-              </Card>
-              <Card className="col-span-12 md:col-span-5 row-span-3 p-0 overflow-hidden group" delay={8}>
-                <FeaturedProjectCard project={featured} />
-              </Card>
-            </>
-          ) : (
-            <Card className="col-span-12 row-span-2 p-5 sm:p-6" delay={7}>
-              <AboutCard summary={r.person.summary} />
+              <ExperienceColumn work={r.work.slice(0, 3)} />
             </Card>
           )}
 
-          {/* Row 4: skills (7) + currently (5) OR skills (12) if no current work.
-               Skills row count adapts to skill count. */}
-          {r.skills.length > 0 && r.work[0] ? (
-            <>
-              <Card className="col-span-12 md:col-span-7 row-span-2 p-5" delay={9}>
-                <SkillsCard skills={r.skills} />
-              </Card>
-              <Card className="col-span-12 md:col-span-5 row-span-2 p-5" delay={10} tone="bright">
-                <CurrentlyCard work={r.work[0]} />
-              </Card>
-            </>
-          ) : r.skills.length > 0 ? (
-            <Card className="col-span-12 row-span-2 p-5" delay={9}>
-              <SkillsCard skills={r.skills} />
-            </Card>
-          ) : r.work[0] ? (
-            <Card className="col-span-12 row-span-1 p-5" delay={10} tone="bright">
-              <CurrentlyCard work={r.work[0]} compact />
-            </Card>
-          ) : null}
+          {/* Row 2 — about + email CTA (experience continues from row 1) */}
+          <Card
+            className="col-span-12 md:col-span-5 row-span-2 p-6 sm:p-7"
+            delay={4}
+          >
+            <AboutQuote summary={r.person.summary} firstName={r.person.name.split(" ")[0]} />
+          </Card>
 
-          {/* Row 5: side projects — fills 12 by sizing dynamically */}
-          {sideProjects.length > 0 && (() => {
-            const sideSpanClass =
-              sideProjects.length === 1
-                ? "col-span-12 md:col-span-12"
-                : sideProjects.length === 2
-                  ? "col-span-12 md:col-span-6"
-                  : "col-span-12 md:col-span-4";
-            return sideProjects.map((p, i) => (
+          <Card
+            className="col-span-12 md:col-span-4 row-span-2 p-6 sm:p-7"
+            delay={5}
+          >
+            <EmailCTA email={r.contact.email} />
+          </Card>
+
+          {/* Row 3 — Featured Work label + first 2 project mockups */}
+          {showProjects && (
+            <>
               <Card
-                key={p.id}
-                className={`${sideSpanClass} row-span-2 p-0 overflow-hidden group`}
-                delay={11 + i}
+                className="col-span-12 md:col-span-4 row-span-2 p-6 sm:p-7 flex flex-col justify-between"
+                delay={6}
               >
-                <SideProjectCard project={p} />
+                <FeaturedLabel count={featuredProjects.length} />
               </Card>
-            ));
-          })()}
+              {featuredProjects.slice(0, 2).map((p, i) => (
+                <Card
+                  key={p.id}
+                  className="col-span-6 md:col-span-4 row-span-2 p-0 overflow-hidden group"
+                  delay={7 + i}
+                >
+                  <ProjectImageCard project={p} />
+                </Card>
+              ))}
 
-          {/* Row 6: career (7) + education (5) — both fill, regardless of
-               how short education is, by setting row-span = 2 (compact) */}
-          {showWork && showEdu && (
-            <>
-              <Card className="col-span-12 md:col-span-7 row-span-3 p-5" delay={14}>
-                <CareerCard work={r.work.slice(0, 6)} />
-              </Card>
-              <Card className="col-span-12 md:col-span-5 row-span-3 p-5" delay={15}>
-                <EducationCard education={r.education} />
-              </Card>
+              {/* Row 4 — remaining featured projects (3-up grid) */}
+              {featuredProjects.slice(2, 5).map((p, i) => (
+                <Card
+                  key={p.id}
+                  className="col-span-6 md:col-span-4 row-span-2 p-0 overflow-hidden group"
+                  delay={9 + i}
+                >
+                  <ProjectImageCard project={p} />
+                </Card>
+              ))}
             </>
           )}
-          {showWork && !showEdu && (
-            <Card className="col-span-12 row-span-3 p-5" delay={14}>
-              <CareerCard work={r.work.slice(0, 6)} />
-            </Card>
-          )}
-          {!showWork && showEdu && (
-            <Card className="col-span-12 row-span-2 p-5" delay={15}>
-              <EducationCard education={r.education} />
-            </Card>
-          )}
 
-          {/* Row 7: extras — dynamically sized to fill 12 */}
-          {extras.map((ex, i) => (
+          {/* Row 5 — skills + socials */}
+          {r.skills.length > 0 && (
             <Card
-              key={ex.id}
-              className={`${extraSpanClass} row-span-3 p-5`}
-              delay={16 + i}
+              className="col-span-12 md:col-span-7 row-span-2 p-6 sm:p-7"
+              delay={12}
             >
-              {ex.id === "hack" && <HackathonsCard hackathons={r.hackathons} />}
-              {ex.id === "pubs" && <PublicationsCard publications={r.publications} />}
-              {ex.id === "build" && <BuildLogCard buildLog={r.buildLog} />}
+              <SkillsRow skills={r.skills} />
             </Card>
-          ))}
+          )}
+          {socials.length > 0 && (
+            <Card
+              className="col-span-12 md:col-span-5 row-span-2 p-6 sm:p-7"
+              delay={13}
+            >
+              <SocialsGrid socials={socials} email={r.contact.email} />
+            </Card>
+          )}
 
-          {/* Final: contact CTA */}
-          <Card className="col-span-12 row-span-2 p-5 sm:p-7" tone="hero" delay={20}>
-            <ContactCard email={r.contact.email} socials={socials} name={r.person.name} />
+          {/* Row 6 — education + extras */}
+          {showEdu && (
+            <Card
+              className={
+                extras.length > 0
+                  ? "col-span-12 md:col-span-5 row-span-2 p-6 sm:p-7"
+                  : "col-span-12 row-span-2 p-6 sm:p-7"
+              }
+              delay={14}
+            >
+              <EducationList education={r.education.slice(0, 3)} />
+            </Card>
+          )}
+
+          {extras.map((ex, i) => {
+            const cls =
+              showEdu && extras.length > 0
+                ? extras.length === 1
+                  ? "col-span-12 md:col-span-7 row-span-2 p-6 sm:p-7"
+                  : extras.length === 2
+                    ? "col-span-12 md:col-span-7 row-span-2 p-6 sm:p-7"
+                    : `${extraSpanClass} row-span-2 p-6 sm:p-7`
+                : `${extraSpanClass} row-span-2 p-6 sm:p-7`;
+            return (
+              <Card key={ex.id} className={cls} delay={15 + i}>
+                {ex.id === "hack" && <HackathonsList hackathons={r.hackathons} />}
+                {ex.id === "pubs" && <PublicationsList publications={r.publications} />}
+                {ex.id === "build" && <BuildLogList buildLog={r.buildLog} />}
+              </Card>
+            );
+          })}
+
+          {/* Row 7 — final contact band */}
+          <Card
+            className="col-span-12 row-span-2 p-7 sm:p-10 overflow-hidden relative"
+            delay={20}
+            tone="hero"
+          >
+            <ContactBand
+              email={r.contact.email}
+              socials={socials}
+              name={r.person.name}
+            />
           </Card>
         </div>
       </div>
@@ -196,87 +217,44 @@ export default function BentoTemplate() {
   );
 }
 
-/* ─────────────────────────  Card primitives  ────────────────────────── */
+/* ─────────────────────────  Card primitive  ────────────────────────── */
 
-type Tone = "default" | "bright" | "hero";
+type Tone = "default" | "hero";
 
 function Card({
   children,
   className = "",
-  tone = "default",
   delay = 0,
+  tone = "default",
 }: {
   children: React.ReactNode;
   className?: string;
-  tone?: Tone;
   delay?: number;
+  tone?: Tone;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  const [coords, setCoords] = useState<{ x: number; y: number } | null>(null);
-
-  useEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const onMove = (e: PointerEvent) => {
-      const rect = el.getBoundingClientRect();
-      setCoords({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-    };
-    const onLeave = () => setCoords(null);
-    el.addEventListener("pointermove", onMove);
-    el.addEventListener("pointerleave", onLeave);
-    return () => {
-      el.removeEventListener("pointermove", onMove);
-      el.removeEventListener("pointerleave", onLeave);
-    };
-  }, []);
-
-  const baseBg =
-    tone === "bright"
-      ? "bg-gradient-to-br from-violet-500/[0.10] via-fuchsia-500/[0.04] to-transparent"
-      : tone === "hero"
-        ? "bg-gradient-to-br from-violet-500/[0.18] via-transparent to-cyan-500/[0.10]"
-        : "bg-white/[0.025]";
-
-  const spotlight: CSSProperties | undefined =
-    coords && tone !== "hero"
-      ? {
-          background: `radial-gradient(360px circle at ${coords.x}px ${coords.y}px, rgba(167,139,250,0.10), transparent 60%)`,
-        }
-      : undefined;
-
+  const heroTone =
+    tone === "hero"
+      ? "bg-[radial-gradient(ellipse_at_top_left,rgba(59,130,246,0.10),transparent_60%),radial-gradient(ellipse_at_bottom_right,rgba(14,165,233,0.06),transparent_60%)]"
+      : "bg-[#101010]";
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8, filter: "blur(6px)" }}
+      initial={{ opacity: 0, y: 6, filter: "blur(4px)" }}
       whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
       viewport={{ once: true, margin: "-50px" }}
-      transition={{ delay: delay * STAGGER, duration: 0.45, ease: "easeOut" }}
-      whileHover={{ y: -2, transition: { duration: 0.15 } }}
-      ref={ref}
-      className={`relative rounded-[18px] border border-white/[0.08] ${baseBg} backdrop-blur-sm shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset,0_20px_50px_-30px_rgba(0,0,0,0.4)] overflow-hidden ${className}`}
+      transition={{ delay: delay * STAGGER, duration: 0.5, ease: "easeOut" }}
+      className={`relative rounded-3xl border border-white/[0.06] ${heroTone} overflow-hidden hover:border-white/[0.10] transition-colors ${className}`}
+      style={{
+        boxShadow: "inset 0 1px 0 0 rgba(255,255,255,0.025)",
+      }}
     >
-      {spotlight && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute inset-0 transition-opacity duration-300"
-          style={spotlight}
-        />
-      )}
       <div className="relative h-full w-full">{children}</div>
     </motion.div>
   );
 }
 
-function CardLabel({
-  children,
-  className = "",
-}: {
-  children: React.ReactNode;
-  className?: string;
-}) {
+function Eyebrow({ children }: { children: React.ReactNode }) {
   return (
-    <div
-      className={`text-[10px] tracking-[0.22em] uppercase text-neutral-400 font-semibold ${className}`}
-    >
+    <div className="text-[11px] font-semibold tracking-[0.22em] uppercase text-neutral-400">
       {children}
     </div>
   );
@@ -287,21 +265,18 @@ function CardLabel({
 function Aurora() {
   return (
     <div aria-hidden className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 1.5, ease: "easeOut" }}
-        className="absolute inset-x-0 top-0 h-[800px]"
+      <div
+        className="absolute inset-x-0 top-0 h-[600px]"
         style={{
           background:
-            "radial-gradient(ellipse 800px 600px at 30% 0%, rgba(167,139,250,0.18), transparent 60%), radial-gradient(ellipse 600px 400px at 70% 10%, rgba(56,189,248,0.10), transparent 60%)",
+            "radial-gradient(ellipse 800px 400px at 30% 0%, rgba(59,130,246,0.10), transparent 60%), radial-gradient(ellipse 600px 300px at 75% 0%, rgba(14,165,233,0.06), transparent 60%)",
         }}
       />
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 opacity-50"
         style={{
           background:
-            "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.025) 1px, transparent 0)",
+            "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.020) 1px, transparent 0)",
           backgroundSize: "32px 32px",
         }}
       />
@@ -309,94 +284,109 @@ function Aurora() {
   );
 }
 
-/* ─────────────────────────  Card content  ────────────────────────── */
+/* ─────────────────────────  Top bar  ────────────────────────── */
 
-function TopBar({
-  handle,
-  socials,
-}: {
-  handle: string;
-  socials: ReturnType<typeof allSocials>;
-}) {
+function TopBar({ handle }: { handle: string }) {
   return (
-    <motion.header
+    <motion.div
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="flex items-center justify-between mb-3"
+      className="relative z-10 mx-auto max-w-[1280px] px-3 sm:px-5 py-5 sm:py-7"
     >
-      <span className="text-[12px] tracking-[0.15em] uppercase text-neutral-500 inline-flex items-center gap-2">
-        <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
-        @{handle}
-      </span>
-      <nav className="flex items-center gap-1.5 text-[12px] text-neutral-300">
-        {socials.slice(0, 4).map((s) => (
+      <div className="flex items-center justify-between rounded-3xl border border-white/[0.06] bg-[#101010] px-5 sm:px-7 h-14">
+        <span className="text-[14px] font-semibold tracking-wide flex items-center gap-2.5">
+          <span
+            aria-hidden
+            className="size-2 rounded-full"
+            style={{
+              background: ACCENT,
+              boxShadow: `0 0 10px ${ACCENT}`,
+            }}
+          />
+          <span className="font-mono text-neutral-300">@{handle}</span>
+        </span>
+        <nav className="flex items-center gap-1 sm:gap-1.5 text-[12.5px] font-medium tracking-wider uppercase text-neutral-300">
           <a
-            key={s.url}
-            href={s.url}
-            target="_blank"
-            rel="noreferrer"
-            className="px-2.5 py-1 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all"
+            href="#about"
+            className="px-2.5 sm:px-3 py-1.5 rounded-full hover:bg-white/[0.06] transition-colors"
           >
-            {s.name}
+            About
           </a>
-        ))}
-      </nav>
-    </motion.header>
+          <a
+            href="#work"
+            className="px-2.5 sm:px-3 py-1.5 rounded-full hover:bg-white/[0.06] transition-colors"
+          >
+            Work
+          </a>
+          <a
+            href="#contact"
+            className="px-2.5 sm:px-3 py-1.5 rounded-full hover:bg-white/[0.06] transition-colors"
+          >
+            Contact
+          </a>
+        </nav>
+      </div>
+    </motion.div>
   );
 }
 
-function Hero({ r }: { r: ReturnType<typeof useResume> }) {
+/* ─────────────────────────  Name display (hero)  ────────────────────────── */
+
+function NameDisplay({ name }: { name: string }) {
+  const tokens = name.split(" ");
   return (
-    <>
-      <div>
-        <CardLabel className="text-violet-300 mb-2.5 inline-flex items-center gap-1.5">
-          <Sparkles className="size-3" />
-          Hello there
-        </CardLabel>
-        <h1 className="text-3xl sm:text-5xl font-semibold tracking-tight leading-[1.02]">
-          I'm{" "}
-          <span className="bg-gradient-to-r from-white via-violet-100 to-violet-300 bg-clip-text text-transparent">
-            {r.person.name}
+    <div>
+      <Eyebrow>Portfolio · {new Date().getFullYear()}</Eyebrow>
+      <h1
+        className="font-bold tracking-[-0.04em] text-white leading-[0.95] mt-5"
+        style={{ fontSize: "clamp(48px, 7.5vw, 96px)" }}
+      >
+        {tokens.map((t, i) => (
+          <span key={i} className="block">
+            {t.toUpperCase()}
           </span>
-          .
-        </h1>
-        <p className="mt-4 text-base sm:text-lg text-neutral-300 max-w-2xl leading-snug">
-          {r.person.description}
-        </p>
-      </div>
-      <div className="flex items-center justify-between flex-wrap gap-3 mt-5">
-        <div className="text-[12.5px] text-neutral-400 inline-flex items-center gap-3">
-          {r.person.location && (
-            <span className="inline-flex items-center gap-1.5">
-              <span aria-hidden>📍</span>
-              {r.person.location}
-            </span>
-          )}
-          <span className="inline-flex items-center gap-1.5">
-            <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Available
-          </span>
-        </div>
-        {r.contact.email && (
-          <a
-            href={`mailto:${r.contact.email}`}
-            className="inline-flex items-center gap-1.5 text-[13px] text-violet-200 hover:text-white transition-colors group"
-          >
-            Get in touch
-            <ArrowUpRight className="size-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
-          </a>
-        )}
-      </div>
-    </>
+        ))}
+      </h1>
+    </div>
   );
 }
+
+function HeroFooter({
+  description,
+  location,
+}: {
+  description: string;
+  location?: string;
+}) {
+  return (
+    <div className="mt-8 flex flex-wrap items-end justify-between gap-3">
+      <p className="text-[14.5px] text-neutral-400 max-w-[44ch] leading-snug">
+        {description}
+      </p>
+      <div className="flex items-center gap-3 text-[12px] font-mono text-neutral-500">
+        {location && (
+          <span className="inline-flex items-center gap-1.5">
+            <span aria-hidden>📍</span>
+            {location}
+          </span>
+        )}
+        <span className="inline-flex items-center gap-1.5">
+          <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          Available
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────  Avatar card  ────────────────────────── */
 
 function AvatarCard({ r }: { r: ReturnType<typeof useResume> }) {
   if (!r.person.avatarUrl) {
     return (
-      <div className="flex items-center justify-center w-full h-full bg-gradient-to-br from-violet-500/15 to-cyan-500/10">
-        <Avatar className="size-32 ring-4 ring-white/10">
+      <div className="flex items-center justify-center w-full h-full bg-[radial-gradient(ellipse_at_center,rgba(59,130,246,0.16),transparent_70%)]">
+        <Avatar className="size-32 ring-1 ring-white/10">
           <AvatarFallback className="text-3xl font-semibold">{r.person.initials}</AvatarFallback>
         </Avatar>
       </div>
@@ -409,77 +399,142 @@ function AvatarCard({ r }: { r: ReturnType<typeof useResume> }) {
         alt={r.person.name}
         className="absolute inset-0 w-full h-full object-cover"
       />
-      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
-      <div className="absolute bottom-3 left-4 right-4">
-        <CardLabel className="text-neutral-300 mb-1">Currently</CardLabel>
-        <div className="text-base font-semibold text-white truncate">
-          {r.work[0]?.title ?? "Building"}
-        </div>
-        <div className="text-[12px] text-neutral-300 truncate">
-          {r.work[0]?.company ?? "Independently"}
-        </div>
+      <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-transparent" />
+    </div>
+  );
+}
+
+/* ─────────────────────────  Experience column  ────────────────────────── */
+
+function ExperienceColumn({
+  work,
+}: {
+  work: ReturnType<typeof useResume>["work"];
+}) {
+  return (
+    <>
+      <h2 className="text-[28px] sm:text-[32px] font-bold tracking-tight text-white mb-1">
+        Experience
+      </h2>
+      <div className="h-px bg-white/[0.08] mb-5" aria-hidden />
+      <ol className="space-y-5 flex-1 overflow-hidden">
+        {work.map((w, i) => (
+          <li key={w.id} className={i > 0 ? "pt-5 border-t border-white/[0.06]" : ""}>
+            <h3 className="text-[15px] font-semibold text-white leading-tight">
+              {w.title}
+            </h3>
+            <div className="text-[13px] text-neutral-400 italic mt-0.5">
+              {w.company}
+              {w.location && (
+                <>
+                  <span className="text-neutral-600"> – </span>
+                  <span>{w.location}</span>
+                </>
+              )}
+            </div>
+            <div className="text-[11.5px] font-mono text-neutral-500 mt-1 tabular-nums">
+              {formatResumeDateRange(w.start, w.end)}
+            </div>
+            {w.description && (
+              <p className="mt-2 text-[12.5px] leading-[1.6] text-neutral-400 line-clamp-4">
+                {stripMd(w.description).split("\n")[0]}
+              </p>
+            )}
+          </li>
+        ))}
+      </ol>
+    </>
+  );
+}
+
+/* ─────────────────────────  About quote  ────────────────────────── */
+
+function AboutQuote({
+  summary,
+  firstName,
+}: {
+  summary: string;
+  firstName?: string;
+}) {
+  // First "real" paragraph from summary, stripped of markdown noise.
+  const firstPara = stripMd(summary).split("\n\n")[0]?.trim() ?? "";
+  return (
+    <div id="about" className="h-full flex flex-col">
+      <p className="text-[15.5px] sm:text-[16px] leading-[1.6] text-neutral-300">
+        Hey, I'm <span className="text-white font-medium">{firstName ?? "I"}</span>.{" "}
+        {firstPara}
+      </p>
+      <div className="mt-auto pt-4 flex items-baseline justify-between">
+        <Eyebrow>About</Eyebrow>
+        <span className="text-[11px] font-mono text-neutral-500">scroll for more ↓</span>
       </div>
     </div>
   );
 }
 
-interface Stat {
-  label: string;
-  value: number;
-  suffix?: string;
-  tone?: Tone;
-}
-function computeStats(r: ReturnType<typeof useResume>): Stat[] {
-  return [
-    { label: "Projects", value: r.projects.length },
-    { label: "Skills", value: r.skills.length },
-    { label: "Roles", value: r.work.length },
-    { label: "Build log", value: r.buildLog.length, suffix: "+" },
-  ];
-}
+/* ─────────────────────────  Email CTA  ────────────────────────── */
 
-function StatCard({ label, value, suffix }: Stat) {
-  return (
-    <>
-      <CardLabel>{label}</CardLabel>
-      <div className="text-2xl sm:text-3xl font-semibold tabular-nums tracking-tight">
-        <CountUp to={value} />
-        {suffix}
+function EmailCTA({ email }: { email?: string }) {
+  if (!email) {
+    return (
+      <div className="h-full flex flex-col justify-between">
+        <div className="text-[26px] sm:text-[32px] font-semibold leading-tight tracking-tight text-white">
+          Wanna get
+          <br />
+          in touch?
+        </div>
+        <Eyebrow>Contact via socials</Eyebrow>
       </div>
-    </>
+    );
+  }
+  return (
+    <a
+      id="contact"
+      href={`mailto:${email}`}
+      className="group h-full flex flex-col justify-between cursor-pointer"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-[26px] sm:text-[32px] font-semibold leading-[1.05] tracking-tight text-white">
+          Wanna get
+          <br />
+          in touch?
+        </div>
+        <ArrowUpRight
+          aria-hidden
+          className="size-7 text-neutral-500 transition-all duration-300 group-hover:rotate-12 group-hover:text-white -mr-1"
+        />
+      </div>
+      <div className="text-[28px] sm:text-[36px] font-bold tracking-[-0.02em] uppercase mt-auto">
+        Email me
+      </div>
+    </a>
   );
 }
 
-function CountUp({ to }: { to: number }) {
-  const [n, setN] = useState(0);
-  useEffect(() => {
-    let raf = 0;
-    const start = performance.now();
-    const dur = 800;
-    const tick = (t: number) => {
-      const progress = Math.min(1, (t - start) / dur);
-      const eased = 1 - Math.pow(1 - progress, 3);
-      setN(Math.round(to * eased));
-      if (progress < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [to]);
-  return <span>{n}</span>;
-}
+/* ─────────────────────────  Featured label  ────────────────────────── */
 
-function AboutCard({ summary }: { summary: string }) {
+function FeaturedLabel({ count }: { count: number }) {
   return (
-    <>
-      <CardLabel className="mb-3">About</CardLabel>
-      <div className="prose prose-invert max-w-none text-[14px] leading-[1.65] text-neutral-300 [&_p]:mb-2.5 [&_p:last-child]:mb-0 [&_a]:text-violet-300 [&_a]:underline-offset-2 hover:[&_a]:underline [&_strong]:text-white overflow-hidden">
-        <Markdown>{summary}</Markdown>
+    <div id="work" className="h-full flex flex-col justify-between">
+      <Eyebrow>{count} selected</Eyebrow>
+      <h2
+        className="font-bold italic tracking-[-0.02em] text-white leading-[0.95]"
+        style={{ fontSize: "clamp(34px, 4.5vw, 56px)" }}
+      >
+        Featured
+        <br />
+        Work
+      </h2>
+      <div className="text-[12.5px] text-neutral-500 leading-snug max-w-[28ch]">
+        A curated selection of recent projects. Click any card to dive in.
       </div>
-    </>
+    </div>
   );
 }
 
-function FeaturedProjectCard({
+/* ─────────────────────────  Project image card  ────────────────────────── */
+
+function ProjectImageCard({
   project,
 }: {
   project: ReturnType<typeof useResume>["projects"][number];
@@ -489,7 +544,7 @@ function FeaturedProjectCard({
       href={project.href ?? "#"}
       target="_blank"
       rel="noreferrer"
-      className="block w-full h-full relative"
+      className="block w-full h-full relative bg-neutral-900"
     >
       {project.video ? (
         <video
@@ -498,81 +553,51 @@ function FeaturedProjectCard({
           loop
           playsInline
           autoPlay
-          className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.05]"
+          className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
         />
       ) : project.image ? (
         <img
           src={project.image}
           alt={project.title}
-          className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.05]"
+          className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
         />
       ) : (
-        <div className="absolute inset-0 bg-gradient-to-br from-violet-500/30 to-cyan-500/20" />
-      )}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
-      <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2 py-1 rounded-full bg-white/15 backdrop-blur-sm text-[10px] font-semibold text-white tracking-wider uppercase">
-        <Sparkles className="size-3" />
-        Featured
-      </div>
-      <div className="absolute bottom-0 left-0 right-0 p-5">
-        <div className="text-[10px] tracking-[0.2em] uppercase text-violet-200 font-semibold mb-1">
-          {project.dates}
+        <div
+          className="absolute inset-0 flex items-center justify-center"
+          style={{
+            background:
+              "linear-gradient(135deg, rgba(30,64,175,0.4), rgba(8,12,20,1))",
+          }}
+        >
+          <span className="font-bold text-2xl text-white/30">
+            {project.title.slice(0, 2).toUpperCase()}
+          </span>
         </div>
-        <h3 className="text-xl sm:text-2xl font-semibold mb-1.5 leading-tight inline-flex items-baseline gap-2">
-          {project.title}
-          <ArrowUpRight className="size-4 transition-transform group-hover:rotate-12" />
-        </h3>
-        <p className="text-[13px] text-neutral-200 line-clamp-2 mb-2.5">{project.description}</p>
-        {project.technologies.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {project.technologies.slice(0, 4).map((t) => (
-              <span
-                key={t}
-                className="text-[10.5px] px-1.5 py-0.5 rounded-full bg-white/15 text-white backdrop-blur-sm"
-              >
-                {t}
-              </span>
-            ))}
-          </div>
-        )}
-      </div>
-    </a>
-  );
-}
-
-function SideProjectCard({
-  project,
-}: {
-  project: ReturnType<typeof useResume>["projects"][number];
-}) {
-  return (
-    <a
-      href={project.href ?? "#"}
-      target="_blank"
-      rel="noreferrer"
-      className="block w-full h-full relative"
-    >
-      {project.image ? (
-        <img
-          src={project.image}
-          alt={project.title}
-          className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.05]"
-        />
-      ) : (
-        <div className="absolute inset-0 bg-gradient-to-br from-neutral-800 to-neutral-900" />
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
-      <div className="absolute bottom-0 left-0 right-0 p-3.5">
-        <h4 className="font-semibold text-white text-sm inline-flex items-baseline gap-1.5">
+      <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-transparent opacity-90" />
+      <div className="absolute bottom-0 left-0 right-0 p-5">
+        <div className="text-[10.5px] font-mono uppercase tracking-[0.2em] text-neutral-300 mb-1">
+          {project.dates}
+          {project.active && (
+            <span className="ml-2 text-emerald-400 inline-flex items-center gap-1">
+              <span
+                aria-hidden
+                className="size-1 rounded-full bg-emerald-400 animate-pulse"
+              />
+              live
+            </span>
+          )}
+        </div>
+        <h3 className="font-semibold text-white text-[18px] leading-tight inline-flex items-baseline gap-2">
           {project.title}
-          <ArrowUpRight className="size-3 opacity-70 transition-transform group-hover:rotate-12" />
-        </h4>
-        <p className="text-[11.5px] text-neutral-300 line-clamp-1 mt-0.5">
-          {stripMd(project.description).split("\n")[0]}
-        </p>
+          <ArrowUpRight
+            aria-hidden
+            className="size-4 opacity-70 transition-transform group-hover:rotate-12"
+          />
+        </h3>
         {project.technologies.length > 0 && (
-          <div className="text-[10.5px] text-neutral-400 mt-1 truncate">
-            {project.technologies.slice(0, 3).join(" · ")}
+          <div className="text-[11px] font-mono text-neutral-400 mt-1.5 truncate">
+            {project.technologies.slice(0, 4).join(" · ")}
           </div>
         )}
       </div>
@@ -580,31 +605,32 @@ function SideProjectCard({
   );
 }
 
-function SkillsCard({
+/* ─────────────────────────  Skills row  ────────────────────────── */
+
+function SkillsRow({
   skills,
 }: {
   skills: ReturnType<typeof useResume>["skills"];
 }) {
   return (
     <>
-      <CardLabel className="mb-3">Toolbox</CardLabel>
-      <div className="flex flex-wrap gap-1.5">
+      <Eyebrow>Stack</Eyebrow>
+      <div className="mt-4 flex flex-wrap gap-2">
         {skills.map((s) => {
           const Icon = resolveSkillIcon(s.iconKey ?? s.name);
           return (
-            <motion.span
+            <span
               key={s.name}
-              whileHover={{ y: -2, transition: { duration: 0.15 } }}
-              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[12px] text-neutral-200 hover:bg-white/10 hover:border-white/20 transition-all cursor-default"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/[0.04] border border-white/[0.06] text-[12.5px] text-neutral-200 hover:bg-white/[0.07] hover:border-white/[0.12] transition-all"
               title={
                 s.usageCount
                   ? `Used in ${s.usageCount} repo${s.usageCount === 1 ? "" : "s"}`
                   : undefined
               }
             >
-              {Icon && <Icon className="size-3" />}
+              {Icon && <Icon className="size-3.5" />}
               {s.name}
-            </motion.span>
+            </span>
           );
         })}
       </div>
@@ -612,91 +638,153 @@ function SkillsCard({
   );
 }
 
-function CurrentlyCard({
-  work,
-  compact = false,
-}: {
-  work: ReturnType<typeof useResume>["work"][number];
-  compact?: boolean;
-}) {
-  return (
-    <>
-      <CardLabel className="text-cyan-300 mb-3">Currently</CardLabel>
-      <div className="flex items-start gap-3">
-        <LogoOrInitials src={work.logoUrl} name={work.company} />
-        <div className="flex-1 min-w-0">
-          <div className="font-semibold text-[15px] text-white">{work.title}</div>
-          <div className="text-[13px] text-neutral-300 truncate">{work.company}</div>
-          <div className="text-[11.5px] text-neutral-500 tabular-nums mt-0.5">
-            since {work.start}
-          </div>
-        </div>
-      </div>
-      {!compact && work.description && (
-        <p className="text-[12.5px] text-neutral-400 leading-relaxed line-clamp-2 mt-3">
-          {stripMd(work.description).split("\n")[0]}
-        </p>
-      )}
-    </>
-  );
-}
+/* ─────────────────────────  Socials grid  ────────────────────────── */
 
-function CareerCard({
-  work,
+function SocialsGrid({
+  socials,
+  email,
 }: {
-  work: ReturnType<typeof useResume>["work"];
+  socials: ReturnType<typeof allSocials>;
+  email?: string;
 }) {
+  // Compose icon list from socials + email.
+  const items: Array<{
+    key: string;
+    href: string;
+    label: string;
+    Icon: React.ComponentType<{ className?: string }>;
+  }> = [];
+  for (const s of socials) {
+    items.push({
+      key: s.url,
+      href: s.url,
+      label: s.name,
+      Icon: socialIcon(s.name),
+    });
+  }
+  if (email) {
+    items.push({ key: "email", href: `mailto:${email}`, label: "Email", Icon: Mail });
+  }
   return (
-    <>
-      <CardLabel className="mb-3">Career timeline</CardLabel>
-      <ol className="space-y-3">
-        {work.map((w, i) => (
-          <li key={w.id} className="flex items-start gap-3">
-            <div className="relative flex-none">
-              <LogoOrInitials src={w.logoUrl} name={w.company} />
-              {i < work.length - 1 && (
-                <span
-                  aria-hidden
-                  className="absolute top-[100%] left-1/2 -translate-x-1/2 h-3 w-px bg-white/10"
-                />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium text-[13.5px]">
-                {w.title}{" "}
-                <span className="text-neutral-500">·</span>{" "}
-                <span className="text-neutral-300">{w.company}</span>
-              </div>
-              <div className="text-[11.5px] text-neutral-500 tabular-nums">
-                {w.start} – {w.end}
-                {w.location && ` · ${w.location}`}
-              </div>
-            </div>
-          </li>
+    <div className="h-full flex flex-col">
+      <Eyebrow>Elsewhere</Eyebrow>
+      <div className="mt-4 grid grid-cols-3 gap-2 flex-1 content-start">
+        {items.slice(0, 6).map(({ key, href, label, Icon }) => (
+          <a
+            key={key}
+            href={href}
+            target={href.startsWith("mailto:") ? undefined : "_blank"}
+            rel="noreferrer"
+            aria-label={label}
+            className="aspect-square flex items-center justify-center rounded-2xl bg-white/[0.04] border border-white/[0.06] text-neutral-300 hover:bg-white/[0.08] hover:border-white/[0.12] hover:text-white hover:-translate-y-px transition-all"
+          >
+            <Icon className="size-5" />
+          </a>
         ))}
-      </ol>
-    </>
+      </div>
+    </div>
   );
 }
 
-function EducationCard({
+function socialIcon(name: string): React.ComponentType<{ className?: string }> {
+  const n = name.toLowerCase();
+  if (n.includes("github")) return Github;
+  if (n.includes("linkedin")) return Linkedin;
+  if (n.includes("twitter") || n === "x") return Twitter;
+  if (n.includes("youtube")) return Youtube;
+  // Fall through to project icon registry for the rest.
+  const Specific = (Icons as unknown as Record<string, React.ComponentType<{ className?: string }>>)[n];
+  return Specific ?? ArrowUpRight;
+}
+
+/* ─────────────────────────  Education + extras  ────────────────────────── */
+
+function EducationList({
   education,
 }: {
   education: ReturnType<typeof useResume>["education"];
 }) {
   return (
     <>
-      <CardLabel className="mb-3">Education</CardLabel>
-      <ul className="space-y-3">
+      <Eyebrow>Education</Eyebrow>
+      <ul className="mt-4 space-y-4">
         {education.map((e) => (
-          <li key={e.id} className="flex items-start gap-3">
-            <LogoOrInitials src={e.logoUrl} name={e.school} />
-            <div className="flex-1 min-w-0">
-              <div className="font-medium text-[13.5px] truncate">{e.school}</div>
-              <div className="text-[12.5px] text-neutral-400 line-clamp-2">{e.degree}</div>
-              <div className="text-[11.5px] text-neutral-500 tabular-nums mt-0.5">
-                {e.start} – {e.end}
+          <li key={e.id}>
+            <div className="flex items-baseline justify-between gap-2 flex-wrap">
+              <h3 className="text-[14.5px] font-semibold text-white leading-tight">
+                {e.school}
+              </h3>
+              <div className="text-[11px] font-mono text-neutral-500 tabular-nums">
+                {formatResumeDateRange(e.start, e.end)}
               </div>
+            </div>
+            <div className="text-[13px] text-neutral-400 italic mt-0.5">{e.degree}</div>
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+function HackathonsList({
+  hackathons,
+}: {
+  hackathons: ReturnType<typeof useResume>["hackathons"];
+}) {
+  return (
+    <>
+      <Eyebrow>Hackathons</Eyebrow>
+      <ul className="mt-4 space-y-3 text-[13px]">
+        {hackathons.slice(0, 4).map((h) => (
+          <li
+            key={h.id}
+            className="border-l-2 pl-3"
+            style={{ borderColor: `${ACCENT}66` }}
+          >
+            <div className="font-medium text-white truncate">{h.title}</div>
+            {h.rank && (
+              <div className="text-[11.5px]" style={{ color: ACCENT }}>
+                ★ {h.rank}
+              </div>
+            )}
+            {h.date && (
+              <div className="text-[11px] text-neutral-500 tabular-nums font-mono">
+                {h.date}
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
+function PublicationsList({
+  publications,
+}: {
+  publications: ReturnType<typeof useResume>["publications"];
+}) {
+  return (
+    <>
+      <Eyebrow>Publications</Eyebrow>
+      <ul className="mt-4 space-y-3 text-[13px]">
+        {publications.slice(0, 4).map((p) => (
+          <li key={p.id}>
+            <a
+              href={p.url}
+              target="_blank"
+              rel="noreferrer"
+              className="text-neutral-100 hover:text-white inline-flex items-baseline gap-1 group"
+            >
+              <span className="line-clamp-2">{p.title}</span>
+              <ArrowUpRight
+                className="size-3 opacity-0 group-hover:opacity-100 transition-opacity flex-none"
+                style={{ color: ACCENT }}
+              />
+            </a>
+            <div className="text-[11px] text-neutral-500 italic truncate">
+              {p.venue}
+              {p.publishedAt && ` · ${formatResumeDate(p.publishedAt)}`}
             </div>
           </li>
         ))}
@@ -705,81 +793,30 @@ function EducationCard({
   );
 }
 
-function HackathonsCard({
-  hackathons,
-}: {
-  hackathons: ReturnType<typeof useResume>["hackathons"];
-}) {
-  return (
-    <>
-      <CardLabel className="mb-3">Hackathons</CardLabel>
-      <ul className="space-y-2.5 text-[13px]">
-        {hackathons.slice(0, 6).map((h) => (
-          <li key={h.id} className="border-l-2 border-violet-400/40 pl-3">
-            <div className="font-medium text-white truncate">{h.title}</div>
-            {h.rank && <div className="text-[11.5px] text-violet-300">★ {h.rank}</div>}
-            {h.date && (
-              <div className="text-[11px] text-neutral-500 tabular-nums">{h.date}</div>
-            )}
-          </li>
-        ))}
-      </ul>
-    </>
-  );
-}
-
-function PublicationsCard({
-  publications,
-}: {
-  publications: ReturnType<typeof useResume>["publications"];
-}) {
-  return (
-    <>
-      <CardLabel className="mb-3">Publications</CardLabel>
-      <ul className="space-y-2.5 text-[13px]">
-        {publications.slice(0, 6).map((p) => (
-          <li key={p.id}>
-            <a
-              href={p.url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-neutral-100 hover:text-violet-300 inline-flex items-baseline gap-1 group"
-            >
-              <span className="line-clamp-2">{p.title}</span>
-              <ArrowUpRight className="size-3 opacity-0 group-hover:opacity-100 transition-opacity flex-none" />
-            </a>
-            {p.venue && (
-              <div className="text-[11.5px] text-neutral-500 italic truncate">{p.venue}</div>
-            )}
-          </li>
-        ))}
-      </ul>
-    </>
-  );
-}
-
-function BuildLogCard({
+function BuildLogList({
   buildLog,
 }: {
   buildLog: ReturnType<typeof useResume>["buildLog"];
 }) {
   return (
     <>
-      <CardLabel className="mb-3">Build log</CardLabel>
-      <ol className="space-y-2 text-[12.5px]">
-        {buildLog.slice(0, 8).map((b) => (
+      <Eyebrow>Recently shipping</Eyebrow>
+      <ol className="mt-4 space-y-2.5 text-[12.5px]">
+        {buildLog.slice(0, 6).map((b) => (
           <li key={b.id} className="flex items-baseline gap-2 leading-snug">
             <span
               aria-hidden
               className="size-1.5 rounded-full flex-none translate-y-1"
-              style={{ backgroundColor: b.languageColor ?? "#a78bfa" }}
+              style={{ backgroundColor: b.languageColor ?? ACCENT }}
             />
             <div className="flex-1 min-w-0">
               <div className="text-neutral-100 truncate">
                 <span className="font-medium">{b.title}</span>
                 <span className="text-neutral-500"> — {b.description}</span>
               </div>
-              <div className="text-[10.5px] text-neutral-600 tabular-nums">{b.dates}</div>
+              <div className="text-[10.5px] text-neutral-600 tabular-nums font-mono">
+                {b.dates}
+              </div>
             </div>
           </li>
         ))}
@@ -788,7 +825,9 @@ function BuildLogCard({
   );
 }
 
-function ContactCard({
+/* ─────────────────────────  Contact band  ────────────────────────── */
+
+function ContactBand({
   email,
   socials,
   name,
@@ -798,25 +837,43 @@ function ContactCard({
   name: string;
 }) {
   const firstName = name.split(" ")[0] ?? name;
+  const [copied, setCopied] = useState(false);
+
+  const onCopy = async () => {
+    if (!email) return;
+    try {
+      await navigator.clipboard.writeText(email);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // Best-effort; fall through silently.
+    }
+  };
+
   return (
-    <div className="flex items-center justify-between flex-wrap gap-4 h-full">
-      <div>
-        <div className="text-xl sm:text-2xl font-semibold tracking-tight">
-          Let's build something, {firstName}-style.
-        </div>
-        <div className="text-neutral-400 text-[13px] mt-0.5">
-          I'm reachable, and I read every email.
-        </div>
+    <div className="flex flex-wrap items-center justify-between gap-5 h-full">
+      <div className="min-w-0">
+        <Eyebrow>Get in touch</Eyebrow>
+        <h2
+          className="font-semibold tracking-[-0.02em] text-white leading-[1.05] mt-2"
+          style={{ fontSize: "clamp(24px, 3.5vw, 36px)" }}
+        >
+          Have a project in mind, {firstName}-style?
+        </h2>
+        <p className="mt-2 text-neutral-400 text-[14px] max-w-[44ch]">
+          I'm reachable, and I read every email. Reply within a couple of days.
+        </p>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {email && (
-          <a
-            href={`mailto:${email}`}
-            className="px-4 py-2 rounded-full bg-white text-black font-medium text-[13.5px] hover:bg-neutral-100 transition-all hover:-translate-y-px shadow-lg shadow-white/5 inline-flex items-center gap-1.5"
+          <button
+            type="button"
+            onClick={onCopy}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-full bg-white text-black text-[13px] font-semibold hover:-translate-y-px transition-all shadow-[0_8px_24px_-8px_rgba(96,165,250,0.4)]"
           >
-            Email me
-            <ArrowUpRight className="size-3.5" />
-          </a>
+            {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+            {copied ? "Copied" : email}
+          </button>
         )}
         {socials.slice(0, 3).map((s) => (
           <a
@@ -824,7 +881,7 @@ function ContactCard({
             href={s.url}
             target="_blank"
             rel="noreferrer"
-            className="px-4 py-2 rounded-full bg-white/10 border border-white/10 text-[13.5px] hover:bg-white/15 hover:border-white/20 hover:-translate-y-px transition-all"
+            className="px-4 py-2.5 rounded-full bg-white/[0.06] border border-white/[0.06] text-[13px] hover:bg-white/[0.10] hover:border-white/[0.12] hover:-translate-y-px transition-all"
           >
             {s.name}
           </a>

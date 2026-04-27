@@ -52,13 +52,13 @@ export default function GlowTemplate() {
         }}
       />
 
-      {/* Top mesh gradient — soft, only at the top */}
+      {/* Top mesh gradient — soft, only at the top. All blue, no purple residue. */}
       <div
         aria-hidden
         className="pointer-events-none fixed inset-x-0 top-0 z-0 h-[800px]"
         style={{
           background:
-            "radial-gradient(ellipse 1100px 700px at 50% -100px, rgba(94,106,210,0.18), transparent 60%), radial-gradient(ellipse 800px 500px at 80% 0%, rgba(189,155,255,0.10), transparent 60%), radial-gradient(ellipse 700px 400px at 10% 100px, rgba(252,125,171,0.08), transparent 60%)",
+            "radial-gradient(ellipse 1100px 700px at 50% -100px, rgba(59,130,246,0.20), transparent 60%), radial-gradient(ellipse 800px 500px at 80% 0%, rgba(14,165,233,0.12), transparent 60%), radial-gradient(ellipse 700px 400px at 10% 100px, rgba(99,102,241,0.10), transparent 60%)",
         }}
       />
 
@@ -196,7 +196,7 @@ function Hero({ r }: { r: ReturnType<typeof useResume> }) {
           aria-hidden
           className="pointer-events-none absolute inset-0 transition-opacity duration-300"
           style={{
-            background: `radial-gradient(800px circle at ${coords.x}px ${coords.y}px, rgba(189,155,255,0.10), transparent 50%)`,
+            background: `radial-gradient(800px circle at ${coords.x}px ${coords.y}px, rgba(96,165,250,0.12), transparent 50%)`,
           }}
         />
       )}
@@ -254,7 +254,7 @@ function Hero({ r }: { r: ReturnType<typeof useResume> }) {
           {r.contact.email && (
             <a
               href={`mailto:${r.contact.email}`}
-              className="group inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-[13.5px] font-medium text-[#08080b] transition-all hover:-translate-y-px shadow-[0_8px_30px_-10px_rgba(189,155,255,0.6)]"
+              className="group inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-[13.5px] font-medium text-[#08080b] transition-all hover:-translate-y-px shadow-[0_8px_30px_-10px_rgba(59,130,246,0.55)]"
               style={{
                 background: `linear-gradient(135deg, #fafafa, #ffffff)`,
               }}
@@ -722,7 +722,7 @@ function Contact({
         className="relative rounded-3xl p-8 sm:p-12 overflow-hidden"
         style={{
           background:
-            "radial-gradient(ellipse at top right, rgba(189,155,255,0.18), transparent 60%), radial-gradient(ellipse at bottom left, rgba(252,125,171,0.12), transparent 60%), rgba(255,255,255,0.025)",
+            "radial-gradient(ellipse at top right, rgba(59,130,246,0.22), transparent 60%), radial-gradient(ellipse at bottom left, rgba(14,165,233,0.14), transparent 60%), rgba(255,255,255,0.025)",
         }}
       >
         <div
@@ -754,7 +754,7 @@ function Contact({
             {email && (
               <a
                 href={`mailto:${email}`}
-                className="group inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white text-[#08080b] text-[13.5px] font-medium hover:-translate-y-px transition-all shadow-[0_8px_30px_-10px_rgba(189,155,255,0.6)]"
+                className="group inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-white text-[#08080b] text-[13.5px] font-medium hover:-translate-y-px transition-all shadow-[0_8px_30px_-10px_rgba(59,130,246,0.55)]"
               >
                 {email}
                 <ArrowUpRight className="size-3.5 transition-transform group-hover:rotate-12" />
