@@ -8,23 +8,27 @@
  *
  * Each template owns its full chrome (background, navbar, page wrapper),
  * so the parent layout only provides DataProvider.
+ *
+ * Code splitting: each template is wrapped in `next/dynamic` so it
+ * lives in its own chunk. The registry no longer pulls all six into
+ * the route bundle — only the selected variant downloads. Public
+ * portfolio pages save ~2MB; the preview surface pays a small chunk
+ * fetch on each template-switch (subsequent switches are cached).
+ *
+ * `ssr: true` (default) keeps server-rendered HTML so first paint of
+ * a public portfolio is instant — only the JS bundle is split.
  */
 
+import dynamic from "next/dynamic";
 import type { TemplateId } from "@gitshow/shared/resume";
-import ClassicTemplate from "./classic";
-import TerminalTemplate from "./terminal";
-import SpotlightTemplate from "./spotlight";
-import GlowTemplate from "./glow";
-import BentoTemplate from "./bento";
-import MinimalTemplate from "./minimal";
 
 const COMPONENTS: Record<TemplateId, React.ComponentType> = {
-  classic: ClassicTemplate,
-  terminal: TerminalTemplate,
-  spotlight: SpotlightTemplate,
-  glow: GlowTemplate,
-  bento: BentoTemplate,
-  minimal: MinimalTemplate,
+  classic: dynamic(() => import("./classic")),
+  terminal: dynamic(() => import("./terminal")),
+  spotlight: dynamic(() => import("./spotlight")),
+  glow: dynamic(() => import("./glow")),
+  bento: dynamic(() => import("./bento")),
+  minimal: dynamic(() => import("./minimal")),
 };
 
 export function getTemplateComponent(id: string | undefined | null): React.ComponentType {

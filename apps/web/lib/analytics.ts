@@ -1,3 +1,4 @@
+import { cache } from "react";
 import type { D1Database } from "@cloudflare/workers-types";
 
 /**
@@ -12,6 +13,11 @@ import type { D1Database } from "@cloudflare/workers-types";
  *     days counts once over the full window.
  *   - Time-series points are filled in JS so the chart renders smooth
  *     even if a day had zero hits — the SQL only returns days with data.
+ *   - Every `get*` is wrapped in `React.cache` so the dashboard's
+ *     per-section Suspense slots can each await their own slice
+ *     without re-running the underlying D1 query when two sections
+ *     happen to need the same one (e.g. KPIs + timeseries chart both
+ *     ask for timeseries).
  */
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -35,7 +41,9 @@ export interface OverviewKPIs {
   countriesReached: number;
 }
 
-export async function getOverviewKPIs(
+export const getOverviewKPIs = cache(_getOverviewKPIs);
+
+async function _getOverviewKPIs(
   db: D1Database,
   slug: string,
   days: number,
@@ -107,7 +115,9 @@ export interface TimeseriesPoint {
   uniques: number;
 }
 
-export async function getViewsTimeseries(
+export const getViewsTimeseries = cache(_getViewsTimeseries);
+
+async function _getViewsTimeseries(
   db: D1Database,
   slug: string,
   days: number,
@@ -153,7 +163,9 @@ export interface ReferrerRow {
   uniques: number;
 }
 
-export async function getTopReferrers(
+export const getTopReferrers = cache(_getTopReferrers);
+
+async function _getTopReferrers(
   db: D1Database,
   slug: string,
   days: number,
@@ -187,7 +199,9 @@ export interface CountryRow {
   uniques: number;
 }
 
-export async function getTopCountries(
+export const getTopCountries = cache(_getTopCountries);
+
+async function _getTopCountries(
   db: D1Database,
   slug: string,
   days: number,
@@ -219,7 +233,9 @@ export interface DeviceRow {
   views: number;
 }
 
-export async function getDeviceBreakdown(
+export const getDeviceBreakdown = cache(_getDeviceBreakdown);
+
+async function _getDeviceBreakdown(
   db: D1Database,
   slug: string,
   days: number,
@@ -243,7 +259,9 @@ export interface BrowserRow {
   views: number;
 }
 
-export async function getBrowserBreakdown(
+export const getBrowserBreakdown = cache(_getBrowserBreakdown);
+
+async function _getBrowserBreakdown(
   db: D1Database,
   slug: string,
   days: number,
@@ -273,7 +291,9 @@ export interface HourBucket {
   views: number;
 }
 
-export async function getHourlyPattern(
+export const getHourlyPattern = cache(_getHourlyPattern);
+
+async function _getHourlyPattern(
   db: D1Database,
   slug: string,
   days: number,
@@ -316,7 +336,9 @@ export interface RecentVisitorRow {
   path: string | null;
 }
 
-export async function getRecentVisitors(
+export const getRecentVisitors = cache(_getRecentVisitors);
+
+async function _getRecentVisitors(
   db: D1Database,
   slug: string,
   limit: number,

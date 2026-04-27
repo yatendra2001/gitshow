@@ -1,8 +1,10 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowUpRight01Icon, ViewIcon } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/dashboard/icon";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
+import type { D1Database } from "@cloudflare/workers-types";
 import {
   CheckoutProcessingState,
   DraftState,
@@ -16,7 +18,16 @@ import {
 } from "./_home-states";
 import { loadDashboardContext } from "./_context";
 import { loadDraftResume } from "@/lib/resume-io";
-import { loadDashboard } from "@/lib/analytics";
+import {
+  getBrowserBreakdown,
+  getDeviceBreakdown,
+  getHourlyPattern,
+  getOverviewKPIs,
+  getRecentVisitors,
+  getTopCountries,
+  getTopReferrers,
+  getViewsTimeseries,
+} from "@/lib/analytics";
 import {
   BrowsersDonut,
   DevicesDonut,
@@ -29,8 +40,12 @@ import {
   HourlyTraffic,
   SourcesBarChart,
   ViewsAreaChart,
-} from "@/components/dashboard/analytics-charts";
-import { CountriesMap } from "@/components/dashboard/analytics-map";
+} from "@/components/dashboard/analytics-charts-lazy";
+import { CountriesMap } from "@/components/dashboard/analytics-map-lazy";
+import {
+  KpiCardSkeleton,
+  Skeleton,
+} from "@/components/dashboard/skeleton";
 import type {
   AccessState,
   DataSources,
@@ -141,23 +156,23 @@ export default async function AppHomePage({
   if (lastFailed) return <FailedState scan={latestScan!} />;
   if (!ctx.isPublished) return <EmptyState handle={ctx.handle} />;
 
-  // ─── Published — load analytics ──────────────────────────────
+  // ─── Published — stream analytics sections ──────────────────────
+  //
+  // Every section below is its own async server component wrapped in
+  // <Suspense>. The page shell (header + range tabs + scanning banner
+  // + footer) renders immediately; each card streams in as its D1
+  // query resolves. With React.cache on the get* helpers, sections
+  // that share a query (LiveTicker + KPIs + Timeseries all want
+  // `getViewsTimeseries`) trigger one DB round-trip total.
+  //
+  // Result: instead of waiting for the slowest of 8 parallel queries
+  // before any chart renders, the first card lands as soon as its
+  // own query is back. Slowest still wins for the last card, but the
+  // perceived load time is the fastest, not the slowest.
 
   const slug = ctx.profile?.public_slug ?? ctx.handle.toLowerCase();
-  const data = await loadDashboard(env.DB, slug, days);
-
-  const todayMidnight = new Date();
-  todayMidnight.setHours(0, 0, 0, 0);
-  const todayViews = data.timeseries.reduce((acc, p) => {
-    const pd = new Date(p.date + "T00:00:00Z").getTime();
-    return pd >= todayMidnight.getTime() ? acc + p.views : acc;
-  }, 0);
-
-  const sparkViews = data.timeseries.map((p, i) => ({ x: i, value: p.views }));
-  const sparkUniques = data.timeseries.map((p, i) => ({
-    x: i,
-    value: p.uniques,
-  }));
+  const db = env.DB;
+  const rangeLabel = RANGE_LABEL[rangeKey];
 
   const lastScanDays = ctx.profile?.last_scan_at
     ? Math.floor((Date.now() - ctx.profile.last_scan_at) / (1000 * 60 * 60 * 24))
@@ -175,7 +190,7 @@ export default async function AppHomePage({
             Analytics
           </h1>
           <p className="mt-2 text-[12.5px] text-muted-foreground">
-            {RANGE_LABEL[rangeKey]} · live at{" "}
+            {rangeLabel} · live at{" "}
             <Link
               href={`/${slug}`}
               target="_blank"
@@ -195,56 +210,34 @@ export default async function AppHomePage({
 
       {isScanning ? <ScanningBanner scanId={activeScan!.id} /> : null}
 
-      {data.hasAnyEvents ? (
-        <div className="mb-6">
-          <LiveTicker
-            todayViews={todayViews}
-            lastVisitor={data.recent[0] ?? null}
-          />
-        </div>
-      ) : null}
+      <Suspense fallback={null}>
+        <LiveTickerStream db={db} slug={slug} days={days} />
+      </Suspense>
 
       {/* Hero KPIs */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-3">
-        <KpiCard
-          label="Views"
-          value={data.kpis.views}
-          deltaPct={data.kpis.viewsDeltaPct}
-          sparkline={sparkViews}
-          hint={RANGE_LABEL[rangeKey].toLowerCase()}
-        />
-        <KpiCard
-          label="Unique visitors"
-          value={data.kpis.uniques}
-          deltaPct={data.kpis.uniquesDeltaPct}
-          sparkline={sparkUniques}
-          hint="distinct people"
-        />
-        <KpiCard
-          label="Countries"
-          value={data.kpis.countriesReached}
-          hint="reached this period"
-        />
-        <KpiCard
-          label="All-time views"
-          value={data.kpis.viewsAllTime}
-          hint="since launch"
-        />
-      </div>
+      <Suspense fallback={<KpiGridSkeleton />}>
+        <KpiStream db={db} slug={slug} days={days} rangeLabel={rangeLabel} />
+      </Suspense>
 
       {/* Big chart */}
       <div className="mb-3">
-        <SectionCard
-          title="Views over time"
-          subtitle={`Daily totals · ${RANGE_LABEL[rangeKey].toLowerCase()}`}
-          action={data.hasAnyEvents ? <ChartLegend /> : null}
+        <Suspense
+          fallback={
+            <SectionCard
+              title="Views over time"
+              subtitle={`Daily totals · ${rangeLabel.toLowerCase()}`}
+            >
+              <Skeleton className="h-[280px] w-full rounded-xl" />
+            </SectionCard>
+          }
         >
-          {data.hasAnyEvents ? (
-            <ViewsAreaChart data={data.timeseries} />
-          ) : (
-            <ChartEmptyState slug={slug} />
-          )}
-        </SectionCard>
+          <TimeseriesStream
+            db={db}
+            slug={slug}
+            days={days}
+            rangeLabel={rangeLabel}
+          />
+        </Suspense>
       </div>
 
       {/* Hour-of-day pattern */}
@@ -253,44 +246,199 @@ export default async function AppHomePage({
           title="Visit timing"
           subtitle="When readers show up, by hour of day"
         >
-          <HourlyTraffic rows={data.hourly} />
+          <Suspense fallback={<Skeleton className="h-[140px] w-full rounded-xl" />}>
+            <HourlyStream db={db} slug={slug} days={days} />
+          </Suspense>
         </SectionCard>
       </div>
 
       {/* World map, full width */}
       <div className="mb-3">
         <SectionCard title="Top countries" subtitle="Geographic reach">
-          <CountriesMap rows={data.countries} />
+          <Suspense
+            fallback={<Skeleton className="aspect-[2/1] w-full rounded-xl" />}
+          >
+            <CountriesStream db={db} slug={slug} days={days} />
+          </Suspense>
         </SectionCard>
       </div>
 
       {/* Top sources, full width — horizontal bar chart with favicons */}
       <div className="mb-3">
         <SectionCard title="Top sources" subtitle="Where visitors came from">
-          <SourcesBarChart rows={data.referrers} />
+          <Suspense fallback={<Skeleton className="h-[220px] w-full rounded-xl" />}>
+            <SourcesStream db={db} slug={slug} days={days} />
+          </Suspense>
         </SectionCard>
       </div>
 
       {/* Two-up: devices pie + browsers donut (mixed variants) */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 mb-3">
         <SectionCard title="Devices" subtitle="What people read you on">
-          <DevicesDonut rows={data.devices} />
+          <Suspense fallback={<Skeleton className="h-[200px] w-full rounded-xl" />}>
+            <DevicesStream db={db} slug={slug} days={days} />
+          </Suspense>
         </SectionCard>
         <SectionCard title="Browsers" subtitle="Engines doing the rendering">
-          <BrowsersDonut rows={data.browsers} />
+          <Suspense fallback={<Skeleton className="h-[200px] w-full rounded-xl" />}>
+            <BrowsersStream db={db} slug={slug} days={days} />
+          </Suspense>
         </SectionCard>
       </div>
 
       {/* Recent activity, full width */}
       <div className="grid grid-cols-1 gap-3">
         <SectionCard title="Recent activity" subtitle="Latest visitors">
-          <RecentActivity rows={data.recent} />
+          <Suspense fallback={<Skeleton className="h-[240px] w-full rounded-xl" />}>
+            <RecentStream db={db} slug={slug} />
+          </Suspense>
         </SectionCard>
       </div>
 
       <PublishedFooter daysSinceScan={lastScanDays} />
     </div>
   );
+}
+
+// ─── Streaming sections ───────────────────────────────────────────
+//
+// Each component is an independent Suspense boundary. They share the
+// React.cache-wrapped helpers in lib/analytics.ts so a query that two
+// sections need (timeseries, recent) only hits D1 once per request.
+
+interface SectionProps {
+  db: D1Database;
+  slug: string;
+  days: number;
+}
+
+async function LiveTickerStream({ db, slug, days }: SectionProps) {
+  const [kpis, timeseries, recent] = await Promise.all([
+    getOverviewKPIs(db, slug, days),
+    getViewsTimeseries(db, slug, days),
+    getRecentVisitors(db, slug, 12),
+  ]);
+  if (kpis.viewsAllTime === 0) return null;
+  const todayMidnight = new Date();
+  todayMidnight.setHours(0, 0, 0, 0);
+  const todayViews = timeseries.reduce((acc, p) => {
+    const pd = new Date(p.date + "T00:00:00Z").getTime();
+    return pd >= todayMidnight.getTime() ? acc + p.views : acc;
+  }, 0);
+  return (
+    <div className="mb-6">
+      <LiveTicker todayViews={todayViews} lastVisitor={recent[0] ?? null} />
+    </div>
+  );
+}
+
+async function KpiStream({
+  db,
+  slug,
+  days,
+  rangeLabel,
+}: SectionProps & { rangeLabel: string }) {
+  const [kpis, timeseries] = await Promise.all([
+    getOverviewKPIs(db, slug, days),
+    getViewsTimeseries(db, slug, days),
+  ]);
+  const sparkViews = timeseries.map((p, i) => ({ x: i, value: p.views }));
+  const sparkUniques = timeseries.map((p, i) => ({ x: i, value: p.uniques }));
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-3">
+      <KpiCard
+        label="Views"
+        value={kpis.views}
+        deltaPct={kpis.viewsDeltaPct}
+        sparkline={sparkViews}
+        hint={rangeLabel.toLowerCase()}
+      />
+      <KpiCard
+        label="Unique visitors"
+        value={kpis.uniques}
+        deltaPct={kpis.uniquesDeltaPct}
+        sparkline={sparkUniques}
+        hint="distinct people"
+      />
+      <KpiCard
+        label="Countries"
+        value={kpis.countriesReached}
+        hint="reached this period"
+      />
+      <KpiCard
+        label="All-time views"
+        value={kpis.viewsAllTime}
+        hint="since launch"
+      />
+    </div>
+  );
+}
+
+function KpiGridSkeleton() {
+  return (
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-3">
+      <KpiCardSkeleton />
+      <KpiCardSkeleton />
+      <KpiCardSkeleton />
+      <KpiCardSkeleton />
+    </div>
+  );
+}
+
+async function TimeseriesStream({
+  db,
+  slug,
+  days,
+  rangeLabel,
+}: SectionProps & { rangeLabel: string }) {
+  const [kpis, timeseries] = await Promise.all([
+    getOverviewKPIs(db, slug, days),
+    getViewsTimeseries(db, slug, days),
+  ]);
+  const hasEvents = kpis.viewsAllTime > 0;
+  return (
+    <SectionCard
+      title="Views over time"
+      subtitle={`Daily totals · ${rangeLabel.toLowerCase()}`}
+      action={hasEvents ? <ChartLegend /> : null}
+    >
+      {hasEvents ? (
+        <ViewsAreaChart data={timeseries} />
+      ) : (
+        <ChartEmptyState slug={slug} />
+      )}
+    </SectionCard>
+  );
+}
+
+async function HourlyStream({ db, slug, days }: SectionProps) {
+  const hourly = await getHourlyPattern(db, slug, days);
+  return <HourlyTraffic rows={hourly} />;
+}
+
+async function CountriesStream({ db, slug, days }: SectionProps) {
+  const countries = await getTopCountries(db, slug, days, 8);
+  return <CountriesMap rows={countries} />;
+}
+
+async function SourcesStream({ db, slug, days }: SectionProps) {
+  const referrers = await getTopReferrers(db, slug, days, 8);
+  return <SourcesBarChart rows={referrers} />;
+}
+
+async function DevicesStream({ db, slug, days }: SectionProps) {
+  const devices = await getDeviceBreakdown(db, slug, days);
+  return <DevicesDonut rows={devices} />;
+}
+
+async function BrowsersStream({ db, slug, days }: SectionProps) {
+  const browsers = await getBrowserBreakdown(db, slug, days, 6);
+  return <BrowsersDonut rows={browsers} />;
+}
+
+async function RecentStream({ db, slug }: Omit<SectionProps, "days">) {
+  const recent = await getRecentVisitors(db, slug, 12);
+  return <RecentActivity rows={recent} />;
 }
 
 // ─── Range tabs ───────────────────────────────────────────────────

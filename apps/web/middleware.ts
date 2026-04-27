@@ -14,14 +14,25 @@ import { NextResponse, type NextRequest } from "next/server";
  * keeps both sides happy. When OpenNext ships proxy support we can
  * rename back.
  *
- * Strategy: for each protected path, make an internal fetch to
- * `/api/auth/get-session` forwarding the request's cookies. Better
- * Auth tells us whether the session is still live. If not, bounce to
- * /signin. We avoid importing `initAuth()` directly here — the Edge
- * runtime won't eval the D1 binding at middleware time, and direct
- * server-side invocation from middleware on OpenNext is known-flaky.
+ * Strategy: cookie-presence fast path only. Validating the session
+ * properly (signature + DB row) used to live here behind an internal
+ * fetch to /api/auth/get-session, but that round-trip cost 50–200ms
+ * on EVERY /app/* navigation — including soft RSC fetches when
+ * clicking sidebar links. The dashboard layout already calls
+ * `getSession()` (cache-wrapped) and `redirect("/signin")` on a null
+ * session, so:
  *
-
+ *   - Forged or expired cookie → middleware lets the request through,
+ *     layout's `getSession()` returns null, layout redirects. Same
+ *     end state, no extra latency.
+ *   - Sign-out → cookie cleared by Better Auth handler. Next nav has
+ *     no session_token cookie → middleware redirects to /signin
+ *     immediately (no fetch needed).
+ *
+ * The only behaviour we lose is "block stale-but-validly-signed
+ * cookies at the edge" — but the layer below catches them in <5ms,
+ * which is invisible compared to the 50–200ms we used to add.
+ *
  * Protected paths:
  *   /app and /app/** — the authenticated dashboard + editor
  *
@@ -32,7 +43,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const PROTECTED_PREFIXES = ["/app"] as const;
 
-export async function middleware(request: NextRequest) {
+export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const isProtected = PROTECTED_PREFIXES.some((p) => pathname.startsWith(p));
@@ -40,38 +51,11 @@ export async function middleware(request: NextRequest) {
 
   const cookie = request.headers.get("cookie") ?? "";
   if (!cookie.includes("gitshow.session_token")) {
-    // Fast path: no session cookie, definitely signed out. Skip the
-    // internal fetch.
     return redirectToSignin(request);
   }
 
-  try {
-    const sessionRes = await fetch(
-      new URL("/api/auth/get-session", request.url),
-      {
-        method: "GET",
-        headers: { cookie },
-        // Do NOT cache — session validity is per-request.
-        cache: "no-store",
-      },
-    );
-
-    if (!sessionRes.ok) return redirectToSignin(request);
-
-    const data = (await sessionRes.json().catch(() => null)) as {
-      session?: unknown;
-      user?: unknown;
-    } | null;
-
-    if (!data?.session || !data?.user) return redirectToSignin(request);
-
-    return NextResponse.next();
-  } catch {
-    // On transient failure, don't hard-block — bouncing every request
-    // to /signin during a Better Auth hiccup would be a worse UX than
-    // letting the server component's own `getSession()` call re-check.
-    return NextResponse.next();
-  }
+  // Has cookie → trust it past the edge. Layout will validate.
+  return NextResponse.next();
 }
 
 function redirectToSignin(request: NextRequest) {
