@@ -78,7 +78,11 @@ export function TemplatePreview({
     setOpen(false);
   };
 
-  const onSave = (alsoPublish: boolean) => {
+  // Picking a template is a publish — there's no useful "draft only"
+  // state for a chooser (the user already sees the live preview).
+  // Patch the draft (so the resume blob is consistent), then publish
+  // and reload so the live URL flips immediately.
+  const onSave = () => {
     if (busy) return;
     setError(null);
     startTransition(async () => {
@@ -103,23 +107,17 @@ export function TemplatePreview({
         setResume(data.resume);
         setSavedTemplate(data.resume.theme.template);
 
-        if (alsoPublish) {
-          const pubResp = await fetch("/api/profile/publish-resume", {
-            method: "POST",
-          });
-          if (!pubResp.ok) {
-            const err = (await pubResp.json().catch(() => ({}))) as {
-              error?: string;
-            };
-            setError(err.error ?? "Saved, but publish failed");
-            return;
-          }
-          window.location.reload();
+        const pubResp = await fetch("/api/profile/publish-resume", {
+          method: "POST",
+        });
+        if (!pubResp.ok) {
+          const err = (await pubResp.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          setError(err.error ?? "Saved, but publish failed");
           return;
         }
-
-        setJustSaved(true);
-        setTimeout(() => setJustSaved(false), 2000);
+        window.location.reload();
       } catch {
         setError("Network error");
       }
@@ -190,10 +188,10 @@ function PreviewStrip({
   open: boolean;
   onOpen: (v: boolean) => void;
   onPick: (id: TemplateId) => void;
-  onSave: (alsoPublish: boolean) => void;
+  onSave: () => void;
 }) {
   return (
-    <div className="sticky top-14 z-30 -mx-4 sm:-mx-6 mb-3 border-b border-border/40 bg-background/85 backdrop-blur">
+    <div className="sticky top-14 z-50 -mx-4 sm:-mx-6 mb-3 border-b border-border/40 bg-background/85 backdrop-blur">
       <div className="flex h-12 items-center gap-3 sm:gap-4 px-4 sm:px-6 lg:px-8">
         <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">
           <span className="hidden sm:inline">Draft · </span>
@@ -263,7 +261,7 @@ function TemplatesTrigger({
   open: boolean;
   onOpen: (v: boolean) => void;
   onPick: (id: TemplateId) => void;
-  onSave: (alsoPublish: boolean) => void;
+  onSave: () => void;
 }) {
   const popRef = useRef<HTMLDivElement>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -393,7 +391,7 @@ function TemplatesTrigger({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => onSave(true)}
+                  onClick={onSave}
                   className="inline-flex h-8 flex-none items-center gap-1.5 rounded-md bg-foreground px-3 text-[12.5px] font-medium text-background hover:opacity-90 disabled:opacity-60"
                 >
                   {busy ? (
@@ -436,7 +434,7 @@ function InlineSaveActions({
   error: string | null;
   justSaved: boolean;
   isPublished: boolean;
-  onSave: (alsoPublish: boolean) => void;
+  onSave: () => void;
 }) {
   const visible = dirty || Boolean(error) || justSaved;
 
@@ -461,38 +459,28 @@ function InlineSaveActions({
             </span>
           ) : null}
           {dirty && !justSaved && (
-            <>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onSave(false)}
-                className="hidden h-7 items-center rounded-md px-2.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-card/60 hover:text-foreground disabled:opacity-60 sm:inline-flex"
-              >
-                Save draft
-              </button>
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onSave(true)}
-                className="inline-flex h-7 items-center gap-1.5 rounded-md bg-foreground px-2.5 text-[12px] font-medium text-background hover:opacity-90 disabled:opacity-60"
-              >
-                {busy ? (
-                  <>
-                    <Loader2 className="size-3 animate-spin" />
-                    <span className="hidden sm:inline">
-                      {isPublished ? "Republishing" : "Publishing"}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <span className="sm:hidden">Save</span>
-                    <span className="hidden sm:inline">
-                      {isPublished ? "Save & republish" : "Save & publish"}
-                    </span>
-                  </>
-                )}
-              </button>
-            </>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={onSave}
+              className="inline-flex h-7 items-center gap-1.5 rounded-md bg-foreground px-2.5 text-[12px] font-medium text-background hover:opacity-90 disabled:opacity-60"
+            >
+              {busy ? (
+                <>
+                  <Loader2 className="size-3 animate-spin" />
+                  <span className="hidden sm:inline">
+                    {isPublished ? "Republishing" : "Publishing"}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="sm:hidden">Publish</span>
+                  <span className="hidden sm:inline">
+                    {isPublished ? "Save & republish" : "Save & publish"}
+                  </span>
+                </>
+              )}
+            </button>
           )}
         </motion.div>
       )}
