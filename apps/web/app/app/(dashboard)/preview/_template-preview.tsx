@@ -152,15 +152,18 @@ export function TemplatePreview({
 /* ─────────────────────────  Sticky top strip  ─────────────────────────
  *
  * Visual order:
- *   [ Templates · {meta.name} ▾ ]   Draft · @handle · live ↗   ...   actions
+ *   Draft · @handle · live ↗   …   [ Save draft ] [ Save & republish ]   [ Templates · {name} ▾ ]
  *
- * - Trigger button on the LEFT so the popover anchors against a stable
- *   edge — no jumping when the strip text changes width.
- * - Handle / draft context truncates between the trigger and the
- *   action slot so it never pushes the action buttons off-screen.
- * - Save / republish only render when `dirty`. When clean we show a
- *   tiny "Saved" pill (or nothing in the steady state) so the strip
- *   stays calm.
+ * - Info on the LEFT (low priority context, eye lands here naturally
+ *   when reading L→R), Templates trigger on the FAR RIGHT (the action,
+ *   right-aligned per dashboard convention). Popover anchors to the
+ *   right edge of the trigger so it grows leftward and stays inside
+ *   the viewport.
+ * - Save / republish only render when `dirty`, slotted between info
+ *   and the trigger so they read as a temporary commit step rather
+ *   than a permanent affordance. Steady state is just info + trigger.
+ * - h-12 + gap-3 sm:gap-4 + mb-3 give the strip room to breathe; the
+ *   prior h-10 + gap-2 felt cramped against the topbar.
  */
 function PreviewStrip({
   handle,
@@ -190,20 +193,8 @@ function PreviewStrip({
   onSave: (alsoPublish: boolean) => void;
 }) {
   return (
-    <div className="sticky top-14 z-30 -mx-4 sm:-mx-6 mb-2 border-b border-border/40 bg-background/85 backdrop-blur">
-      <div className="flex h-10 items-center gap-2 sm:gap-3 px-4 sm:px-6">
-        <TemplatesTrigger
-          savedTemplate={savedTemplate}
-          pendingTemplate={pendingTemplate}
-          dirty={dirty}
-          busy={busy}
-          isPublished={isPublished}
-          open={open}
-          onOpen={onOpen}
-          onPick={onPick}
-          onSave={onSave}
-        />
-
+    <div className="sticky top-14 z-30 -mx-4 sm:-mx-6 mb-3 border-b border-border/40 bg-background/85 backdrop-blur">
+      <div className="flex h-12 items-center gap-3 sm:gap-4 px-4 sm:px-6 lg:px-8">
         <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">
           <span className="hidden sm:inline">Draft · </span>
           <span className="text-foreground">@{handle}</span>
@@ -232,6 +223,18 @@ function PreviewStrip({
           error={error}
           justSaved={justSaved}
           isPublished={isPublished}
+          onSave={onSave}
+        />
+
+        <TemplatesTrigger
+          savedTemplate={savedTemplate}
+          pendingTemplate={pendingTemplate}
+          dirty={dirty}
+          busy={busy}
+          isPublished={isPublished}
+          open={open}
+          onOpen={onOpen}
+          onPick={onPick}
           onSave={onSave}
         />
       </div>
@@ -309,7 +312,7 @@ function TemplatesTrigger({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
-            className="absolute left-0 top-[calc(100%+8px)] z-[60] w-[min(92vw,540px)] overflow-hidden rounded-2xl border border-border/60 bg-background/95 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.5)] backdrop-blur-xl"
+            className="absolute right-0 top-[calc(100%+8px)] z-[60] w-[min(92vw,540px)] overflow-hidden rounded-2xl border border-border/60 bg-background/95 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.5)] backdrop-blur-xl"
             role="dialog"
             aria-label="Pick a template"
           >
