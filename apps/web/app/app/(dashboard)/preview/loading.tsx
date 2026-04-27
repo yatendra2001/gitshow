@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/dashboard/skeleton";
 export default function Loading() {
   return (
     <div className="portfolio-theme relative">
-      <div className="sticky top-14 z-30 -mx-4 sm:-mx-6 mb-3 border-b border-border/40 bg-background/85 backdrop-blur">
+      <div className="sticky top-14 z-50 -mx-4 sm:-mx-6 mb-3 border-b border-border/40 bg-background/85 backdrop-blur">
         <div className="flex h-12 items-center gap-3 sm:gap-4 px-4 sm:px-6 lg:px-8">
           <Skeleton className="hidden sm:block h-3 w-56" />
           <Skeleton className="h-3 w-20 sm:hidden" />
