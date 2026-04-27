@@ -18,8 +18,10 @@ import { loadDashboardContext } from "./_context";
 import { loadDraftResume } from "@/lib/resume-io";
 import { loadDashboard } from "@/lib/analytics";
 import {
+  BrowsersDonut,
   CountriesList,
-  DevicesList,
+  DevicesDonut,
+  HourlyTraffic,
   KpiCard,
   LiveTicker,
   RecentActivity,
@@ -243,6 +245,16 @@ export default async function AppHomePage({
         </SectionCard>
       </div>
 
+      {/* Hour-of-day pattern */}
+      <div className="mb-3">
+        <SectionCard
+          title="Visit timing"
+          subtitle="When readers show up, by hour of day"
+        >
+          <HourlyTraffic rows={data.hourly} />
+        </SectionCard>
+      </div>
+
       {/* Two-up: referrers + countries */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 mb-3">
         <SectionCard title="Top sources" subtitle="Where visitors came from">
@@ -253,16 +265,19 @@ export default async function AppHomePage({
         </SectionCard>
       </div>
 
-      {/* Three-up: devices + recent (recent spans 2) */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-        <SectionCard title="Devices" subtitle="Browsers reading you">
-          <DevicesList rows={data.devices} />
+      {/* Two-up: devices donut + browsers donut */}
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 mb-3">
+        <SectionCard title="Devices" subtitle="What people read you on">
+          <DevicesDonut rows={data.devices} />
         </SectionCard>
-        <SectionCard
-          className="lg:col-span-2"
-          title="Recent activity"
-          subtitle="Latest visitors"
-        >
+        <SectionCard title="Browsers" subtitle="Engines doing the rendering">
+          <BrowsersDonut rows={data.browsers} />
+        </SectionCard>
+      </div>
+
+      {/* Recent activity, full width */}
+      <div className="grid grid-cols-1 gap-3">
+        <SectionCard title="Recent activity" subtitle="Latest visitors">
           <RecentActivity rows={data.recent} />
         </SectionCard>
       </div>
