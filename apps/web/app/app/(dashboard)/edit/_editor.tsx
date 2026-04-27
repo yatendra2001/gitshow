@@ -89,13 +89,13 @@ export function Editor({
   const [hasPublished, setHasPublished] = useState<boolean>(initialPublished);
   // Queue of patches we haven't flushed yet. Aggregating them means we
   // don't send 5 PATCHes for 5 keystrokes in the same field.
-  const pendingPatchRef = useRef<Record<string, unknown>>({});
+  const pendingPatchRef = useRef<Partial<Resume>>({});
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = useRef<boolean>(false);
 
   const flush = useCallback(async () => {
     const patch = pendingPatchRef.current;
-    if (Object.keys(patch).length === 0) return;
+    if (!hasPatch(patch)) return;
     if (inFlightRef.current) return;
 
     pendingPatchRef.current = {};
@@ -117,8 +117,12 @@ export function Editor({
         return;
       }
       const data = (await resp.json()) as { resume: Resume };
-      setResume(data.resume);
-      setStatus("saved");
+      const queuedPatch = pendingPatchRef.current;
+      const hasQueuedPatch = hasPatch(queuedPatch);
+      setResume(
+        hasQueuedPatch ? mergeResumePatch(data.resume, queuedPatch) : data.resume,
+      );
+      setStatus(hasQueuedPatch ? "saving" : "saved");
       setErrorMsg(null);
     } catch {
       setStatus("error");
@@ -126,8 +130,8 @@ export function Editor({
     } finally {
       inFlightRef.current = false;
       // If more patches arrived while we were in flight, kick another.
-      if (Object.keys(pendingPatchRef.current).length > 0) {
-        queueFlush();
+      if (hasPatch(pendingPatchRef.current)) {
+        saveTimerRef.current = setTimeout(() => void flush(), 50);
       }
     }
   }, []);
@@ -143,10 +147,7 @@ export function Editor({
       setResume((prev) => ({ ...prev, ...patch }));
       // Accumulate — a later keystroke on the same field just overwrites
       // the earlier value within the same top-level key.
-      pendingPatchRef.current = {
-        ...pendingPatchRef.current,
-        ...patch,
-      };
+      pendingPatchRef.current = { ...pendingPatchRef.current, ...patch };
       queueFlush();
     },
     [queueFlush],
@@ -259,6 +260,21 @@ function humanizeSaveError(code: string | undefined): string {
     default:
       return code ?? "Save failed";
   }
+}
+
+function hasPatch(patch: Partial<Resume>): boolean {
+  return Object.keys(patch).length > 0;
+}
+
+function mergeResumePatch(base: Resume, patch: Partial<Resume>): Resume {
+  const next: Resume = { ...base };
+  for (const key of Object.keys(patch) as Array<keyof Resume>) {
+    const value = patch[key];
+    if (value !== undefined) {
+      Object.assign(next, { [key]: value });
+    }
+  }
+  return next;
 }
 
 function Header({

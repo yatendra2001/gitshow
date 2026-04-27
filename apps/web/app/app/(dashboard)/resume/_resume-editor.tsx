@@ -82,7 +82,7 @@ export function ResumeEditor({
   const [downloadPct, setDownloadPct] = useState(0);
   const [downloadLabel, setDownloadLabel] = useState("Starting");
 
-  const pendingRef = useRef<Record<string, unknown>>({});
+  const pendingRef = useRef<Partial<ResumeDoc>>({});
   const progressRafRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = useRef(false);
@@ -90,7 +90,7 @@ export function ResumeEditor({
 
   const flush = useCallback(async () => {
     const patch = pendingRef.current;
-    if (Object.keys(patch).length === 0 || inFlightRef.current) return;
+    if (!hasPatch(patch) || inFlightRef.current) return;
     pendingRef.current = {};
     inFlightRef.current = true;
     setStatus("saving");
@@ -107,19 +107,23 @@ export function ResumeEditor({
         return;
       }
       const data = (await resp.json()) as { doc: ResumeDoc };
-      setDoc(data.doc);
-      setStatus("saved");
+      const queuedPatch = pendingRef.current;
+      const hasQueuedPatch = hasPatch(queuedPatch);
+      setDoc(hasQueuedPatch ? mergeShallowDeep(data.doc, queuedPatch) : data.doc);
+      setStatus(hasQueuedPatch ? "saving" : "saved");
       setErrMsg(null);
       // Drop back to idle after a beat — saved state is for confidence,
       // not a permanent badge.
-      setTimeout(() => setStatus((s) => (s === "saved" ? "idle" : s)), 1200);
+      if (!hasQueuedPatch) {
+        setTimeout(() => setStatus((s) => (s === "saved" ? "idle" : s)), 1200);
+      }
     } catch {
       setStatus("error");
       setErrMsg("Network error");
     } finally {
       inFlightRef.current = false;
       // If patches landed during the in-flight, kick another flush.
-      if (Object.keys(pendingRef.current).length > 0) {
+      if (hasPatch(pendingRef.current)) {
         timerRef.current = setTimeout(flush, 50);
       }
     }
@@ -129,7 +133,7 @@ export function ResumeEditor({
     (patch: Partial<ResumeDoc>) => {
       // Optimistic merge — the server validates on PATCH and bumps meta.
       setDoc((prev) => mergeShallowDeep(prev, patch));
-      Object.assign(pendingRef.current, patch);
+      pendingRef.current = mergePatch(pendingRef.current, patch);
       if (timerRef.current) clearTimeout(timerRef.current);
       timerRef.current = setTimeout(flush, SAVE_DEBOUNCE_MS);
     },
@@ -1448,23 +1452,44 @@ function BulletsInput({
   onChange: (next: string[]) => void;
   placeholder?: string;
 }) {
-  const text = value.join("\n");
+  const normalizedText = value.join("\n");
+  const [draft, setDraft] = useState(normalizedText);
+  const lastNormalizedTextRef = useRef(normalizedText);
+
+  useEffect(() => {
+    if (normalizedText === lastNormalizedTextRef.current) return;
+    lastNormalizedTextRef.current = normalizedText;
+    setDraft(normalizedText);
+  }, [normalizedText]);
+
   return (
     <textarea
       className={inputClass("min-h-[88px] py-2 leading-relaxed")}
-      value={text}
+      value={draft}
       onChange={(e: ChangeEvent<HTMLTextAreaElement>) => {
-        const lines = e.target.value
-          .split("\n")
-          .map((s) => s.replace(/^[•\-*]\s*/, "").trim());
-        // Preserve the trailing empty line while editing so the cursor
-        // doesn't jump — only filter when we hand to onChange.
-        onChange(lines.filter((s) => s.length > 0).slice(0, 8));
+        const nextDraft = e.target.value;
+        const nextValue = normalizeBulletDraft(nextDraft);
+        setDraft(nextDraft);
+        if (sameStringArray(nextValue, value)) return;
+        lastNormalizedTextRef.current = nextValue.join("\n");
+        onChange(nextValue);
       }}
       placeholder={placeholder}
       rows={4}
     />
   );
+}
+
+function normalizeBulletDraft(text: string): string[] {
+  return text
+    .split("\n")
+    .map((s) => s.replace(/^[•\-*]\s*/, "").trim())
+    .filter((s) => s.length > 0)
+    .slice(0, 8);
+}
+
+function sameStringArray(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, idx) => value === b[idx]);
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -1567,6 +1592,17 @@ function PreviewPane({
 
 function pageHeightForSize(size: ResumeDoc["page"]["size"]): number {
   return size === "a4" ? (297 / 25.4) * 96 : 11 * 96;
+}
+
+function hasPatch(patch: Partial<ResumeDoc>): boolean {
+  return Object.keys(patch).length > 0;
+}
+
+function mergePatch(
+  base: Partial<ResumeDoc>,
+  patch: Partial<ResumeDoc>,
+): Partial<ResumeDoc> {
+  return { ...base, ...patch };
 }
 
 function mergeShallowDeep(
