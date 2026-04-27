@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { Check, ChevronDown, Loader2, Sparkles, X } from "lucide-react";
 import type { Resume, TemplateId } from "@gitshow/shared/resume";
@@ -14,15 +15,18 @@ import {
 /**
  * Owner-only draft preview wrapper.
  *
- * Renders the chosen template against the user's draft Resume and
- * shows a single floating "Templates" button bottom-right. Clicking
- * opens a popover with the template tiles. Picking a tile swaps the
- * preview locally and closes the popover. A second pill appears next
- * to the button when there's an unsaved change, with Save and
- * Save+publish actions.
+ * Layout:
+ *   - Sticky top strip below the dashboard topbar carrying the templates
+ *     trigger (with current selection inline), draft / handle context,
+ *     and save actions when there's a pending change. One bar, one
+ *     place to look — no "Pick a template below ↓" indirection to the
+ *     old floating bottom-right cluster.
+ *   - Below the strip, the chosen template renders full-bleed.
  *
- * The chooser only mutates `theme.template`; switching templates
- * costs zero data loss because every variant renders the same Resume.
+ * Picking a template tile previews live without saving; Save draft /
+ * Save & (re)publish in the strip persist the choice. Switching
+ * templates costs zero data loss because every variant renders the
+ * same Resume.
  */
 export function TemplatePreview({
   initialResume,
@@ -58,7 +62,6 @@ export function TemplatePreview({
     [resume, pendingTemplate],
   );
 
-  // Esc closes the popover
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -72,7 +75,7 @@ export function TemplatePreview({
     setPendingTemplate(id);
     setError(null);
     setJustSaved(false);
-    setOpen(false); // close popover so the user sees the full preview
+    setOpen(false);
   };
 
   const onSave = (alsoPublish: boolean) => {
@@ -125,36 +128,124 @@ export function TemplatePreview({
 
   return (
     <>
-      <DataProvider resume={previewResume} handle={handle}>
-        <Template />
-      </DataProvider>
-
-      <ChooserButton
+      <PreviewStrip
+        handle={handle}
+        isPublished={isPublished}
         savedTemplate={savedTemplate}
         pendingTemplate={pendingTemplate}
         dirty={dirty}
         busy={busy}
         error={error}
         justSaved={justSaved}
-        isPublished={isPublished}
         open={open}
         onOpen={setOpen}
         onPick={onPick}
         onSave={onSave}
       />
+      <DataProvider resume={previewResume} handle={handle}>
+        <Template />
+      </DataProvider>
     </>
   );
 }
 
-/* ─────────────────────────  Floating button + popover  ────────────────────────── */
-
-function ChooserButton({
+/* ─────────────────────────  Sticky top strip  ─────────────────────────
+ *
+ * Visual order:
+ *   [ Templates · {meta.name} ▾ ]   Draft · @handle · live ↗   ...   actions
+ *
+ * - Trigger button on the LEFT so the popover anchors against a stable
+ *   edge — no jumping when the strip text changes width.
+ * - Handle / draft context truncates between the trigger and the
+ *   action slot so it never pushes the action buttons off-screen.
+ * - Save / republish only render when `dirty`. When clean we show a
+ *   tiny "Saved" pill (or nothing in the steady state) so the strip
+ *   stays calm.
+ */
+function PreviewStrip({
+  handle,
+  isPublished,
   savedTemplate,
   pendingTemplate,
   dirty,
   busy,
   error,
   justSaved,
+  open,
+  onOpen,
+  onPick,
+  onSave,
+}: {
+  handle: string;
+  isPublished: boolean;
+  savedTemplate: TemplateId;
+  pendingTemplate: TemplateId;
+  dirty: boolean;
+  busy: boolean;
+  error: string | null;
+  justSaved: boolean;
+  open: boolean;
+  onOpen: (v: boolean) => void;
+  onPick: (id: TemplateId) => void;
+  onSave: (alsoPublish: boolean) => void;
+}) {
+  return (
+    <div className="sticky top-14 z-30 -mx-4 sm:-mx-6 mb-2 border-b border-border/40 bg-background/85 backdrop-blur">
+      <div className="flex h-10 items-center gap-2 sm:gap-3 px-4 sm:px-6">
+        <TemplatesTrigger
+          savedTemplate={savedTemplate}
+          pendingTemplate={pendingTemplate}
+          dirty={dirty}
+          busy={busy}
+          isPublished={isPublished}
+          open={open}
+          onOpen={onOpen}
+          onPick={onPick}
+          onSave={onSave}
+        />
+
+        <span className="min-w-0 flex-1 truncate text-[12px] text-muted-foreground">
+          <span className="hidden sm:inline">Draft · </span>
+          <span className="text-foreground">@{handle}</span>
+          {isPublished ? (
+            <>
+              {" · "}
+              <Link
+                href={`/${handle}`}
+                target="_blank"
+                rel="noreferrer"
+                className="font-mono text-foreground underline-offset-2 hover:underline"
+              >
+                <span className="hidden sm:inline">live at gitshow.io/</span>
+                <span className="sm:hidden">live ↗</span>
+                <span className="hidden sm:inline">{handle} ↗</span>
+              </Link>
+            </>
+          ) : (
+            <span className="hidden sm:inline"> · not public yet</span>
+          )}
+        </span>
+
+        <InlineSaveActions
+          dirty={dirty}
+          busy={busy}
+          error={error}
+          justSaved={justSaved}
+          isPublished={isPublished}
+          onSave={onSave}
+        />
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────  Trigger + popover  ────────────────────── */
+
+function TemplatesTrigger({
+  savedTemplate,
+  pendingTemplate,
+  dirty,
+  busy,
   isPublished,
   open,
   onOpen,
@@ -165,8 +256,6 @@ function ChooserButton({
   pendingTemplate: TemplateId;
   dirty: boolean;
   busy: boolean;
-  error: string | null;
-  justSaved: boolean;
   isPublished: boolean;
   open: boolean;
   onOpen: (v: boolean) => void;
@@ -177,7 +266,6 @@ function ChooserButton({
   const btnRef = useRef<HTMLButtonElement>(null);
   const meta = getTemplateMeta(pendingTemplate);
 
-  // Click-outside to dismiss
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
@@ -192,71 +280,40 @@ function ChooserButton({
   }, [open, onOpen]);
 
   return (
-    <div className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-[60] flex flex-col items-end gap-2">
-      {/* Save pill — only appears when there's a pending change */}
-      <AnimatePresence>
-        {(dirty || error || justSaved) && (
-          <motion.div
-            initial={{ opacity: 0, y: 6, scale: 0.96 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 6, scale: 0.96 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="rounded-full bg-background/90 backdrop-blur-xl border border-border/60 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.4)] px-1.5 py-1 flex items-center gap-1"
-          >
-            {error ? (
-              <span className="px-2 text-[12px] text-[var(--destructive)]">{error}</span>
-            ) : justSaved ? (
-              <span className="px-2 text-[12px] text-emerald-500 inline-flex items-center gap-1">
-                <Check className="size-3" /> Saved
-              </span>
-            ) : null}
-            {dirty && !justSaved && (
-              <>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onSave(false)}
-                  className="inline-flex h-7 items-center rounded-full px-3 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:bg-card/60 transition-colors disabled:opacity-60"
-                >
-                  Save draft
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => onSave(true)}
-                  className="inline-flex h-7 items-center gap-1.5 rounded-full bg-foreground px-3 text-[12px] font-medium text-background hover:opacity-90 disabled:opacity-60"
-                >
-                  {busy ? (
-                    <>
-                      <Loader2 className="size-3 animate-spin" />
-                      {isPublished ? "Republishing" : "Publishing"}
-                    </>
-                  ) : isPublished ? (
-                    "Save & republish"
-                  ) : (
-                    "Save & publish"
-                  )}
-                </button>
-              </>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <div className="relative flex-none">
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => onOpen(!open)}
+        aria-expanded={open}
+        aria-label="Pick a template"
+        className="group inline-flex h-7 items-center gap-1.5 rounded-full bg-foreground pl-2.5 pr-2 text-background transition-[transform,opacity] duration-[140ms] ease-[cubic-bezier(0.215,0.61,0.355,1)] hover:opacity-90 active:scale-[0.97]"
+      >
+        <Sparkles className="size-3 opacity-90" />
+        <span className="text-[12px] font-medium">Templates</span>
+        <span className="hidden text-[11.5px] opacity-70 sm:inline">
+          · {meta.name}
+        </span>
+        <ChevronDown
+          className={`size-3 opacity-70 transition-transform duration-[180ms] ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </button>
 
-      {/* Popover */}
       <AnimatePresence>
         {open && (
           <motion.div
             ref={popRef}
-            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+            initial={{ opacity: 0, y: -6, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+            exit={{ opacity: 0, y: -6, scale: 0.98 }}
             transition={{ duration: 0.18, ease: "easeOut" }}
-            className="w-[min(92vw,540px)] rounded-2xl bg-background/95 backdrop-blur-xl border border-border/60 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.5)] overflow-hidden"
+            className="absolute left-0 top-[calc(100%+8px)] z-[60] w-[min(92vw,540px)] overflow-hidden rounded-2xl border border-border/60 bg-background/95 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.5)] backdrop-blur-xl"
             role="dialog"
             aria-label="Pick a template"
           >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+            <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
               <div className="flex items-baseline gap-2">
                 <Sparkles className="size-3.5 text-foreground/70" />
                 <span className="text-[13px] font-semibold">Templates</span>
@@ -268,13 +325,13 @@ function ChooserButton({
                 type="button"
                 onClick={() => onOpen(false)}
                 aria-label="Close"
-                className="size-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-card/60 transition-colors"
+                className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/60 hover:text-foreground"
               >
                 <X className="size-4" />
               </button>
             </div>
 
-            <div className="p-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3">
               {TEMPLATES.map((t) => {
                 const active = t.id === pendingTemplate;
                 const saved = t.id === savedTemplate;
@@ -284,25 +341,25 @@ function ChooserButton({
                     type="button"
                     onClick={() => onPick(t.id)}
                     title={t.tagline}
-                    className={`group relative flex flex-col items-stretch rounded-xl overflow-hidden border transition-all text-left ${
+                    className={`group relative flex flex-col items-stretch overflow-hidden rounded-xl border text-left transition-all ${
                       active
                         ? "border-foreground/80 ring-2 ring-foreground/15"
                         : "border-border/40 hover:border-border hover:shadow-sm"
                     }`}
                   >
                     <TemplateSwatch id={t.id} />
-                    <div className="px-2.5 py-1.5 bg-card/30 flex items-center justify-between gap-2">
+                    <div className="flex items-center justify-between gap-2 bg-card/30 px-2.5 py-1.5">
                       <div className="min-w-0">
-                        <div className="text-[12.5px] font-semibold leading-tight truncate">
+                        <div className="truncate text-[12.5px] font-semibold leading-tight">
                           {t.name}
                         </div>
-                        <div className="text-[10.5px] text-muted-foreground leading-tight truncate">
+                        <div className="truncate text-[10.5px] leading-tight text-muted-foreground">
                           {t.vibes[0]}
                         </div>
                       </div>
                       {saved && (
                         <span
-                          className={`size-4 rounded-full flex-none flex items-center justify-center ${
+                          className={`flex size-4 flex-none items-center justify-center rounded-full ${
                             active && saved
                               ? "bg-emerald-500 text-white"
                               : "bg-foreground text-background"
@@ -322,9 +379,11 @@ function ChooserButton({
               })}
             </div>
 
-            <div className="px-4 py-3 border-t border-border/40 flex items-center justify-between gap-3">
-              <div className="text-[11.5px] text-muted-foreground min-w-0">
-                <span className="text-foreground/80 font-medium">{meta.name}</span>
+            <div className="flex items-center justify-between gap-3 border-t border-border/40 px-4 py-3">
+              <div className="min-w-0 text-[11.5px] text-muted-foreground">
+                <span className="font-medium text-foreground/80">
+                  {meta.name}
+                </span>
                 <span className="hidden sm:inline"> · {meta.bestFor}</span>
               </div>
               {dirty ? (
@@ -332,7 +391,7 @@ function ChooserButton({
                   type="button"
                   disabled={busy}
                   onClick={() => onSave(true)}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-[12.5px] font-medium text-background hover:opacity-90 disabled:opacity-60 flex-none"
+                  className="inline-flex h-8 flex-none items-center gap-1.5 rounded-md bg-foreground px-3 text-[12.5px] font-medium text-background hover:opacity-90 disabled:opacity-60"
                 >
                   {busy ? (
                     <>
@@ -346,7 +405,7 @@ function ChooserButton({
                   )}
                 </button>
               ) : (
-                <span className="text-[11.5px] text-muted-foreground inline-flex items-center gap-1 flex-none">
+                <span className="inline-flex flex-none items-center gap-1 text-[11.5px] text-muted-foreground">
                   <Check className="size-3 text-emerald-500" />
                   Saved
                 </span>
@@ -355,24 +414,86 @@ function ChooserButton({
           </motion.div>
         )}
       </AnimatePresence>
-
-      {/* Trigger button */}
-      <button
-        ref={btnRef}
-        type="button"
-        onClick={() => onOpen(!open)}
-        aria-expanded={open}
-        aria-label="Pick a template"
-        className="group inline-flex items-center gap-2 rounded-full bg-foreground text-background px-4 h-11 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.45)] hover:scale-[1.02] active:scale-[0.98] transition-transform"
-      >
-        <Sparkles className="size-4 opacity-90" />
-        <span className="text-[13px] font-medium">Templates</span>
-        <span className="text-[11.5px] opacity-70 hidden sm:inline">· {meta.name}</span>
-        <ChevronDown
-          className={`size-3.5 opacity-70 transition-transform ${open ? "rotate-180" : ""}`}
-        />
-      </button>
     </div>
+  );
+}
+
+/* ─────────────────────────  Inline save actions  ──────────────────── */
+
+function InlineSaveActions({
+  dirty,
+  busy,
+  error,
+  justSaved,
+  isPublished,
+  onSave,
+}: {
+  dirty: boolean;
+  busy: boolean;
+  error: string | null;
+  justSaved: boolean;
+  isPublished: boolean;
+  onSave: (alsoPublish: boolean) => void;
+}) {
+  const visible = dirty || Boolean(error) || justSaved;
+
+  return (
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          initial={{ opacity: 0, x: 6 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 6 }}
+          transition={{ duration: 0.16, ease: "easeOut" }}
+          className="flex flex-none items-center gap-1"
+        >
+          {error ? (
+            <span className="hidden truncate px-1 text-[12px] text-[var(--destructive)] sm:inline">
+              {error}
+            </span>
+          ) : justSaved ? (
+            <span className="inline-flex items-center gap-1 px-1 text-[12px] text-emerald-500">
+              <Check className="size-3" />
+              <span className="hidden sm:inline">Saved</span>
+            </span>
+          ) : null}
+          {dirty && !justSaved && (
+            <>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onSave(false)}
+                className="hidden h-7 items-center rounded-md px-2.5 text-[12px] font-medium text-muted-foreground transition-colors hover:bg-card/60 hover:text-foreground disabled:opacity-60 sm:inline-flex"
+              >
+                Save draft
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => onSave(true)}
+                className="inline-flex h-7 items-center gap-1.5 rounded-md bg-foreground px-2.5 text-[12px] font-medium text-background hover:opacity-90 disabled:opacity-60"
+              >
+                {busy ? (
+                  <>
+                    <Loader2 className="size-3 animate-spin" />
+                    <span className="hidden sm:inline">
+                      {isPublished ? "Republishing" : "Publishing"}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="sm:hidden">Save</span>
+                    <span className="hidden sm:inline">
+                      {isPublished ? "Save & republish" : "Save & publish"}
+                    </span>
+                  </>
+                )}
+              </button>
+            </>
+          )}
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
