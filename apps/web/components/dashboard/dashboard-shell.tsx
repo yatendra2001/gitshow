@@ -22,7 +22,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useState } from "react";
-import { motion, LayoutGroup } from "motion/react";
 import {
   Analytics01Icon,
   ArrowUpRight01Icon,
@@ -41,7 +40,6 @@ import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
 import { flipTheme } from "@/lib/theme-helpers";
 import { Logo, LogoMark } from "@/components/logo";
-import { PageTransition } from "@/components/ui/motion";
 import { Icon } from "./icon";
 
 interface NavItem {
@@ -211,9 +209,7 @@ export function DashboardShell({
           <div className="flex items-center gap-2">{topbarTrailing}</div>
         </header>
 
-        <main className="relative">
-          <PageTransition>{children}</PageTransition>
-        </main>
+        <main className="relative">{children}</main>
       </div>
     </div>
   );
@@ -257,31 +253,28 @@ function SidebarBody({
         />
       </div>
 
-      {/* Nav — LayoutGroup lets the active highlight morph between
-          rows instead of disappearing/re-appearing. Spring is
-          intentionally tame (low bounce) — this is product UI. */}
-      <LayoutGroup id="dashboard-nav">
-        <nav className="flex-1 overflow-y-auto px-2 pt-2 pb-3 gs-pane-scroll">
-          {NAV_SECTIONS.map((section) => (
-            <div key={section.title} className="mt-3 first:mt-1">
-              <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/60">
-                {section.title}
-              </div>
-              <ul className="flex flex-col gap-px">
-                {section.items.map((item) => (
-                  <li key={item.href}>
-                    <SidebarLink
-                      item={item}
-                      active={isActive(currentPath, item.href)}
-                      onNavigate={onNavigate}
-                    />
-                  </li>
-                ))}
-              </ul>
+      {/* Nav — no animation on click. Sidebar is hit 100×/day; per
+          Emil's frequency principle it must feel instant, not animated. */}
+      <nav className="flex-1 overflow-y-auto px-2 pt-2 pb-3 gs-pane-scroll">
+        {NAV_SECTIONS.map((section) => (
+          <div key={section.title} className="mt-3 first:mt-1">
+            <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/60">
+              {section.title}
             </div>
-          ))}
-        </nav>
-      </LayoutGroup>
+            <ul className="flex flex-col gap-px">
+              {section.items.map((item) => (
+                <li key={item.href}>
+                  <SidebarLink
+                    item={item}
+                    active={isActive(currentPath, item.href)}
+                    onNavigate={onNavigate}
+                  />
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </nav>
 
       {/* Footer */}
       <div className="border-t border-border/30 p-2">
@@ -385,64 +378,48 @@ function SidebarLink({
   active: boolean;
   onNavigate: () => void;
 }) {
-  // Hover = bg-color fade only. The active highlight is rendered
-  // via motion.span+layoutId so it morphs smoothly when the route
-  // changes — no two rows are ever both "active" mid-transition.
+  // Active = solid muted bg + 2px left accent. Hover = subtle bg fade.
+  // No transitions on the active state itself — toggling routes must
+  // be instant. Only hover gets a 120ms color fade so it doesn't snap.
   const className = cn(
     "group relative flex items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] font-medium leading-none",
-    "transition-[color,background-color] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
-    "outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset",
     active
-      ? "text-foreground"
-      : "text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground",
+      ? "bg-foreground/[0.06] text-foreground"
+      : "text-muted-foreground transition-[background-color,color] duration-[120ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:bg-foreground/[0.04] hover:text-foreground",
   );
 
-  const highlight = active ? (
-    <>
-      <motion.span
-        layoutId="dashboard-nav-bg"
-        aria-hidden
-        className="absolute inset-0 rounded-md bg-foreground/[0.06]"
-        transition={{ type: "spring", duration: 0.34, bounce: 0.12 }}
-      />
-      <motion.span
-        layoutId="dashboard-nav-indicator"
-        aria-hidden
-        className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-r-full bg-foreground"
-        transition={{ type: "spring", duration: 0.34, bounce: 0.12 }}
-      />
-    </>
+  const indicator = active ? (
+    <span
+      aria-hidden
+      className="absolute left-0 top-1/2 -translate-y-1/2 h-4 w-[2px] rounded-r-full bg-foreground"
+    />
   ) : null;
 
   const iconNode = (
     <Icon
       icon={item.icon}
       className={cn(
-        "relative size-4 transition-colors duration-[140ms]",
-        active
-          ? "text-foreground"
-          : "text-muted-foreground/70 group-hover:text-foreground/80",
+        "size-4",
+        active ? "text-foreground" : "text-muted-foreground/70",
       )}
     />
   );
 
-  const labelNode = <span className="relative">{item.label}</span>;
-
   if (item.external) {
     return (
       <a href={item.href} className={className} onClick={onNavigate}>
-        {highlight}
+        {indicator}
         {iconNode}
-        {labelNode}
+        <span>{item.label}</span>
       </a>
     );
   }
 
   return (
     <Link href={item.href} className={className} onClick={onNavigate}>
-      {highlight}
+      {indicator}
       {iconNode}
-      {labelNode}
+      <span>{item.label}</span>
     </Link>
   );
 }
