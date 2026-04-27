@@ -247,9 +247,11 @@ Every clickable surface gets **at least three feedback states**: hover, active (
 ### Sidebar nav (dashboard shell)
 
 - Active row: `bg-foreground/[0.06]` + 2px left accent + foreground text.
-- Hover: `bg-foreground/[0.04]`, color → foreground.
+- Hover: `bg-foreground/[0.04]`, color → foreground (120ms fade).
+- Active state itself does **not** transition — toggling routes must feel instant. The 120ms fade is hover-only. Frequency principle: users hit the sidebar 100×/day.
 - Section headings: 10px uppercase tracking-[0.08em] muted/60.
 - Mobile drawer: 200ms slide + backdrop fade together.
+- **Don't** use `motion.span` + `layoutId` to morph the active highlight between rows. The in-between state during navigation feels like flicker — RSC re-renders + the layout animation overlap. A static toggle is faster and reads as more confident.
 
 ### Toasts (Sonner)
 
