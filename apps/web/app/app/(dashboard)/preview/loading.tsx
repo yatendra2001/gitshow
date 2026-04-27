@@ -2,18 +2,17 @@ import { Skeleton } from "@/components/dashboard/skeleton";
 
 /**
  * Streaming fallback for /app/preview. Mirrors the new top strip
- * (templates trigger on the left, handle context in the middle) and
- * the full-bleed template viewport beneath it. The bottom-right
- * floating button is gone — actions live in the strip now.
+ * (handle context on the left, templates trigger on the far right)
+ * and the full-bleed template viewport beneath it.
  */
 export default function Loading() {
   return (
     <div className="portfolio-theme relative">
-      <div className="sticky top-14 z-30 -mx-4 sm:-mx-6 mb-2 border-b border-border/40 bg-background/85 backdrop-blur">
-        <div className="flex h-10 items-center gap-2 sm:gap-3 px-4 sm:px-6">
-          <Skeleton className="h-7 w-32 rounded-full" />
+      <div className="sticky top-14 z-30 -mx-4 sm:-mx-6 mb-3 border-b border-border/40 bg-background/85 backdrop-blur">
+        <div className="flex h-12 items-center gap-3 sm:gap-4 px-4 sm:px-6 lg:px-8">
           <Skeleton className="hidden sm:block h-3 w-56" />
-          <Skeleton className="ml-auto h-3 w-16 sm:hidden" />
+          <Skeleton className="h-3 w-20 sm:hidden" />
+          <Skeleton className="ml-auto h-7 w-32 rounded-full" />
         </div>
       </div>
       <div className="px-4 sm:px-6 pb-24 pt-6">
