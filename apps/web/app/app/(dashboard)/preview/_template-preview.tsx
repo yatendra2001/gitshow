@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
-import { Check, Loader2, Sparkles } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { AnimatePresence, motion } from "motion/react";
+import { Check, ChevronDown, Loader2, Sparkles, X } from "lucide-react";
 import type { Resume, TemplateId } from "@gitshow/shared/resume";
 import { DataProvider } from "@/components/data-provider";
 import {
@@ -14,14 +15,14 @@ import {
  * Owner-only draft preview wrapper.
  *
  * Renders the chosen template against the user's draft Resume and
- * floats a horizontal template chooser strip at the bottom. Picking
- * a template swaps the preview locally; "Use this" persists the
- * choice via PATCH /api/resume/draft and republishes if the portfolio
- * is already live.
+ * shows a single floating "Templates" button bottom-right. Clicking
+ * opens a popover with the template tiles. Picking a tile swaps the
+ * preview locally and closes the popover. A second pill appears next
+ * to the button when there's an unsaved change, with Save and
+ * Save+publish actions.
  *
- * The chooser only mutates `theme.template`; it never touches any
- * other draft field. Switching templates therefore costs zero data
- * loss — every variant renders the same Resume.
+ * The chooser only mutates `theme.template`; switching templates
+ * costs zero data loss because every variant renders the same Resume.
  */
 export function TemplatePreview({
   initialResume,
@@ -32,9 +33,6 @@ export function TemplatePreview({
   handle: string;
   isPublished: boolean;
 }) {
-  // The local resume state is what the preview renders against. It
-  // tracks the saved draft EXCEPT for `theme.template`, which the user
-  // can swap at will to compare looks before committing.
   const [resume, setResume] = useState<Resume>(initialResume);
   const [pendingTemplate, setPendingTemplate] = useState<TemplateId>(
     initialResume.theme.template,
@@ -42,6 +40,7 @@ export function TemplatePreview({
   const [savedTemplate, setSavedTemplate] = useState<TemplateId>(
     initialResume.theme.template,
   );
+  const [open, setOpen] = useState(false);
   const [busy, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [justSaved, setJustSaved] = useState(false);
@@ -51,7 +50,6 @@ export function TemplatePreview({
     () => getTemplateComponent(pendingTemplate),
     [pendingTemplate],
   );
-
   const previewResume: Resume = useMemo(
     () => ({
       ...resume,
@@ -60,10 +58,21 @@ export function TemplatePreview({
     [resume, pendingTemplate],
   );
 
+  // Esc closes the popover
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [open]);
+
   const onPick = (id: TemplateId) => {
     setPendingTemplate(id);
     setError(null);
     setJustSaved(false);
+    setOpen(false); // close popover so the user sees the full preview
   };
 
   const onSave = (alsoPublish: boolean) => {
@@ -102,7 +111,6 @@ export function TemplatePreview({
             setError(err.error ?? "Saved, but publish failed");
             return;
           }
-          // Hard reload so the live page picks up the new published.json
           window.location.reload();
           return;
         }
@@ -117,15 +125,11 @@ export function TemplatePreview({
 
   return (
     <>
-      {/* The actual portfolio render — full-bleed under the chooser. */}
       <DataProvider resume={previewResume} handle={handle}>
-        <div className="pb-32">
-          <Template />
-        </div>
+        <Template />
       </DataProvider>
 
-      {/* Floating chooser dock */}
-      <TemplateChooserDock
+      <ChooserButton
         savedTemplate={savedTemplate}
         pendingTemplate={pendingTemplate}
         dirty={dirty}
@@ -133,6 +137,8 @@ export function TemplatePreview({
         error={error}
         justSaved={justSaved}
         isPublished={isPublished}
+        open={open}
+        onOpen={setOpen}
         onPick={onPick}
         onSave={onSave}
       />
@@ -140,7 +146,9 @@ export function TemplatePreview({
   );
 }
 
-function TemplateChooserDock({
+/* ─────────────────────────  Floating button + popover  ────────────────────────── */
+
+function ChooserButton({
   savedTemplate,
   pendingTemplate,
   dirty,
@@ -148,6 +156,8 @@ function TemplateChooserDock({
   error,
   justSaved,
   isPublished,
+  open,
+  onOpen,
   onPick,
   onSave,
 }: {
@@ -158,22 +168,113 @@ function TemplateChooserDock({
   error: string | null;
   justSaved: boolean;
   isPublished: boolean;
+  open: boolean;
+  onOpen: (v: boolean) => void;
   onPick: (id: TemplateId) => void;
   onSave: (alsoPublish: boolean) => void;
 }) {
+  const popRef = useRef<HTMLDivElement>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
   const meta = getTemplateMeta(pendingTemplate);
 
+  // Click-outside to dismiss
+  useEffect(() => {
+    if (!open) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target as Node | null;
+      if (!t) return;
+      if (popRef.current?.contains(t)) return;
+      if (btnRef.current?.contains(t)) return;
+      onOpen(false);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [open, onOpen]);
+
   return (
-    <div className="fixed inset-x-0 bottom-0 z-30 pointer-events-none">
-      <div className="mx-auto max-w-5xl px-3 sm:px-6 pb-3 sm:pb-5">
-        <div className="pointer-events-auto rounded-2xl border border-border/60 bg-background/85 backdrop-blur-xl shadow-[0_20px_50px_-15px_rgba(0,0,0,0.45)] overflow-hidden">
-          {/* Top row: tiles + actions */}
-          <div className="flex items-stretch gap-1 p-2 overflow-x-auto">
-            <div className="hidden sm:flex items-center px-3 text-[11px] uppercase tracking-[0.2em] text-muted-foreground font-semibold flex-none">
-              <Sparkles className="size-3.5 mr-1.5 text-foreground/70" />
-              Template
+    <div className="fixed bottom-5 right-5 sm:bottom-6 sm:right-6 z-[60] flex flex-col items-end gap-2">
+      {/* Save pill — only appears when there's a pending change */}
+      <AnimatePresence>
+        {(dirty || error || justSaved) && (
+          <motion.div
+            initial={{ opacity: 0, y: 6, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 6, scale: 0.96 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="rounded-full bg-background/90 backdrop-blur-xl border border-border/60 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.4)] px-1.5 py-1 flex items-center gap-1"
+          >
+            {error ? (
+              <span className="px-2 text-[12px] text-[var(--destructive)]">{error}</span>
+            ) : justSaved ? (
+              <span className="px-2 text-[12px] text-emerald-500 inline-flex items-center gap-1">
+                <Check className="size-3" /> Saved
+              </span>
+            ) : null}
+            {dirty && !justSaved && (
+              <>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onSave(false)}
+                  className="inline-flex h-7 items-center rounded-full px-3 text-[12px] font-medium text-muted-foreground hover:text-foreground hover:bg-card/60 transition-colors disabled:opacity-60"
+                >
+                  Save draft
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => onSave(true)}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-full bg-foreground px-3 text-[12px] font-medium text-background hover:opacity-90 disabled:opacity-60"
+                >
+                  {busy ? (
+                    <>
+                      <Loader2 className="size-3 animate-spin" />
+                      {isPublished ? "Republishing" : "Publishing"}
+                    </>
+                  ) : isPublished ? (
+                    "Save & republish"
+                  ) : (
+                    "Save & publish"
+                  )}
+                </button>
+              </>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Popover */}
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            ref={popRef}
+            initial={{ opacity: 0, y: 8, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 8, scale: 0.98 }}
+            transition={{ duration: 0.18, ease: "easeOut" }}
+            className="w-[min(92vw,540px)] rounded-2xl bg-background/95 backdrop-blur-xl border border-border/60 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.5)] overflow-hidden"
+            role="dialog"
+            aria-label="Pick a template"
+          >
+            <div className="flex items-center justify-between px-4 py-3 border-b border-border/40">
+              <div className="flex items-baseline gap-2">
+                <Sparkles className="size-3.5 text-foreground/70" />
+                <span className="text-[13px] font-semibold">Templates</span>
+                <span className="text-[11.5px] text-muted-foreground">
+                  · pick a look, preview swaps live
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => onOpen(false)}
+                aria-label="Close"
+                className="size-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-card/60 transition-colors"
+              >
+                <X className="size-4" />
+              </button>
             </div>
-            <div className="flex items-stretch gap-1 flex-1 min-w-0">
+
+            <div className="p-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
               {TEMPLATES.map((t) => {
                 const active = t.id === pendingTemplate;
                 const saved = t.id === savedTemplate;
@@ -183,98 +284,100 @@ function TemplateChooserDock({
                     type="button"
                     onClick={() => onPick(t.id)}
                     title={t.tagline}
-                    className={`relative flex-1 min-w-[88px] flex flex-col items-stretch rounded-xl overflow-hidden border transition-all ${
+                    className={`group relative flex flex-col items-stretch rounded-xl overflow-hidden border transition-all text-left ${
                       active
-                        ? "border-foreground/80 ring-2 ring-foreground/20"
-                        : "border-border/40 hover:border-border"
+                        ? "border-foreground/80 ring-2 ring-foreground/15"
+                        : "border-border/40 hover:border-border hover:shadow-sm"
                     }`}
                   >
                     <TemplateSwatch id={t.id} />
-                    <div className="px-2 py-1.5 bg-background/60 text-left">
-                      <div className="text-[12px] font-semibold leading-tight truncate">
-                        {t.name}
+                    <div className="px-2.5 py-1.5 bg-card/30 flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[12.5px] font-semibold leading-tight truncate">
+                          {t.name}
+                        </div>
+                        <div className="text-[10.5px] text-muted-foreground leading-tight truncate">
+                          {t.vibes[0]}
+                        </div>
                       </div>
-                      <div className="text-[10px] text-muted-foreground leading-tight truncate">
-                        {t.vibes[0]}
-                      </div>
+                      {saved && (
+                        <span
+                          className={`size-4 rounded-full flex-none flex items-center justify-center ${
+                            active && saved
+                              ? "bg-emerald-500 text-white"
+                              : "bg-foreground text-background"
+                          }`}
+                          title={
+                            active && saved
+                              ? "Active and saved"
+                              : "Currently saved"
+                          }
+                        >
+                          <Check className="size-2.5" strokeWidth={3} />
+                        </span>
+                      )}
                     </div>
-                    {saved && !active && (
-                      <span className="absolute top-1 right-1 size-4 rounded-full bg-foreground text-background flex items-center justify-center" title="Currently saved">
-                        <Check className="size-2.5" strokeWidth={3} />
-                      </span>
-                    )}
-                    {active && saved && (
-                      <span className="absolute top-1 right-1 size-4 rounded-full bg-emerald-500 text-white flex items-center justify-center" title="Active and saved">
-                        <Check className="size-2.5" strokeWidth={3} />
-                      </span>
-                    )}
                   </button>
                 );
               })}
             </div>
-          </div>
 
-          {/* Bottom row: meta + actions */}
-          <div className="flex flex-wrap items-center gap-3 border-t border-border/40 px-3 sm:px-4 py-2.5 bg-card/30">
-            <div className="flex-1 min-w-0">
-              <div className="text-[12.5px] font-medium leading-tight truncate">
-                {meta.name} <span className="text-muted-foreground font-normal">— {meta.tagline}</span>
+            <div className="px-4 py-3 border-t border-border/40 flex items-center justify-between gap-3">
+              <div className="text-[11.5px] text-muted-foreground min-w-0">
+                <span className="text-foreground/80 font-medium">{meta.name}</span>
+                <span className="hidden sm:inline"> · {meta.bestFor}</span>
               </div>
-              <div className="text-[11px] text-muted-foreground leading-tight truncate">
-                {meta.bestFor}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 flex-none">
-              {error && (
-                <span className="text-[11px] text-[var(--destructive)]">{error}</span>
-              )}
-              {justSaved && !error && (
-                <span className="text-[11px] text-emerald-500 inline-flex items-center gap-1">
-                  <Check className="size-3" /> Saved
-                </span>
-              )}
-              {dirty && (
+              {dirty ? (
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => onSave(false)}
-                  className="inline-flex h-8 items-center rounded-md border border-border/60 bg-background px-3 text-[12px] font-medium hover:bg-card/60 disabled:opacity-60"
+                  onClick={() => onSave(true)}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-[12.5px] font-medium text-background hover:opacity-90 disabled:opacity-60 flex-none"
                 >
-                  {busy ? <Loader2 className="size-3.5 animate-spin" /> : "Save as default"}
+                  {busy ? (
+                    <>
+                      <Loader2 className="size-3.5 animate-spin" />
+                      Publishing
+                    </>
+                  ) : isPublished ? (
+                    "Save & republish"
+                  ) : (
+                    "Save & publish"
+                  )}
                 </button>
+              ) : (
+                <span className="text-[11.5px] text-muted-foreground inline-flex items-center gap-1 flex-none">
+                  <Check className="size-3 text-emerald-500" />
+                  Saved
+                </span>
               )}
-              <button
-                type="button"
-                disabled={busy}
-                onClick={() => onSave(true)}
-                className="inline-flex h-8 items-center gap-1.5 rounded-md bg-foreground px-3 text-[12px] font-medium text-background hover:opacity-90 disabled:opacity-60"
-              >
-                {busy ? (
-                  <>
-                    <Loader2 className="size-3.5 animate-spin" />
-                    {isPublished ? "Republishing…" : "Publishing…"}
-                  </>
-                ) : dirty ? (
-                  isPublished ? "Save & republish" : "Save & publish"
-                ) : isPublished ? (
-                  "Republish"
-                ) : (
-                  "Publish"
-                )}
-              </button>
             </div>
-          </div>
-        </div>
-      </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Trigger button */}
+      <button
+        ref={btnRef}
+        type="button"
+        onClick={() => onOpen(!open)}
+        aria-expanded={open}
+        aria-label="Pick a template"
+        className="group inline-flex items-center gap-2 rounded-full bg-foreground text-background px-4 h-11 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.45)] hover:scale-[1.02] active:scale-[0.98] transition-transform"
+      >
+        <Sparkles className="size-4 opacity-90" />
+        <span className="text-[13px] font-medium">Templates</span>
+        <span className="text-[11.5px] opacity-70 hidden sm:inline">· {meta.name}</span>
+        <ChevronDown
+          className={`size-3.5 opacity-70 transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
     </div>
   );
 }
 
-/**
- * Tiny visual hint of what each template feels like. Drawn entirely
- * with CSS — keeps the bundle small and the dock instant. Not a
- * pixel-perfect mock; just enough that you know which is which.
- */
+/* ─────────────────────────  Tiny swatches  ────────────────────────── */
+
 function TemplateSwatch({ id }: { id: TemplateId }) {
   const meta = getTemplateMeta(id);
   const { bg, fg, accent } = meta.swatch;
@@ -297,31 +400,56 @@ function TemplateSwatch({ id }: { id: TemplateId }) {
     );
   }
 
-  if (id === "terminal") {
+  if (id === "spotlight") {
     return (
-      <div className="aspect-[4/3] flex flex-col gap-0.5 p-1.5 font-mono" style={{ background: bg }}>
-        <div className="flex gap-0.5">
-          <div className="size-1 rounded-full bg-[#ff5f56]" />
-          <div className="size-1 rounded-full bg-[#ffbd2e]" />
-          <div className="size-1 rounded-full bg-[#27c93f]" />
+      <div className="aspect-[4/3] grid grid-cols-2 gap-1 p-1.5" style={{ background: bg }}>
+        <div className="flex flex-col gap-0.5">
+          <div className="h-1 w-3/4 rounded-full" style={{ background: fg, opacity: 0.8 }} />
+          <div className="h-0.5 w-1/2 rounded-full" style={{ background: accent, opacity: 0.9 }} />
+          <div className="mt-auto flex flex-col gap-0.5">
+            <div className="flex items-center gap-1">
+              <div className="h-px w-3" style={{ background: accent }} />
+              <div className="h-0.5 w-2 rounded-full" style={{ background: fg, opacity: 0.6 }} />
+            </div>
+            <div className="flex items-center gap-1">
+              <div className="h-px w-1.5" style={{ background: fg, opacity: 0.4 }} />
+              <div className="h-0.5 w-2 rounded-full" style={{ background: fg, opacity: 0.4 }} />
+            </div>
+          </div>
         </div>
-        <div className="text-[5px] mt-0.5" style={{ color: fg }}>$ whoami</div>
-        <div className="text-[5px]" style={{ color: fg, opacity: 0.7 }}>{">"} dev_</div>
-        <div className="text-[5px]" style={{ color: fg, opacity: 0.5 }}>--------</div>
+        <div className="space-y-0.5">
+          <div className="h-0.5 w-full rounded-full" style={{ background: fg, opacity: 0.4 }} />
+          <div className="h-0.5 w-3/4 rounded-full" style={{ background: fg, opacity: 0.3 }} />
+          <div className="h-0.5 w-2/3 rounded-full" style={{ background: fg, opacity: 0.3 }} />
+        </div>
       </div>
     );
   }
 
-  if (id === "magazine") {
+  if (id === "glow") {
     return (
-      <div className="aspect-[4/3] flex flex-col gap-1 p-1.5" style={{ background: bg }}>
-        <div className="text-[4px] uppercase tracking-widest font-bold" style={{ color: accent }}>The Quarterly</div>
-        <div className="font-serif text-[10px] leading-none" style={{ color: fg }}>Title.</div>
-        <div className="grid grid-cols-2 gap-0.5 mt-auto">
-          <div className="h-0.5 rounded-full" style={{ background: fg, opacity: 0.5 }} />
-          <div className="h-0.5 rounded-full" style={{ background: fg, opacity: 0.5 }} />
-          <div className="h-0.5 rounded-full" style={{ background: fg, opacity: 0.3 }} />
-          <div className="h-0.5 rounded-full" style={{ background: fg, opacity: 0.3 }} />
+      <div
+        className="aspect-[4/3] flex flex-col gap-1 p-1.5 relative"
+        style={{
+          background: `${bg}`,
+          backgroundImage: `radial-gradient(ellipse at top, ${accent}33, transparent 60%)`,
+        }}
+      >
+        <div className="flex items-center gap-1">
+          <div className="size-1 rounded-full" style={{ background: accent }} />
+          <div className="h-0.5 w-6 rounded-full" style={{ background: fg, opacity: 0.4 }} />
+        </div>
+        <div
+          className="h-1.5 w-1/2 rounded-full mt-0.5"
+          style={{ background: `linear-gradient(135deg, ${fg}, ${accent})` }}
+        />
+        <div className="h-0.5 w-2/3 rounded-full" style={{ background: fg, opacity: 0.4 }} />
+        <div className="mt-auto grid grid-cols-2 gap-0.5">
+          <div className="h-2.5 rounded-sm" style={{ background: `${fg}1a` }} />
+          <div
+            className="h-2.5 rounded-sm"
+            style={{ background: `linear-gradient(135deg, ${accent}40, ${fg}1a)` }}
+          />
         </div>
       </div>
     );
@@ -339,16 +467,17 @@ function TemplateSwatch({ id }: { id: TemplateId }) {
     );
   }
 
-  if (id === "brutalist") {
+  if (id === "terminal") {
     return (
-      <div className="aspect-[4/3] flex flex-col gap-0.5 p-1" style={{ background: bg }}>
-        <div className="font-bold text-[7px] leading-[0.85] uppercase" style={{ color: fg }}>NAME.</div>
-        <div className="font-bold text-[7px] leading-[0.85] uppercase" style={{ color: accent }}>BIG.</div>
-        <div className="mt-auto h-0.5" style={{ background: fg }} />
-        <div className="grid grid-cols-2 gap-0.5">
-          <div className="h-2 border" style={{ borderColor: fg }} />
-          <div className="h-2 border" style={{ borderColor: fg, background: accent }} />
+      <div className="aspect-[4/3] flex flex-col gap-0.5 p-1.5 font-mono" style={{ background: bg }}>
+        <div className="flex gap-0.5">
+          <div className="size-1 rounded-full bg-[#ff5f56]" />
+          <div className="size-1 rounded-full bg-[#ffbd2e]" />
+          <div className="size-1 rounded-full bg-[#27c93f]" />
         </div>
+        <div className="text-[5px] mt-0.5" style={{ color: fg }}>$ whoami</div>
+        <div className="text-[5px]" style={{ color: fg, opacity: 0.7 }}>{">"} dev_</div>
+        <div className="text-[5px]" style={{ color: fg, opacity: 0.5 }}>--------</div>
       </div>
     );
   }
