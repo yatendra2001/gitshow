@@ -21,8 +21,10 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "./icon";
 import type {
+  BrowserRow,
   CountryRow,
   DeviceRow,
+  HourBucket,
   RecentVisitorRow,
   ReferrerRow,
 } from "@/lib/analytics";
@@ -36,7 +38,12 @@ import {
   relativeTime,
   SENTINEL_HOSTS,
 } from "./format";
-import { SparklineMini } from "./analytics-charts";
+import {
+  DonutLegend,
+  HourlyBarChart,
+  MonochromeDonut,
+  SparklineMini,
+} from "./analytics-charts";
 
 // ─── Section card wrapper ─────────────────────────────────────────
 
@@ -302,7 +309,7 @@ export function CountriesList({ rows }: { rows: CountryRow[] }) {
   );
 }
 
-// ─── Devices ──────────────────────────────────────────────────────
+// ─── Devices donut ────────────────────────────────────────────────
 
 const DEVICE_LABEL: Record<string, string> = {
   desktop: "Desktop",
@@ -311,28 +318,91 @@ const DEVICE_LABEL: Record<string, string> = {
   bot: "Bots",
 };
 
-export function DevicesList({ rows }: { rows: DeviceRow[] }) {
+export function DevicesDonut({ rows }: { rows: DeviceRow[] }) {
   const filtered = rows.filter((r) => r.device !== "bot");
   if (filtered.length === 0) return <EmptyHint>No data yet.</EmptyHint>;
-  const max = Math.max(1, ...filtered.map((r) => r.views));
+  const slices = filtered.map((r) => ({
+    key: r.device,
+    label: DEVICE_LABEL[r.device] ?? r.device,
+    value: r.views,
+  }));
+  const total = filtered.reduce((acc, r) => acc + r.views, 0);
   return (
-    <ul className="flex flex-col">
-      {filtered.map((r) => (
-        <li key={r.device}>
-          <RankRow
-            leading={
-              <span className="flex size-5 items-center justify-center rounded-md bg-muted/50 text-[10px] font-medium text-muted-foreground ring-1 ring-border/40">
-                {(DEVICE_LABEL[r.device] ?? r.device)?.[0]}
-              </span>
-            }
-            label={DEVICE_LABEL[r.device] ?? r.device}
-            value={r.views}
-            barPct={Math.round((r.views / max) * 100)}
-          />
-        </li>
-      ))}
-    </ul>
+    <div className="grid grid-cols-[1fr_auto] items-center gap-5">
+      <MonochromeDonut
+        data={slices}
+        height={180}
+        centerLabel="Visits"
+        centerValue={formatCount(total)}
+      />
+      <DonutLegend data={slices} />
+    </div>
   );
+}
+
+// ─── Browsers donut ───────────────────────────────────────────────
+
+export function BrowsersDonut({ rows }: { rows: BrowserRow[] }) {
+  if (rows.length === 0) {
+    return (
+      <EmptyHint>
+        We&apos;ll show which browsers your readers use once traffic comes in.
+      </EmptyHint>
+    );
+  }
+  const slices = rows.map((r) => ({
+    key: r.browser,
+    label: r.browser,
+    value: r.views,
+  }));
+  const total = rows.reduce((acc, r) => acc + r.views, 0);
+  return (
+    <div className="grid grid-cols-[1fr_auto] items-center gap-5">
+      <MonochromeDonut
+        data={slices}
+        height={180}
+        centerLabel="Browsers"
+        centerValue={String(rows.length)}
+      />
+      <DonutLegend data={slices} />
+    </div>
+  );
+}
+
+// ─── Hour-of-day pattern ──────────────────────────────────────────
+
+export function HourlyTraffic({ rows }: { rows: HourBucket[] }) {
+  const total = rows.reduce((acc, r) => acc + r.views, 0);
+  if (total === 0) {
+    return (
+      <EmptyHint>
+        Once visits land we&apos;ll plot when your readers show up — by hour
+        of day.
+      </EmptyHint>
+    );
+  }
+  const peak = rows.reduce((best, r) => (r.views > best.views ? r : best), rows[0]);
+  const peakLabel = formatHourRange(peak.hour);
+  return (
+    <div>
+      <HourlyBarChart data={rows} />
+      <p className="mt-3 text-[11.5px] text-muted-foreground">
+        Peak hour:{" "}
+        <span className="text-foreground/80 font-medium">{peakLabel} UTC</span>
+        <Dim> · </Dim>
+        all times in coordinated universal time
+      </p>
+    </div>
+  );
+}
+
+function formatHourRange(h: number): string {
+  const fmt = (n: number) => {
+    if (n === 0) return "12am";
+    if (n === 12) return "12pm";
+    return n < 12 ? `${n}am` : `${n - 12}pm`;
+  };
+  return `${fmt(h)}–${fmt((h + 1) % 24)}`;
 }
 
 // ─── Recent activity feed ─────────────────────────────────────────

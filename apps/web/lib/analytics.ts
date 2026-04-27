@@ -238,6 +238,70 @@ export async function getDeviceBreakdown(
   return rows.results ?? [];
 }
 
+export interface BrowserRow {
+  browser: string;
+  views: number;
+}
+
+export async function getBrowserBreakdown(
+  db: D1Database,
+  slug: string,
+  days: number,
+  limit: number,
+): Promise<BrowserRow[]> {
+  const windowStart = Date.now() - days * DAY_MS;
+  const rows = await db
+    .prepare(
+      `SELECT browser, COUNT(*) AS views
+        FROM view_events
+        WHERE slug = ? AND ts >= ? AND device != 'bot'
+          AND browser IS NOT NULL AND browser != '' AND browser != 'Unknown'
+        GROUP BY browser
+        ORDER BY views DESC
+        LIMIT ?`,
+    )
+    .bind(slug, windowStart, limit)
+    .all<BrowserRow>();
+  return rows.results ?? [];
+}
+
+// ─── Hour-of-day pattern (24-bucket UTC histogram) ───────────────
+
+export interface HourBucket {
+  /** 0–23, UTC. The chart labels every 3rd hour to keep ticks readable. */
+  hour: number;
+  views: number;
+}
+
+export async function getHourlyPattern(
+  db: D1Database,
+  slug: string,
+  days: number,
+): Promise<HourBucket[]> {
+  const windowStart = Date.now() - days * DAY_MS;
+  const rows = await db
+    .prepare(
+      `SELECT
+          CAST(strftime('%H', ts/1000, 'unixepoch') AS INTEGER) AS hour,
+          COUNT(*) AS views
+        FROM view_events
+        WHERE slug = ? AND ts >= ? AND device != 'bot'
+        GROUP BY hour
+        ORDER BY hour ASC`,
+    )
+    .bind(slug, windowStart)
+    .all<{ hour: number; views: number }>();
+
+  // Fill all 24 buckets so the bar chart x-axis is continuous.
+  const byHour = new Map(
+    (rows.results ?? []).map((r) => [r.hour, r.views]),
+  );
+  return Array.from({ length: 24 }, (_, h) => ({
+    hour: h,
+    views: byHour.get(h) ?? 0,
+  }));
+}
+
 // ─── Recent visitor activity feed ────────────────────────────────
 
 export interface RecentVisitorRow {
@@ -278,6 +342,8 @@ export interface DashboardData {
   referrers: ReferrerRow[];
   countries: CountryRow[];
   devices: DeviceRow[];
+  browsers: BrowserRow[];
+  hourly: HourBucket[];
   recent: RecentVisitorRow[];
   hasAnyEvents: boolean;
 }
@@ -287,13 +353,15 @@ export async function loadDashboard(
   slug: string,
   days: number,
 ): Promise<DashboardData> {
-  const [kpis, timeseries, referrers, countries, devices, recent] =
+  const [kpis, timeseries, referrers, countries, devices, browsers, hourly, recent] =
     await Promise.all([
       getOverviewKPIs(db, slug, days),
       getViewsTimeseries(db, slug, days),
       getTopReferrers(db, slug, days, 8),
       getTopCountries(db, slug, days, 8),
       getDeviceBreakdown(db, slug, days),
+      getBrowserBreakdown(db, slug, days, 6),
+      getHourlyPattern(db, slug, days),
       getRecentVisitors(db, slug, 12),
     ]);
   return {
@@ -302,6 +370,8 @@ export async function loadDashboard(
     referrers,
     countries,
     devices,
+    browsers,
+    hourly,
     recent,
     hasAnyEvents: kpis.viewsAllTime > 0,
   };
