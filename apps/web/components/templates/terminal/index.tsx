@@ -2,316 +2,854 @@
 "use client";
 
 import Markdown from "react-markdown";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { motion } from "motion/react";
 import { useResume, useHandle } from "@/components/data-provider";
 import { allSocials } from "@gitshow/shared/resume";
 
 /**
- * Terminal — a CLI-rendered portfolio.
+ * Terminal — a portfolio that lives in a terminal.
  *
- * Treats the whole page like the output of `cat resume.md` in a green-on-
- * black 80-column terminal. Sections are headed with `## section_name`,
- * lists use `>` prompts and ASCII dashes, and a blinking cursor follows
- * the contact section. Best for backend / infra / security folks.
+ * Real macOS window chrome, an ASCII banner with a typewriter intro,
+ * sections rendered as `$ command` followed by realistic output
+ * (file trees, formatted tables, log lines), syntax-highlighted
+ * code-style blocks, and a vim-style status bar at the bottom that
+ * reports cursor line, language, and "buffer".
+ *
+ * Best for: backend, infra, security, and anyone who'd rather see
+ * `cat resume.md` than a hero unit.
  */
+
+const FG = "#d4d4d4"; // soft white — vscode dark default text
+const FG_DIM = "#7d7d7d";
+const FG_FAINT = "#4a4a4a";
+const ACCENT = "#7fff7f"; // classic green prompt
+const STR = "#a3e26b"; // strings — soft green
+const KEY = "#79b8ff"; // keys / paths — blue
+const NUM = "#f6c177"; // numbers — orange
+const KEYWORD = "#c586c0"; // keywords — purple
+const LINK = "#9cdcfe"; // links — light blue
+const ERR = "#f48771"; // errors — soft red
+
 export default function TerminalTemplate() {
   const r = useResume();
   const handle = useHandle();
   const hidden = new Set(r.sections.hidden);
   const socials = allSocials(r);
+  const [activeSection, setActiveSection] = useState("about");
+  const totalLines = useMemo(() => estimateLines(r), [r]);
 
   return (
-    <div className="min-h-dvh bg-[#0b0f0a] text-[#7fff7f] font-mono text-[13px] leading-[1.55] selection:bg-[#7fff7f] selection:text-[#0b0f0a]">
-      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-8 sm:py-12">
-        <TerminalHeader handle={handle} />
+    <div
+      className="min-h-dvh font-mono antialiased"
+      style={{
+        background: "#0d1117",
+        color: FG,
+        fontSize: "13.5px",
+        lineHeight: "1.6",
+      }}
+    >
+      <Scanline />
 
-        <Section label="whoami" delay={0}>
-          <div className="space-y-1">
-            <Line>name        : <span className="text-white">{r.person.name}</span></Line>
-            <Line>handle      : <span className="text-white">@{handle}</span></Line>
-            {r.person.location && (
-              <Line>location    : <span className="text-white">{r.person.location}</span></Line>
-            )}
-            {r.contact.email && (
-              <Line>email       : <a href={`mailto:${r.contact.email}`} className="text-[#9bff9b] underline-offset-2 hover:underline">{r.contact.email}</a></Line>
-            )}
-            <Line className="pt-2">{r.person.description}</Line>
+      <div className="mx-auto max-w-[1100px] px-3 sm:px-6 py-6 sm:py-10">
+        {/* Window chrome */}
+        <Window title={`${handle}@portfolio:~`}>
+          <Banner name={r.person.name} />
+
+          {/* whoami */}
+          <Block command={`whoami --verbose`}>
+            <Whoami r={r} handle={handle} />
+          </Block>
+
+          {/* about */}
+          <Block command={`cat about.md | less`} sectionId="about" onView={setActiveSection}>
+            <About summary={r.person.summary} />
+          </Block>
+
+          {/* work */}
+          {!hidden.has("work") && r.work.length > 0 && (
+            <Block
+              command={`git log --author="${r.person.name.split(" ")[0]}" --pretty=full`}
+              sectionId="work"
+              onView={setActiveSection}
+            >
+              <WorkLog work={r.work} />
+            </Block>
+          )}
+
+          {/* education */}
+          {!hidden.has("education") && r.education.length > 0 && (
+            <Block command={`ls -la education/`} sectionId="education" onView={setActiveSection}>
+              <EducationList education={r.education} />
+            </Block>
+          )}
+
+          {/* skills */}
+          {r.skills.length > 0 && (
+            <Block command={`tree skills/ -L 1 | column`} sectionId="skills" onView={setActiveSection}>
+              <SkillsTree skills={r.skills} />
+            </Block>
+          )}
+
+          {/* projects */}
+          {!hidden.has("projects") && r.projects.length > 0 && (
+            <Block command={`gh repo list --limit ${r.projects.length}`} sectionId="projects" onView={setActiveSection}>
+              <ProjectsList projects={r.projects.slice(0, 12)} />
+            </Block>
+          )}
+
+          {/* hackathons */}
+          {!hidden.has("hackathons") && r.hackathons.length > 0 && (
+            <Block
+              command={`tail -n ${r.hackathons.length} hackathons.log`}
+              sectionId="hackathons"
+              onView={setActiveSection}
+            >
+              <HackathonsLog hackathons={r.hackathons} />
+            </Block>
+          )}
+
+          {/* publications */}
+          {!hidden.has("publications") && r.publications.length > 0 && (
+            <Block
+              command={`bibtex --list publications/`}
+              sectionId="publications"
+              onView={setActiveSection}
+            >
+              <PublicationsBibtex publications={r.publications} />
+            </Block>
+          )}
+
+          {/* build log */}
+          {!hidden.has("buildLog") && r.buildLog.length > 0 && (
+            <Block
+              command={`git log --graph --oneline --all | head -20`}
+              sectionId="buildLog"
+              onView={setActiveSection}
+            >
+              <BuildLogGraph buildLog={r.buildLog.slice(0, 18)} />
+            </Block>
+          )}
+
+          {/* contact */}
+          <Block command={`cat ~/.contacts`} sectionId="contact" onView={setActiveSection}>
+            <Contacts email={r.contact.email} socials={socials} />
+          </Block>
+
+          {/* end-of-file prompt */}
+          <div className="mt-8 flex items-center gap-2">
+            <Prompt user={handle} cwd="~" />
+            <Cursor />
           </div>
-        </Section>
+        </Window>
+      </div>
 
-        <Section label="cat about.md" delay={1}>
-          <div className="prose-terminal">
-            <Markdown
-              components={{
-                a: ({ href, children }) => (
-                  <a href={href} className="text-[#9bff9b] underline-offset-2 hover:underline">
-                    {children}
-                  </a>
-                ),
-                p: ({ children }) => <p className="mb-3 last:mb-0 text-[#bdf7bd]">{children}</p>,
-                strong: ({ children }) => <strong className="text-white font-bold">{children}</strong>,
-                em: ({ children }) => <em className="text-[#7fff7f] italic">{children}</em>,
+      {/* vim-style status bar at bottom of viewport */}
+      <StatusBar
+        handle={handle}
+        section={activeSection}
+        totalLines={totalLines}
+        version={r.meta.version}
+      />
+    </div>
+  );
+}
+
+/* ─────────────────────────  Window chrome  ────────────────────────── */
+
+function Window({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5, ease: "easeOut" }}
+      className="rounded-lg overflow-hidden border border-[#30363d] shadow-[0_25px_60px_-15px_rgba(0,0,0,0.5)]"
+      style={{ background: "#0d1117" }}
+    >
+      <header
+        className="flex items-center px-4 py-2.5 border-b border-[#30363d] select-none"
+        style={{ background: "#161b22" }}
+      >
+        <div className="flex items-center gap-1.5">
+          <span className="size-3 rounded-full bg-[#ff5f56]" />
+          <span className="size-3 rounded-full bg-[#ffbd2e]" />
+          <span className="size-3 rounded-full bg-[#27c93f]" />
+        </div>
+        <div className="flex-1 text-center text-[11px]" style={{ color: FG_DIM }}>
+          {title}
+        </div>
+        <div className="text-[11px] font-bold tracking-wider" style={{ color: FG_FAINT }}>
+          bash · 80×24
+        </div>
+      </header>
+      <div
+        className="p-5 sm:p-7 pb-32 selection:bg-[#264f78]"
+        style={{ caretColor: ACCENT }}
+      >
+        {children}
+      </div>
+    </motion.div>
+  );
+}
+
+/* ─────────────────────────  Banner with typewriter  ────────────────────────── */
+
+const BANNER_LINES = [
+  "  ___     _ _   ___ _",
+  " / __|___| | |_/ __| |_  _____ __ __",
+  "| (__/ -_) |  _\\__ \\ ' \\/ _ \\ V  V /",
+  " \\___\\___|_|\\__|___/_||_\\___/\\_/\\_/",
+];
+
+function Banner({ name }: { name: string }) {
+  const [done, setDone] = useState(false);
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.4 }}
+      className="mb-6"
+    >
+      <pre
+        className="text-[10px] sm:text-[11.5px] leading-[1.1] font-bold whitespace-pre"
+        style={{ color: ACCENT }}
+        aria-hidden
+      >
+        {BANNER_LINES.join("\n")}
+      </pre>
+      <div className="mt-3 text-[12.5px]" style={{ color: FG_DIM }}>
+        Welcome, <span style={{ color: FG }}>{name}</span>. Last login:{" "}
+        <Typewriter
+          text={new Date().toUTCString().replace("GMT", "UTC")}
+          delay={400}
+          onDone={() => setDone(true)}
+        />
+        {done && (
+          <>
+            {" — "}
+            <span style={{ color: STR }}>{"42 sessions"}</span>{" since boot."}
+          </>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+function Typewriter({
+  text,
+  delay = 0,
+  onDone,
+}: {
+  text: string;
+  delay?: number;
+  onDone?: () => void;
+}) {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    const start = setTimeout(() => {
+      const id = setInterval(() => {
+        setI((prev) => {
+          if (prev >= text.length) {
+            clearInterval(id);
+            onDone?.();
+            return prev;
+          }
+          return prev + 1;
+        });
+      }, 20);
+      return () => clearInterval(id);
+    }, delay);
+    return () => clearTimeout(start);
+  }, [text, delay, onDone]);
+  return (
+    <span style={{ color: NUM }}>
+      {text.slice(0, i)}
+      {i < text.length && <span className="opacity-50">|</span>}
+    </span>
+  );
+}
+
+/* ─────────────────────────  Section block  ────────────────────────── */
+
+function Block({
+  command,
+  children,
+  sectionId,
+  onView,
+}: {
+  command: string;
+  children: React.ReactNode;
+  sectionId?: string;
+  onView?: (id: string) => void;
+}) {
+  return (
+    <motion.section
+      id={sectionId}
+      initial={{ opacity: 0, y: 6 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-30%" }}
+      onViewportEnter={() => sectionId && onView?.(sectionId)}
+      transition={{ duration: 0.35, ease: "easeOut" }}
+      className="mt-7 first:mt-0"
+    >
+      <div className="flex items-baseline gap-2">
+        <span style={{ color: ACCENT }}>$</span>
+        <span style={{ color: FG }}>{command}</span>
+      </div>
+      <div className="mt-2 pl-4 border-l border-[#21262d]">{children}</div>
+    </motion.section>
+  );
+}
+
+/* ─────────────────────────  whoami output  ────────────────────────── */
+
+function Whoami({ r, handle }: { r: ReturnType<typeof useResume>; handle: string }) {
+  const fields: Array<[string, React.ReactNode]> = [
+    ["uid", <span style={{ color: NUM }}>{1000}</span>],
+    ["name", <span style={{ color: STR }}>"{r.person.name}"</span>],
+    ["handle", <span style={{ color: STR }}>"@{handle}"</span>],
+    ...(r.person.location
+      ? ([["location", <span style={{ color: STR }}>"{r.person.location}"</span>]] as Array<[string, React.ReactNode]>)
+      : []),
+    ["bio", <span style={{ color: STR }}>"{r.person.description}"</span>],
+    ...(r.contact.email
+      ? ([
+          [
+            "email",
+            <a
+              key="email"
+              href={`mailto:${r.contact.email}`}
+              style={{ color: LINK }}
+              className="underline-offset-2 hover:underline"
+            >
+              {r.contact.email}
+            </a>,
+          ],
+        ] as Array<[string, React.ReactNode]>)
+      : []),
+  ];
+  return (
+    <pre className="whitespace-pre-wrap font-mono">
+      <span style={{ color: KEYWORD }}>{"const "}</span>
+      <span style={{ color: KEY }}>me</span>
+      <span style={{ color: FG }}>{" = "}</span>
+      <span style={{ color: FG }}>{`{`}</span>
+      {"\n"}
+      {fields.map(([k, v], i) => (
+        <span key={k}>
+          {"  "}
+          <span style={{ color: KEY }}>{k}</span>
+          <span style={{ color: FG }}>{": "}</span>
+          {v}
+          {i < fields.length - 1 ? "," : ""}
+          {"\n"}
+        </span>
+      ))}
+      <span style={{ color: FG }}>{`}`}</span>
+      <span style={{ color: FG_DIM }}>{`;  // 1 row in 0.001s`}</span>
+    </pre>
+  );
+}
+
+/* ─────────────────────────  about ────────────────────────── */
+
+function About({ summary }: { summary: string }) {
+  return (
+    <article
+      className="prose-invert max-w-prose [&_p]:mb-3 [&_p:last-child]:mb-0"
+      style={{ color: FG }}
+    >
+      <Markdown
+        components={{
+          p: ({ children }) => (
+            <p style={{ color: FG, marginBottom: "0.75rem" }}>{children}</p>
+          ),
+          a: ({ href, children }) => (
+            <a
+              href={href}
+              style={{ color: LINK }}
+              className="underline-offset-2 hover:underline"
+            >
+              {children}
+            </a>
+          ),
+          strong: ({ children }) => (
+            <strong style={{ color: ACCENT, fontWeight: 700 }}>{children}</strong>
+          ),
+          em: ({ children }) => (
+            <em style={{ color: NUM, fontStyle: "italic" }}>{children}</em>
+          ),
+          code: ({ children }) => (
+            <code
+              style={{
+                color: STR,
+                background: "#161b22",
+                padding: "0.1em 0.4em",
+                borderRadius: "3px",
+                fontSize: "0.92em",
               }}
             >
-              {r.person.summary}
-            </Markdown>
-          </div>
-        </Section>
+              {children}
+            </code>
+          ),
+        }}
+      >
+        {summary}
+      </Markdown>
+    </article>
+  );
+}
 
-        {!hidden.has("work") && r.work.length > 0 && (
-          <Section label="ls -la work/" delay={2}>
-            <div className="space-y-4">
-              {r.work.map((w) => (
-                <article key={w.id} className="border-l border-[#1f3320] pl-3">
-                  <header className="flex flex-wrap items-baseline justify-between gap-2">
-                    <div className="text-white font-bold">
-                      {w.title} <span className="text-[#7fff7f]">@</span> {w.company}
-                    </div>
-                    <div className="text-[#5fa05f] tabular-nums text-[12px]">
-                      {w.start} → {w.end}
-                    </div>
-                  </header>
-                  {w.location && <div className="text-[#5fa05f] text-[12px]">{w.location}</div>}
-                  {w.description && (
-                    <div className="mt-2 text-[#bdf7bd] prose-terminal">
-                      <Markdown
-                        components={{
-                          p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
-                          a: ({ href, children }) => (
-                            <a href={href} className="text-[#9bff9b] hover:underline">{children}</a>
-                          ),
-                          ul: ({ children }) => <ul className="list-none space-y-1">{children}</ul>,
-                          li: ({ children }) => (
-                            <li className="pl-3 relative before:content-['>'] before:absolute before:left-0 before:text-[#7fff7f]">
-                              {children}
-                            </li>
-                          ),
-                        }}
-                      >
-                        {w.description}
-                      </Markdown>
-                    </div>
-                  )}
-                </article>
-              ))}
-            </div>
-          </Section>
-        )}
+/* ─────────────────────────  work — git log style ────────────────────────── */
 
-        {!hidden.has("education") && r.education.length > 0 && (
-          <Section label="ls education/" delay={3}>
-            <div className="space-y-2">
-              {r.education.map((e) => (
-                <div key={e.id} className="flex flex-wrap items-baseline justify-between gap-2 border-l border-[#1f3320] pl-3">
-                  <div>
-                    <div className="text-white font-bold">{e.school}</div>
-                    <div className="text-[#bdf7bd]">{e.degree}</div>
-                  </div>
-                  <div className="text-[#5fa05f] tabular-nums text-[12px]">{e.start} → {e.end}</div>
-                </div>
-              ))}
-            </div>
-          </Section>
-        )}
-
-        {r.skills.length > 0 && (
-          <Section label="grep -h skills/*" delay={4}>
-            <div className="flex flex-wrap gap-x-3 gap-y-1">
-              {r.skills.map((s) => (
-                <span key={s.name} className="text-[#bdf7bd]">
-                  <span className="text-[#7fff7f]">+</span> {s.name}
-                  {s.usageCount && (
-                    <span className="text-[#5fa05f] ml-1">({s.usageCount})</span>
-                  )}
+function WorkLog({ work }: { work: ReturnType<typeof useResume>["work"] }) {
+  return (
+    <div className="space-y-5">
+      {work.map((w, i) => {
+        const sha = pseudoSha(w.id, i);
+        return (
+          <article key={w.id}>
+            <div>
+              <span style={{ color: NUM }}>commit {sha}</span>
+              {i === 0 && (
+                <span style={{ color: ACCENT }} className="ml-2">
+                  (HEAD →{" "}
+                  <span style={{ color: KEYWORD }}>career</span>, current)
                 </span>
-              ))}
+              )}
             </div>
-          </Section>
-        )}
-
-        {!hidden.has("projects") && r.projects.length > 0 && (
-          <Section label="find ./projects -type f" delay={5}>
-            <div className="space-y-4">
-              {r.projects.slice(0, 12).map((p) => (
-                <article key={p.id} className="border-l border-[#1f3320] pl-3">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <div>
-                      <span className="text-[#7fff7f]">$</span>{" "}
-                      <a href={p.href ?? "#"} target="_blank" rel="noreferrer" className="text-white font-bold hover:underline underline-offset-2">
-                        {p.title}
+            <div>
+              <span style={{ color: FG_DIM }}>Author: </span>
+              <span>{w.title}</span>
+              <span style={{ color: FG_DIM }}>{" <at> "}</span>
+              <span style={{ color: STR }}>{w.company}</span>
+            </div>
+            <div>
+              <span style={{ color: FG_DIM }}>Date:   </span>
+              <span style={{ color: NUM }}>
+                {w.start} → {w.end}
+              </span>
+              {w.location && (
+                <span style={{ color: FG_DIM }}> · {w.location}</span>
+              )}
+            </div>
+            {w.description && (
+              <div className="mt-2 pl-4">
+                <Markdown
+                  components={{
+                    p: ({ children }) => (
+                      <p style={{ color: FG, marginBottom: "0.5rem" }}>
+                        {children}
+                      </p>
+                    ),
+                    a: ({ href, children }) => (
+                      <a href={href} style={{ color: LINK }} className="hover:underline">
+                        {children}
                       </a>
-                      {p.active && (
-                        <span className="ml-2 text-[#9bff9b]">[active]</span>
-                      )}
-                    </div>
-                    <div className="text-[#5fa05f] tabular-nums text-[12px]">{p.dates}</div>
-                  </div>
-                  <div className="mt-1 text-[#bdf7bd] prose-terminal">
-                    <Markdown
-                      components={{
-                        p: ({ children }) => <p>{children}</p>,
-                        a: ({ href, children }) => (
-                          <a href={href} className="text-[#9bff9b] hover:underline">{children}</a>
-                        ),
-                      }}
-                    >
-                      {p.description}
-                    </Markdown>
-                  </div>
-                  {p.technologies.length > 0 && (
-                    <div className="mt-1 text-[12px] text-[#5fa05f]">
-                      tech: {p.technologies.join(", ")}
-                    </div>
-                  )}
-                  {p.links.length > 0 && (
-                    <div className="mt-1 text-[12px] flex flex-wrap gap-x-3">
-                      {p.links.map((l) => (
-                        <a key={l.href} href={l.href} target="_blank" rel="noreferrer" className="text-[#9bff9b] hover:underline">
-                          [{l.label}]
-                        </a>
-                      ))}
-                    </div>
-                  )}
-                </article>
-              ))}
-            </div>
-          </Section>
-        )}
-
-        {!hidden.has("hackathons") && r.hackathons.length > 0 && (
-          <Section label="cat hackathons.log" delay={6}>
-            <div className="space-y-2">
-              {r.hackathons.map((h) => (
-                <div key={h.id} className="border-l border-[#1f3320] pl-3">
-                  <div className="flex flex-wrap items-baseline justify-between gap-2">
-                    <div className="text-white font-bold">{h.title}</div>
-                    {h.date && <div className="text-[#5fa05f] tabular-nums text-[12px]">{h.date}</div>}
-                  </div>
-                  {h.rank && <div className="text-[#9bff9b]">→ {h.rank}</div>}
-                  {h.description && <div className="text-[#bdf7bd]">{h.description}</div>}
-                </div>
-              ))}
-            </div>
-          </Section>
-        )}
-
-        {!hidden.has("publications") && r.publications.length > 0 && (
-          <Section label="ls publications/" delay={7}>
-            <div className="space-y-2">
-              {r.publications.map((p) => (
-                <a key={p.id} href={p.url} target="_blank" rel="noreferrer" className="block border-l border-[#1f3320] pl-3 hover:border-[#7fff7f] transition-colors">
-                  <div className="text-white font-bold">[{p.kind}] {p.title}</div>
-                  {p.venue && <div className="text-[#bdf7bd] text-[12px]">{p.venue}{p.publishedAt ? ` · ${p.publishedAt}` : ""}</div>}
-                </a>
-              ))}
-            </div>
-          </Section>
-        )}
-
-        {!hidden.has("buildLog") && r.buildLog.length > 0 && (
-          <Section label="git log --all --oneline" delay={8}>
-            <div className="space-y-1">
-              {r.buildLog.slice(0, 30).map((b) => (
-                <div key={b.id} className="flex flex-wrap items-baseline gap-x-3 text-[12.5px]">
-                  <span className="text-[#5fa05f] tabular-nums w-24 flex-none">{b.dates}</span>
-                  <span
-                    aria-hidden
-                    className="inline-block size-2 rounded-full flex-none"
-                    style={{ backgroundColor: b.languageColor ?? "#7fff7f" }}
-                  />
-                  <span className="text-white font-bold">{b.title}</span>
-                  <span className="text-[#bdf7bd]">— {b.description}</span>
-                </div>
-              ))}
-            </div>
-          </Section>
-        )}
-
-        <Section label="contact --list" delay={9}>
-          <div className="space-y-1">
-            {socials.map((s) => (
-              <Line key={s.url}>
-                <span className="text-[#5fa05f]">{s.name.padEnd(12, " ")}</span>{" "}
-                <a href={s.url} target="_blank" rel="noreferrer" className="text-[#9bff9b] hover:underline">
-                  {s.url}
-                </a>
-              </Line>
-            ))}
-            {r.contact.email && (
-              <Line>
-                <span className="text-[#5fa05f]">{"email".padEnd(12, " ")}</span>{" "}
-                <a href={`mailto:${r.contact.email}`} className="text-[#9bff9b] hover:underline">
-                  {r.contact.email}
-                </a>
-              </Line>
+                    ),
+                    ul: ({ children }) => (
+                      <ul className="list-none space-y-1">{children}</ul>
+                    ),
+                    li: ({ children }) => (
+                      <li className="pl-3 relative">
+                        <span
+                          aria-hidden
+                          className="absolute left-0"
+                          style={{ color: ACCENT }}
+                        >
+                          ▸
+                        </span>
+                        {children}
+                      </li>
+                    ),
+                  }}
+                >
+                  {w.description}
+                </Markdown>
+              </div>
             )}
-          </div>
-        </Section>
+            {w.badges && w.badges.length > 0 && (
+              <div className="mt-2 pl-4 text-[12px]">
+                <span style={{ color: FG_DIM }}>Tags: </span>
+                {w.badges.map((b, k) => (
+                  <span key={b}>
+                    <span style={{ color: STR }}>{b}</span>
+                    {k < w.badges.length - 1 && (
+                      <span style={{ color: FG_DIM }}>, </span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
 
-        <div className="mt-10 flex items-center text-[#7fff7f]">
-          <span>$</span>
-          <Cursor />
-        </div>
+/* ─────────────────────────  education — ls -la ────────────────────────── */
+
+function EducationList({
+  education,
+}: {
+  education: ReturnType<typeof useResume>["education"];
+}) {
+  return (
+    <pre className="whitespace-pre-wrap text-[12.5px] leading-[1.7]">
+      <div style={{ color: FG_DIM }}>
+        total {education.length}
+      </div>
+      {education.map((e) => {
+        const perms = "drwxr-xr-x";
+        const yearRange = `${e.start.match(/\d{4}/)?.[0] ?? "----"}–${e.end.match(/\d{4}/)?.[0] ?? "----"}`;
+        return (
+          <div key={e.id} className="flex items-baseline gap-3 flex-wrap">
+            <span style={{ color: ACCENT }}>{perms}</span>
+            <span style={{ color: NUM }}>1</span>
+            <span style={{ color: KEY }}>student</span>
+            <span style={{ color: KEY }}>academia</span>
+            <span style={{ color: NUM }} className="tabular-nums">
+              4.0K
+            </span>
+            <span style={{ color: NUM }} className="tabular-nums">
+              {yearRange}
+            </span>
+            <span style={{ color: STR }}>{e.school}/</span>
+            <span style={{ color: FG_DIM }}>· {e.degree}</span>
+          </div>
+        );
+      })}
+    </pre>
+  );
+}
+
+/* ─────────────────────────  skills — tree + column  ────────────────────────── */
+
+function SkillsTree({
+  skills,
+}: {
+  skills: ReturnType<typeof useResume>["skills"];
+}) {
+  // 3 columns of skills, like `column`
+  const cols = 3;
+  const padded = [...skills];
+  while (padded.length % cols !== 0) padded.push({ name: "" });
+  const rows: typeof skills[] = [];
+  const perCol = Math.ceil(padded.length / cols);
+  for (let i = 0; i < perCol; i++) {
+    const row: typeof skills = [];
+    for (let c = 0; c < cols; c++) row.push(padded[c * perCol + i] ?? { name: "" });
+    rows.push(row);
+  }
+
+  return (
+    <div className="text-[13px]">
+      <div className="grid gap-x-6" style={{ gridTemplateColumns: "repeat(3, minmax(0, 1fr))" }}>
+        {rows.flatMap((row, r) =>
+          row.map((s, c) =>
+            s.name ? (
+              <div key={`${r}-${c}`} className="flex items-baseline justify-between gap-2 truncate">
+                <span>
+                  <span style={{ color: ACCENT }}>{c === 0 ? "├──" : c === cols - 1 ? "└──" : "├──"}</span>{" "}
+                  <span style={{ color: STR }}>{s.name}</span>
+                </span>
+                {s.usageCount && (
+                  <span style={{ color: FG_DIM }} className="tabular-nums">
+                    ({s.usageCount})
+                  </span>
+                )}
+              </div>
+            ) : (
+              <div key={`${r}-${c}`} />
+            ),
+          ),
+        )}
+      </div>
+      <div className="mt-3 text-[12px]" style={{ color: FG_DIM }}>
+        {skills.length} packages installed; latest sync just now.
       </div>
     </div>
   );
 }
 
-function TerminalHeader({ handle }: { handle: string }) {
+/* ─────────────────────────  projects — gh repo list  ────────────────────────── */
+
+function ProjectsList({
+  projects,
+}: {
+  projects: ReturnType<typeof useResume>["projects"];
+}) {
   return (
-    <header className="mb-6 -mx-4 sm:-mx-8 border-y border-[#1f3320]">
-      <div className="px-4 sm:px-8 py-2 flex items-center justify-between text-[12px]">
-        <div className="flex items-center gap-2">
-          <span className="size-2.5 rounded-full bg-[#ff5f56]" />
-          <span className="size-2.5 rounded-full bg-[#ffbd2e]" />
-          <span className="size-2.5 rounded-full bg-[#27c93f]" />
-          <span className="ml-3 text-[#5fa05f]">~/portfolio/{handle}</span>
+    <div className="text-[13px] space-y-3">
+      {projects.map((p) => {
+        const slug = p.title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+        return (
+          <article key={p.id} className="border-l-2 border-[#21262d] pl-3">
+            <div className="flex items-baseline justify-between gap-2 flex-wrap">
+              <a
+                href={p.href ?? "#"}
+                target="_blank"
+                rel="noreferrer"
+                style={{ color: LINK }}
+                className="hover:underline underline-offset-2"
+              >
+                @me/{slug}
+              </a>
+              <span className="text-[12px]" style={{ color: NUM }}>
+                {p.dates}
+              </span>
+            </div>
+            {p.active && (
+              <span
+                className="inline-block text-[10px] uppercase tracking-wider px-1.5 mt-1"
+                style={{ color: "#0d1117", background: ACCENT, fontWeight: 700 }}
+              >
+                public · active
+              </span>
+            )}
+            <div className="mt-1.5" style={{ color: FG }}>
+              <span style={{ color: FG_DIM }}>description</span>
+              <span style={{ color: FG_DIM }}>: </span>
+              <span>{stripMd(p.description).split("\n")[0]}</span>
+            </div>
+            {p.technologies.length > 0 && (
+              <div className="text-[12.5px]">
+                <span style={{ color: FG_DIM }}>language</span>
+                <span style={{ color: FG_DIM }}>: </span>
+                {p.technologies.slice(0, 6).map((t, i) => (
+                  <span key={t}>
+                    <span style={{ color: STR }}>{t}</span>
+                    {i < Math.min(p.technologies.length, 6) - 1 && (
+                      <span style={{ color: FG_DIM }}>, </span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+            {p.links && p.links.length > 0 && (
+              <div className="text-[12.5px] mt-1">
+                <span style={{ color: FG_DIM }}>links</span>
+                <span style={{ color: FG_DIM }}>: </span>
+                {p.links.map((l, i) => (
+                  <span key={l.href}>
+                    <a
+                      href={l.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: LINK }}
+                      className="hover:underline underline-offset-2"
+                    >
+                      {l.label}
+                    </a>
+                    {i < p.links.length - 1 && (
+                      <span style={{ color: FG_DIM }}> | </span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─────────────────────────  hackathons — tail -n hackathons.log ────────────────────────── */
+
+function HackathonsLog({
+  hackathons,
+}: {
+  hackathons: ReturnType<typeof useResume>["hackathons"];
+}) {
+  return (
+    <pre className="whitespace-pre-wrap text-[12.5px] leading-[1.65]">
+      {hackathons.map((h) => (
+        <div key={h.id}>
+          <span style={{ color: NUM }} className="tabular-nums">
+            [{(h.date ?? "----").padEnd(11, " ")}]
+          </span>
+          <span style={{ color: ACCENT }}> INFO </span>
+          <span style={{ color: KEY }}>{h.title}</span>
+          {h.rank && (
+            <>
+              {"  "}
+              <span style={{ color: STR }}>★ {h.rank}</span>
+            </>
+          )}
+          {h.location && (
+            <>
+              {"  "}
+              <span style={{ color: FG_DIM }}>· {h.location}</span>
+            </>
+          )}
+          {h.description && (
+            <div className="pl-2" style={{ color: FG }}>
+              {h.description}
+            </div>
+          )}
         </div>
-        <span className="text-[#5fa05f]">bash</span>
-      </div>
-    </header>
+      ))}
+    </pre>
   );
 }
 
-function Section({
-  label,
-  children,
-  delay = 0,
+/* ─────────────────────────  publications — bibtex-ish  ────────────────────────── */
+
+function PublicationsBibtex({
+  publications,
 }: {
-  label: string;
-  children: React.ReactNode;
-  delay?: number;
+  publications: ReturnType<typeof useResume>["publications"];
 }) {
   return (
-    <section
-      className="mt-8 first:mt-0 animate-[term-fade_0.4s_ease-out_both]"
-      style={{ animationDelay: `${delay * 60}ms` }}
-    >
-      <h2 className="mb-3 text-white">
-        <span className="text-[#7fff7f]">$</span> {label}
-      </h2>
-      <div className="pl-3">{children}</div>
-      <div className="mt-3 text-[#1f3320] select-none" aria-hidden>
-        ────────────────────────────────────────────────────
-      </div>
-      <style>{`
-        @keyframes term-fade {
-          from { opacity: 0; transform: translateY(4px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
-    </section>
+    <div className="space-y-4 text-[12.5px]">
+      {publications.map((p, i) => {
+        const cite = `${(p.kind || "ref").slice(0, 3)}${i + 1}_${(p.title.split(" ")[0] || "ref").toLowerCase()}`;
+        return (
+          <div key={p.id}>
+            <div>
+              <span style={{ color: KEYWORD }}>@{p.kind}</span>
+              <span style={{ color: FG }}>{`{`}</span>
+              <span style={{ color: NUM }}>{cite}</span>
+              <span style={{ color: FG }}>,</span>
+            </div>
+            <div className="pl-4">
+              <span style={{ color: KEY }}>title</span>
+              <span style={{ color: FG }}>{" = "}</span>
+              <a
+                href={p.url}
+                target="_blank"
+                rel="noreferrer"
+                className="hover:underline underline-offset-2"
+                style={{ color: LINK }}
+              >
+                "{p.title}"
+              </a>
+              <span style={{ color: FG }}>,</span>
+            </div>
+            {p.venue && (
+              <div className="pl-4">
+                <span style={{ color: KEY }}>venue</span>
+                <span style={{ color: FG }}>{" = "}</span>
+                <span style={{ color: STR }}>"{p.venue}"</span>
+                <span style={{ color: FG }}>,</span>
+              </div>
+            )}
+            {p.publishedAt && (
+              <div className="pl-4">
+                <span style={{ color: KEY }}>year</span>
+                <span style={{ color: FG }}>{" = "}</span>
+                <span style={{ color: NUM }}>{p.publishedAt}</span>
+                <span style={{ color: FG }}>,</span>
+              </div>
+            )}
+            {p.coAuthors && p.coAuthors.length > 0 && (
+              <div className="pl-4">
+                <span style={{ color: KEY }}>coauthors</span>
+                <span style={{ color: FG }}>{" = "}</span>
+                <span style={{ color: STR }}>"{p.coAuthors.join(", ")}"</span>
+              </div>
+            )}
+            <div>
+              <span style={{ color: FG }}>{`}`}</span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
-function Line({
-  children,
-  className = "",
+/* ─────────────────────────  build log — git log graph  ────────────────────────── */
+
+function BuildLogGraph({
+  buildLog,
 }: {
-  children: React.ReactNode;
-  className?: string;
+  buildLog: ReturnType<typeof useResume>["buildLog"];
 }) {
-  return <div className={`text-[#bdf7bd] ${className}`}>{children}</div>;
+  return (
+    <pre className="whitespace-pre text-[12.5px] leading-[1.55] overflow-x-auto">
+      {buildLog.map((b, i) => {
+        const sha = pseudoSha(b.id, i).slice(0, 7);
+        const branch = i % 4 === 0 ? "main" : i % 4 === 1 ? "feat" : "refactor";
+        return (
+          <div key={b.id} className="grid grid-cols-[16px_70px_60px_1fr] gap-2 items-baseline">
+            <span style={{ color: ACCENT }}>{i === 0 ? "*" : "│"}</span>
+            <span style={{ color: NUM }} className="tabular-nums">
+              {sha}
+            </span>
+            <span style={{ color: b.languageColor ?? STR }}>({branch})</span>
+            <span>
+              <span style={{ color: KEY }}>{b.title}</span>
+              <span style={{ color: FG_DIM }}>: </span>
+              <span style={{ color: FG }}>{b.description}</span>
+            </span>
+          </div>
+        );
+      })}
+    </pre>
+  );
+}
+
+/* ─────────────────────────  contacts ────────────────────────── */
+
+function Contacts({
+  email,
+  socials,
+}: {
+  email?: string;
+  socials: ReturnType<typeof allSocials>;
+}) {
+  const items: Array<{ key: string; value: string; href?: string }> = [];
+  if (email) items.push({ key: "email", value: email, href: `mailto:${email}` });
+  for (const s of socials) {
+    items.push({ key: s.name.toLowerCase(), value: prettyUrl(s.url), href: s.url });
+  }
+  return (
+    <pre className="whitespace-pre-wrap text-[12.5px]">
+      <div style={{ color: FG_DIM }}># ~/.contacts — last updated just now</div>
+      <div style={{ color: FG_DIM }}># cat | sort -k1</div>
+      <div className="mt-2">
+        {items.map((it) => (
+          <div key={it.key}>
+            <span style={{ color: KEY }} className="inline-block w-32">
+              {it.key}
+            </span>
+            <span style={{ color: FG_DIM }}> = </span>
+            {it.href ? (
+              <a
+                href={it.href}
+                target={it.href.startsWith("mailto:") ? undefined : "_blank"}
+                rel="noreferrer"
+                style={{ color: LINK }}
+                className="hover:underline underline-offset-2"
+              >
+                {it.value}
+              </a>
+            ) : (
+              <span style={{ color: STR }}>{it.value}</span>
+            )}
+          </div>
+        ))}
+      </div>
+    </pre>
+  );
+}
+
+/* ─────────────────────────  prompt + cursor  ────────────────────────── */
+
+function Prompt({ user, cwd }: { user: string; cwd: string }) {
+  return (
+    <span className="font-bold">
+      <span style={{ color: KEYWORD }}>{user}</span>
+      <span style={{ color: FG_DIM }}>@</span>
+      <span style={{ color: NUM }}>portfolio</span>
+      <span style={{ color: FG_DIM }}>:</span>
+      <span style={{ color: KEY }}>{cwd}</span>
+      <span style={{ color: FG }}>$</span>
+    </span>
+  );
 }
 
 function Cursor() {
@@ -323,7 +861,102 @@ function Cursor() {
   return (
     <span
       aria-hidden
-      className={`ml-2 inline-block h-[1.1em] w-[0.55em] align-text-bottom transition-opacity ${on ? "opacity-100" : "opacity-0"} bg-[#7fff7f]`}
+      className={`inline-block h-[1.2em] w-[0.6em] align-text-bottom ml-1 transition-opacity ${on ? "opacity-100" : "opacity-0"}`}
+      style={{ background: ACCENT }}
     />
+  );
+}
+
+/* ─────────────────────────  status bar  ────────────────────────── */
+
+function StatusBar({
+  handle,
+  section,
+  totalLines,
+  version,
+}: {
+  handle: string;
+  section: string;
+  totalLines: number;
+  version: number;
+}) {
+  return (
+    <div
+      className="fixed bottom-0 inset-x-0 z-30 select-none"
+      style={{ background: "#1f2428" }}
+    >
+      <div className="mx-auto max-w-[1400px] px-3 sm:px-6 py-1.5 flex items-center justify-between text-[11px] gap-3">
+        <div className="flex items-center gap-3">
+          <span
+            className="px-2 py-0.5 font-bold uppercase tracking-wider"
+            style={{ background: ACCENT, color: "#0d1117" }}
+          >
+            NORMAL
+          </span>
+          <span style={{ color: FG }} className="hidden sm:inline">
+            ~/portfolio/{handle}/{section}.md
+          </span>
+        </div>
+        <div className="flex items-center gap-3" style={{ color: FG_DIM }}>
+          <span className="hidden sm:inline">utf-8</span>
+          <span className="hidden sm:inline">unix</span>
+          <span>markdown</span>
+          <span className="tabular-nums">v{version}</span>
+          <span className="tabular-nums">
+            {section}:{totalLines} lines
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────  scanline  ────────────────────────── */
+
+function Scanline() {
+  return (
+    <div
+      aria-hidden
+      className="pointer-events-none fixed inset-0 z-20"
+      style={{
+        backgroundImage:
+          "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(255,255,255,0.018) 3px)",
+      }}
+    />
+  );
+}
+
+/* ─────────────────────────  Helpers  ────────────────────────── */
+
+function pseudoSha(id: string, salt: number): string {
+  // Deterministic pseudo SHA — looks like a git hash, derived from id
+  let h = salt;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return h.toString(16).padStart(8, "0").slice(0, 7).padEnd(40, "f");
+}
+
+function stripMd(s: string): string {
+  return s.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_`#>]/g, "");
+}
+
+function prettyUrl(u: string): string {
+  try {
+    const url = new URL(u);
+    return url.hostname.replace(/^www\./, "") + url.pathname.replace(/\/$/, "");
+  } catch {
+    return u;
+  }
+}
+
+function estimateLines(r: ReturnType<typeof useResume>): number {
+  return (
+    r.work.length * 4 +
+    r.projects.length * 5 +
+    r.skills.length +
+    r.publications.length * 4 +
+    r.buildLog.length +
+    r.education.length * 2 +
+    r.hackathons.length * 2 +
+    20
   );
 }
