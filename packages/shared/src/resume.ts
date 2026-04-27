@@ -392,13 +392,17 @@ export type BlogPost = z.infer<typeof BlogPostSchema>;
  * Visual template the portfolio renders with. The same Resume JSON
  * powers every variant — only the React component swaps. New templates
  * can be added without breaking previously-published portfolios.
+ *
+ * Removed values (e.g. "magazine", "brutalist" from the v0 lineup) are
+ * caught by `.catch()` on the parent ThemeSchema field and silently
+ * downgraded to "classic" so old drafts don't fail to load.
  */
 export const TemplateIdSchema = z.enum([
   "classic",
   "terminal",
-  "magazine",
+  "spotlight",
+  "glow",
   "bento",
-  "brutalist",
   "minimal",
 ]);
 export type TemplateId = z.infer<typeof TemplateIdSchema>;
@@ -408,8 +412,12 @@ export const ThemeSchema = z.object({
   mode: z.enum(["light", "dark", "system"]).default("dark"),
   /** Future: bespoke accent color (hex). Not used in MVP rendering. */
   accentHex: z.string().optional(),
-  /** Visual template — defaults to "classic" so existing portfolios keep their look. */
-  template: TemplateIdSchema.default("classic"),
+  /**
+   * Visual template — defaults to "classic" so existing portfolios keep
+   * their look. `.catch` silently rescues unknown values (deprecated
+   * template ids from older drafts).
+   */
+  template: TemplateIdSchema.catch("classic").default("classic"),
 });
 export type Theme = z.infer<typeof ThemeSchema>;
 

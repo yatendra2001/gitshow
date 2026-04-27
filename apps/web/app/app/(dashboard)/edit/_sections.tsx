@@ -1267,8 +1267,8 @@ export function TemplateSectionForm({
         >
           /app/preview
         </Link>{" "}
-        in another tab — there's a chooser dock at the bottom for quick
-        side-by-side comparison without leaving the page.
+        in another tab — the floating Templates button (bottom-right) lets you
+        try every variant against your real data without leaving the page.
       </p>
     </div>
   );
@@ -1313,21 +1313,63 @@ function TemplateSwatchLarge({ id }: { id: TemplateId }) {
     );
   }
 
-  if (id === "magazine") {
+  if (id === "spotlight") {
     return (
-      <div className="aspect-[16/10] flex flex-col gap-1.5 p-4" style={{ background: bg }}>
-        <div className="text-[8px] uppercase tracking-[0.3em] font-bold" style={{ color: accent }}>The Quarterly</div>
-        <div className="font-serif text-[24px] leading-[0.9]" style={{ color: fg }}>Profile.</div>
-        <div className="font-serif text-[10px] italic" style={{ color: fg, opacity: 0.7 }}>“On craft, lately.”</div>
-        <div className="grid grid-cols-2 gap-1 mt-auto">
-          <div className="space-y-0.5">
-            <div className="h-1 rounded-full" style={{ background: fg, opacity: 0.55 }} />
-            <div className="h-1 w-3/4 rounded-full" style={{ background: fg, opacity: 0.45 }} />
+      <div className="aspect-[16/10] grid grid-cols-2 gap-2 p-3" style={{ background: bg }}>
+        <div className="flex flex-col gap-1.5">
+          <div className="size-3 rounded-full" style={{ background: accent, opacity: 0.7 }} />
+          <div className="h-2 w-full rounded-full" style={{ background: fg, opacity: 0.85 }} />
+          <div className="h-1 w-3/4 rounded-full" style={{ background: accent, opacity: 0.9 }} />
+          <div className="mt-auto flex flex-col gap-1">
+            <div className="flex items-center gap-1.5">
+              <div className="h-px w-6" style={{ background: accent }} />
+              <div className="h-1 w-4 rounded-full" style={{ background: fg, opacity: 0.7 }} />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-px w-3" style={{ background: fg, opacity: 0.4 }} />
+              <div className="h-1 w-4 rounded-full" style={{ background: fg, opacity: 0.4 }} />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-px w-3" style={{ background: fg, opacity: 0.4 }} />
+              <div className="h-1 w-4 rounded-full" style={{ background: fg, opacity: 0.4 }} />
+            </div>
           </div>
-          <div className="space-y-0.5">
-            <div className="h-1 rounded-full" style={{ background: fg, opacity: 0.55 }} />
-            <div className="h-1 w-2/3 rounded-full" style={{ background: fg, opacity: 0.45 }} />
-          </div>
+        </div>
+        <div className="space-y-1">
+          <div className="h-1 w-full rounded-full" style={{ background: fg, opacity: 0.4 }} />
+          <div className="h-1 w-3/4 rounded-full" style={{ background: fg, opacity: 0.3 }} />
+          <div className="h-1 w-2/3 rounded-full" style={{ background: fg, opacity: 0.3 }} />
+          <div className="h-1 w-3/4 rounded-full" style={{ background: fg, opacity: 0.3 }} />
+          <div className="mt-2 h-8 rounded" style={{ background: `${fg}14` }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (id === "glow") {
+    return (
+      <div
+        className="aspect-[16/10] flex flex-col gap-1.5 p-4 relative"
+        style={{
+          background: bg,
+          backgroundImage: `radial-gradient(ellipse at top, ${accent}33, transparent 60%)`,
+        }}
+      >
+        <div className="flex items-center gap-1.5">
+          <div className="size-2 rounded-full" style={{ background: accent }} />
+          <div className="h-1 w-12 rounded-full" style={{ background: fg, opacity: 0.4 }} />
+        </div>
+        <div
+          className="h-3 w-2/3 rounded-full mt-1"
+          style={{ background: `linear-gradient(135deg, ${fg}, ${accent})` }}
+        />
+        <div className="h-1 w-3/4 rounded-full" style={{ background: fg, opacity: 0.4 }} />
+        <div className="mt-auto grid grid-cols-2 gap-1">
+          <div className="h-7 rounded" style={{ background: `${fg}1a` }} />
+          <div
+            className="h-7 rounded"
+            style={{ background: `linear-gradient(135deg, ${accent}40, ${fg}1a)` }}
+          />
         </div>
       </div>
     );
@@ -1344,20 +1386,6 @@ function TemplateSwatchLarge({ id }: { id: TemplateId }) {
         <div className="rounded-md" style={{ background: `${fg}14` }} />
         <div className="col-span-3 rounded-md" style={{ background: `${fg}1a` }} />
         <div className="rounded-md" style={{ background: `${fg}14` }} />
-      </div>
-    );
-  }
-
-  if (id === "brutalist") {
-    return (
-      <div className="aspect-[16/10] flex flex-col gap-1 p-3" style={{ background: bg }}>
-        <div className="font-bold text-[18px] leading-[0.85] uppercase tracking-tight" style={{ color: fg }}>BIG.</div>
-        <div className="font-bold text-[18px] leading-[0.85] uppercase tracking-tight" style={{ color: accent }}>NAME.</div>
-        <div className="mt-auto h-[3px]" style={{ background: fg }} />
-        <div className="grid grid-cols-2 gap-1">
-          <div className="h-6 border-2" style={{ borderColor: fg }} />
-          <div className="h-6 border-2" style={{ borderColor: fg, background: accent }} />
-        </div>
       </div>
     );
   }

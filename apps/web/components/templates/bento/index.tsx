@@ -18,16 +18,15 @@ import { resolveSkillIcon } from "@/components/skill-icons";
 import { ArrowUpRight, Sparkles } from "lucide-react";
 
 /**
- * Bento — an Apple/Vercel-style bento grid.
+ * Bento — Apple/Vercel-style bento grid.
  *
- * Cards of intentionally different sizes that tile together. The hero
- * card spans wide, stat cards cluster on the side, project cards take
- * the spotlight, and a contact CTA caps it off. Every card has a
- * mouse-tracked spotlight, lift on hover, and a soft glassy surface
- * over a quiet aurora background.
+ * Cards of intentionally varied size that tile together with no
+ * leftover empty columns. Rows are composed dynamically based on what
+ * data the user has — hackathons + publications + buildLog only render
+ * when present, and the row layout adapts so we never have a 4-col card
+ * sitting next to 8 empty columns.
  *
- * Best for: full-stack devs, product engineers, and visual thinkers
- * who want everything visible at a glance.
+ * Best for: full-stack devs, product engineers, and visual thinkers.
  */
 const STAGGER = 0.04;
 
@@ -44,6 +43,26 @@ export default function BentoTemplate() {
     [r.skills.length, r.projects.length, r.work.length, r.buildLog.length, r.publications.length],
   );
 
+  const showWork = !hidden.has("work") && r.work.length > 0;
+  const showEdu = !hidden.has("education") && r.education.length > 0;
+  const showHack = !hidden.has("hackathons") && r.hackathons.length > 0;
+  const showPubs = !hidden.has("publications") && r.publications.length > 0;
+  const showBuild = !hidden.has("buildLog") && r.buildLog.length > 0;
+
+  // Dynamic row composition for "extras": fill 12 cols regardless of
+  // how many of hackathons/publications/buildLog are present.
+  const extras = [
+    showHack && { id: "hack" as const },
+    showPubs && { id: "pubs" as const },
+    showBuild && { id: "build" as const },
+  ].filter(Boolean) as Array<{ id: "hack" | "pubs" | "build" }>;
+  const extraSpanClass =
+    extras.length === 1
+      ? "col-span-12"
+      : extras.length === 2
+        ? "col-span-12 md:col-span-6"
+        : "col-span-12 md:col-span-4";
+
   return (
     <div className="min-h-dvh bg-[#070708] text-neutral-100 selection:bg-violet-400/30 antialiased">
       <Aurora />
@@ -51,125 +70,126 @@ export default function BentoTemplate() {
       <div className="relative z-10 mx-auto max-w-[1400px] px-3 sm:px-6 py-6 sm:py-10">
         <TopBar handle={handle} socials={socials} />
 
-        <div className="grid grid-cols-12 gap-3 sm:gap-4 auto-rows-[120px]">
-          {/* Row 1: hero (wide) + avatar (tall) */}
-          <CardLink
-            className="col-span-12 md:col-span-8 row-span-3 p-7 sm:p-10 flex flex-col justify-between"
-            tone="bright"
-            delay={1}
-          >
+        {/* Density goes up: smaller min row height, tighter gaps */}
+        <div className="grid grid-cols-12 gap-3 auto-rows-[100px]">
+          {/* Row 1: hero (8) + avatar/currently combo (4) */}
+          <Card className="col-span-12 md:col-span-8 row-span-3 p-6 sm:p-9 flex flex-col justify-between" tone="bright" delay={1}>
             <Hero r={r} />
-          </CardLink>
+          </Card>
 
-          <CardLink
-            className="col-span-12 md:col-span-4 row-span-3 p-0 overflow-hidden"
-            delay={2}
-          >
+          <Card className="col-span-6 md:col-span-4 row-span-3 p-0 overflow-hidden" delay={2}>
             <AvatarCard r={r} />
-          </CardLink>
+          </Card>
 
-          {/* Row 2: stat strip — 4 cards of equal width */}
+          {/* Row 2: 4-up stat strip — always fills 12 */}
           {stats.map((s, i) => (
-            <CardLink
+            <Card
               key={s.label}
-              className="col-span-6 md:col-span-3 row-span-1 p-4 flex flex-col justify-between"
+              className="col-span-6 md:col-span-3 row-span-1 px-4 py-3 flex flex-col justify-between"
               delay={3 + i}
               tone={s.tone}
             >
               <StatCard {...s} />
-            </CardLink>
+            </Card>
           ))}
 
-          {/* Row 3: about (wide) + featured project (right) */}
-          <CardLink
-            className="col-span-12 md:col-span-7 row-span-3 p-6 sm:p-7"
-            delay={7}
-          >
-            <AboutCard summary={r.person.summary} />
-          </CardLink>
-
+          {/* Row 3: about (7) + featured project (5) — fills 12 always.
+               If no featured project, about expands to full width. */}
           {featured ? (
-            <CardLink
-              className="col-span-12 md:col-span-5 row-span-3 p-0 overflow-hidden group"
-              delay={8}
-            >
-              <FeaturedProjectCard project={featured} />
-            </CardLink>
+            <>
+              <Card className="col-span-12 md:col-span-7 row-span-3 p-5 sm:p-6" delay={7}>
+                <AboutCard summary={r.person.summary} />
+              </Card>
+              <Card className="col-span-12 md:col-span-5 row-span-3 p-0 overflow-hidden group" delay={8}>
+                <FeaturedProjectCard project={featured} />
+              </Card>
+            </>
+          ) : (
+            <Card className="col-span-12 row-span-2 p-5 sm:p-6" delay={7}>
+              <AboutCard summary={r.person.summary} />
+            </Card>
+          )}
+
+          {/* Row 4: skills (7) + currently (5) OR skills (12) if no current work.
+               Skills row count adapts to skill count. */}
+          {r.skills.length > 0 && r.work[0] ? (
+            <>
+              <Card className="col-span-12 md:col-span-7 row-span-2 p-5" delay={9}>
+                <SkillsCard skills={r.skills} />
+              </Card>
+              <Card className="col-span-12 md:col-span-5 row-span-2 p-5" delay={10} tone="bright">
+                <CurrentlyCard work={r.work[0]} />
+              </Card>
+            </>
+          ) : r.skills.length > 0 ? (
+            <Card className="col-span-12 row-span-2 p-5" delay={9}>
+              <SkillsCard skills={r.skills} />
+            </Card>
+          ) : r.work[0] ? (
+            <Card className="col-span-12 row-span-1 p-5" delay={10} tone="bright">
+              <CurrentlyCard work={r.work[0]} compact />
+            </Card>
           ) : null}
 
-          {/* Row 4: skills (wide) + currently (right) */}
-          {r.skills.length > 0 && (
-            <CardLink
-              className="col-span-12 md:col-span-7 row-span-2 p-6"
-              delay={9}
-            >
-              <SkillsCard skills={r.skills} />
-            </CardLink>
+          {/* Row 5: side projects — fills 12 by sizing dynamically */}
+          {sideProjects.length > 0 && (() => {
+            const sideSpanClass =
+              sideProjects.length === 1
+                ? "col-span-12 md:col-span-12"
+                : sideProjects.length === 2
+                  ? "col-span-12 md:col-span-6"
+                  : "col-span-12 md:col-span-4";
+            return sideProjects.map((p, i) => (
+              <Card
+                key={p.id}
+                className={`${sideSpanClass} row-span-2 p-0 overflow-hidden group`}
+                delay={11 + i}
+              >
+                <SideProjectCard project={p} />
+              </Card>
+            ));
+          })()}
+
+          {/* Row 6: career (7) + education (5) — both fill, regardless of
+               how short education is, by setting row-span = 2 (compact) */}
+          {showWork && showEdu && (
+            <>
+              <Card className="col-span-12 md:col-span-7 row-span-3 p-5" delay={14}>
+                <CareerCard work={r.work.slice(0, 6)} />
+              </Card>
+              <Card className="col-span-12 md:col-span-5 row-span-3 p-5" delay={15}>
+                <EducationCard education={r.education} />
+              </Card>
+            </>
           )}
-          {r.work[0] && (
-            <CardLink
-              className="col-span-12 md:col-span-5 row-span-2 p-6"
-              delay={10}
-              tone="bright"
-            >
-              <CurrentlyCard work={r.work[0]} />
-            </CardLink>
+          {showWork && !showEdu && (
+            <Card className="col-span-12 row-span-3 p-5" delay={14}>
+              <CareerCard work={r.work.slice(0, 6)} />
+            </Card>
+          )}
+          {!showWork && showEdu && (
+            <Card className="col-span-12 row-span-2 p-5" delay={15}>
+              <EducationCard education={r.education} />
+            </Card>
           )}
 
-          {/* Row 5: side projects */}
-          {sideProjects.map((p, i) => (
-            <CardLink
-              key={p.id}
-              className="col-span-12 md:col-span-4 row-span-2 p-0 overflow-hidden group"
-              delay={11 + i}
+          {/* Row 7: extras — dynamically sized to fill 12 */}
+          {extras.map((ex, i) => (
+            <Card
+              key={ex.id}
+              className={`${extraSpanClass} row-span-3 p-5`}
+              delay={16 + i}
             >
-              <SideProjectCard project={p} />
-            </CardLink>
+              {ex.id === "hack" && <HackathonsCard hackathons={r.hackathons} />}
+              {ex.id === "pubs" && <PublicationsCard publications={r.publications} />}
+              {ex.id === "build" && <BuildLogCard buildLog={r.buildLog} />}
+            </Card>
           ))}
 
-          {/* Row 6: career timeline + education */}
-          {!hidden.has("work") && r.work.length > 0 && (
-            <CardLink
-              className="col-span-12 md:col-span-7 row-span-3 p-6"
-              delay={14}
-            >
-              <CareerCard work={r.work.slice(0, 5)} />
-            </CardLink>
-          )}
-          {!hidden.has("education") && r.education.length > 0 && (
-            <CardLink
-              className="col-span-12 md:col-span-5 row-span-3 p-6"
-              delay={15}
-            >
-              <EducationCard education={r.education} />
-            </CardLink>
-          )}
-
-          {/* Row 7: hackathons + publications + buildLog */}
-          {!hidden.has("hackathons") && r.hackathons.length > 0 && (
-            <CardLink className="col-span-12 md:col-span-4 row-span-3 p-6" delay={16}>
-              <HackathonsCard hackathons={r.hackathons} />
-            </CardLink>
-          )}
-          {!hidden.has("publications") && r.publications.length > 0 && (
-            <CardLink className="col-span-12 md:col-span-4 row-span-3 p-6" delay={17}>
-              <PublicationsCard publications={r.publications} />
-            </CardLink>
-          )}
-          {!hidden.has("buildLog") && r.buildLog.length > 0 && (
-            <CardLink className="col-span-12 md:col-span-4 row-span-3 p-6" delay={18}>
-              <BuildLogCard buildLog={r.buildLog} />
-            </CardLink>
-          )}
-
           {/* Final: contact CTA */}
-          <CardLink
-            className="col-span-12 row-span-2 p-6 sm:p-8"
-            tone="hero"
-            delay={20}
-          >
+          <Card className="col-span-12 row-span-2 p-5 sm:p-7" tone="hero" delay={20}>
             <ContactCard email={r.contact.email} socials={socials} name={r.person.name} />
-          </CardLink>
+          </Card>
         </div>
       </div>
     </div>
@@ -180,7 +200,7 @@ export default function BentoTemplate() {
 
 type Tone = "default" | "bright" | "hero";
 
-function CardLink({
+function Card({
   children,
   className = "",
   tone = "default",
@@ -232,7 +252,7 @@ function CardLink({
       transition={{ delay: delay * STAGGER, duration: 0.45, ease: "easeOut" }}
       whileHover={{ y: -2, transition: { duration: 0.15 } }}
       ref={ref}
-      className={`relative rounded-[20px] border border-white/[0.08] ${baseBg} backdrop-blur-sm shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset,0_20px_50px_-30px_rgba(0,0,0,0.4)] overflow-hidden ${className}`}
+      className={`relative rounded-[18px] border border-white/[0.08] ${baseBg} backdrop-blur-sm shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset,0_20px_50px_-30px_rgba(0,0,0,0.4)] overflow-hidden ${className}`}
     >
       {spotlight && (
         <div
@@ -303,7 +323,7 @@ function TopBar({
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="flex items-center justify-between mb-4"
+      className="flex items-center justify-between mb-3"
     >
       <span className="text-[12px] tracking-[0.15em] uppercase text-neutral-500 inline-flex items-center gap-2">
         <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
@@ -330,23 +350,23 @@ function Hero({ r }: { r: ReturnType<typeof useResume> }) {
   return (
     <>
       <div>
-        <CardLabel className="text-violet-300 mb-3 inline-flex items-center gap-1.5">
+        <CardLabel className="text-violet-300 mb-2.5 inline-flex items-center gap-1.5">
           <Sparkles className="size-3" />
           Hello there
         </CardLabel>
-        <h1 className="text-4xl sm:text-5xl md:text-6xl font-semibold tracking-tight leading-[1.02]">
+        <h1 className="text-3xl sm:text-5xl font-semibold tracking-tight leading-[1.02]">
           I'm{" "}
           <span className="bg-gradient-to-r from-white via-violet-100 to-violet-300 bg-clip-text text-transparent">
             {r.person.name}
           </span>
           .
         </h1>
-        <p className="mt-5 text-lg sm:text-xl text-neutral-300 max-w-2xl leading-snug">
+        <p className="mt-4 text-base sm:text-lg text-neutral-300 max-w-2xl leading-snug">
           {r.person.description}
         </p>
       </div>
-      <div className="flex items-center justify-between flex-wrap gap-3 mt-6">
-        <div className="text-[13px] text-neutral-400 inline-flex items-center gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-3 mt-5">
+        <div className="text-[12.5px] text-neutral-400 inline-flex items-center gap-3">
           {r.person.location && (
             <span className="inline-flex items-center gap-1.5">
               <span aria-hidden>📍</span>
@@ -355,7 +375,7 @@ function Hero({ r }: { r: ReturnType<typeof useResume> }) {
           )}
           <span className="inline-flex items-center gap-1.5">
             <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Available for work
+            Available
           </span>
         </div>
         {r.contact.email && (
@@ -375,7 +395,7 @@ function Hero({ r }: { r: ReturnType<typeof useResume> }) {
 function AvatarCard({ r }: { r: ReturnType<typeof useResume> }) {
   if (!r.person.avatarUrl) {
     return (
-      <div className="flex items-center justify-center w-full h-full">
+      <div className="flex items-center justify-center w-full h-full bg-gradient-to-br from-violet-500/15 to-cyan-500/10">
         <Avatar className="size-32 ring-4 ring-white/10">
           <AvatarFallback className="text-3xl font-semibold">{r.person.initials}</AvatarFallback>
         </Avatar>
@@ -390,7 +410,7 @@ function AvatarCard({ r }: { r: ReturnType<typeof useResume> }) {
         className="absolute inset-0 w-full h-full object-cover"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
-      <div className="absolute bottom-4 left-4 right-4">
+      <div className="absolute bottom-3 left-4 right-4">
         <CardLabel className="text-neutral-300 mb-1">Currently</CardLabel>
         <div className="text-base font-semibold text-white truncate">
           {r.work[0]?.title ?? "Building"}
@@ -422,7 +442,7 @@ function StatCard({ label, value, suffix }: Stat) {
   return (
     <>
       <CardLabel>{label}</CardLabel>
-      <div className="text-3xl sm:text-4xl font-semibold tabular-nums tracking-tight">
+      <div className="text-2xl sm:text-3xl font-semibold tabular-nums tracking-tight">
         <CountUp to={value} />
         {suffix}
       </div>
@@ -430,7 +450,6 @@ function StatCard({ label, value, suffix }: Stat) {
   );
 }
 
-/** Lightweight count-up animation — no extra dep. */
 function CountUp({ to }: { to: number }) {
   const [n, setN] = useState(0);
   useEffect(() => {
@@ -452,8 +471,8 @@ function CountUp({ to }: { to: number }) {
 function AboutCard({ summary }: { summary: string }) {
   return (
     <>
-      <CardLabel className="mb-4">About</CardLabel>
-      <div className="prose prose-invert max-w-none text-[14.5px] leading-[1.7] text-neutral-300 [&_p]:mb-3 [&_p:last-child]:mb-0 [&_a]:text-violet-300 [&_a]:underline-offset-2 hover:[&_a]:underline [&_strong]:text-white">
+      <CardLabel className="mb-3">About</CardLabel>
+      <div className="prose prose-invert max-w-none text-[14px] leading-[1.65] text-neutral-300 [&_p]:mb-2.5 [&_p:last-child]:mb-0 [&_a]:text-violet-300 [&_a]:underline-offset-2 hover:[&_a]:underline [&_strong]:text-white overflow-hidden">
         <Markdown>{summary}</Markdown>
       </div>
     </>
@@ -491,25 +510,25 @@ function FeaturedProjectCard({
         <div className="absolute inset-0 bg-gradient-to-br from-violet-500/30 to-cyan-500/20" />
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
-      <div className="absolute top-4 right-4 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/15 backdrop-blur-sm text-[10px] font-semibold text-white tracking-wider uppercase">
+      <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2 py-1 rounded-full bg-white/15 backdrop-blur-sm text-[10px] font-semibold text-white tracking-wider uppercase">
         <Sparkles className="size-3" />
         Featured
       </div>
-      <div className="absolute bottom-0 left-0 right-0 p-6">
-        <div className="text-[10px] tracking-[0.2em] uppercase text-violet-200 font-semibold mb-1.5">
+      <div className="absolute bottom-0 left-0 right-0 p-5">
+        <div className="text-[10px] tracking-[0.2em] uppercase text-violet-200 font-semibold mb-1">
           {project.dates}
         </div>
-        <h3 className="text-2xl sm:text-3xl font-semibold mb-2 leading-tight inline-flex items-baseline gap-2">
+        <h3 className="text-xl sm:text-2xl font-semibold mb-1.5 leading-tight inline-flex items-baseline gap-2">
           {project.title}
-          <ArrowUpRight className="size-5 transition-transform group-hover:rotate-12" />
+          <ArrowUpRight className="size-4 transition-transform group-hover:rotate-12" />
         </h3>
-        <p className="text-[13.5px] text-neutral-200 line-clamp-2 mb-3">{project.description}</p>
+        <p className="text-[13px] text-neutral-200 line-clamp-2 mb-2.5">{project.description}</p>
         {project.technologies.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {project.technologies.slice(0, 5).map((t) => (
+          <div className="flex flex-wrap gap-1">
+            {project.technologies.slice(0, 4).map((t) => (
               <span
                 key={t}
-                className="text-[11px] px-2 py-0.5 rounded-full bg-white/15 text-white backdrop-blur-sm"
+                className="text-[10.5px] px-1.5 py-0.5 rounded-full bg-white/15 text-white backdrop-blur-sm"
               >
                 {t}
               </span>
@@ -542,17 +561,17 @@ function SideProjectCard({
       ) : (
         <div className="absolute inset-0 bg-gradient-to-br from-neutral-800 to-neutral-900" />
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent" />
-      <div className="absolute bottom-0 left-0 right-0 p-4">
-        <h4 className="font-semibold text-white text-base inline-flex items-baseline gap-1.5">
+      <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
+      <div className="absolute bottom-0 left-0 right-0 p-3.5">
+        <h4 className="font-semibold text-white text-sm inline-flex items-baseline gap-1.5">
           {project.title}
-          <ArrowUpRight className="size-3.5 opacity-70 transition-transform group-hover:rotate-12" />
+          <ArrowUpRight className="size-3 opacity-70 transition-transform group-hover:rotate-12" />
         </h4>
-        <p className="text-[12px] text-neutral-300 line-clamp-2 mt-0.5">
-          {project.description}
+        <p className="text-[11.5px] text-neutral-300 line-clamp-1 mt-0.5">
+          {stripMd(project.description).split("\n")[0]}
         </p>
         {project.technologies.length > 0 && (
-          <div className="text-[10.5px] text-neutral-400 mt-1.5 truncate">
+          <div className="text-[10.5px] text-neutral-400 mt-1 truncate">
             {project.technologies.slice(0, 3).join(" · ")}
           </div>
         )}
@@ -568,7 +587,7 @@ function SkillsCard({
 }) {
   return (
     <>
-      <CardLabel className="mb-4">Toolbox</CardLabel>
+      <CardLabel className="mb-3">Toolbox</CardLabel>
       <div className="flex flex-wrap gap-1.5">
         {skills.map((s) => {
           const Icon = resolveSkillIcon(s.iconKey ?? s.name);
@@ -576,14 +595,14 @@ function SkillsCard({
             <motion.span
               key={s.name}
               whileHover={{ y: -2, transition: { duration: 0.15 } }}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-[12.5px] text-neutral-200 hover:bg-white/10 hover:border-white/20 transition-all cursor-default"
+              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[12px] text-neutral-200 hover:bg-white/10 hover:border-white/20 transition-all cursor-default"
               title={
                 s.usageCount
                   ? `Used in ${s.usageCount} repo${s.usageCount === 1 ? "" : "s"}`
                   : undefined
               }
             >
-              {Icon && <Icon className="size-3.5" />}
+              {Icon && <Icon className="size-3" />}
               {s.name}
             </motion.span>
           );
@@ -595,25 +614,27 @@ function SkillsCard({
 
 function CurrentlyCard({
   work,
+  compact = false,
 }: {
   work: ReturnType<typeof useResume>["work"][number];
+  compact?: boolean;
 }) {
   return (
     <>
-      <CardLabel className="text-cyan-300 mb-4">Currently</CardLabel>
-      <div className="flex items-start gap-3 mb-4">
+      <CardLabel className="text-cyan-300 mb-3">Currently</CardLabel>
+      <div className="flex items-start gap-3">
         <LogoOrInitials src={work.logoUrl} name={work.company} />
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-base text-white">{work.title}</div>
+          <div className="font-semibold text-[15px] text-white">{work.title}</div>
           <div className="text-[13px] text-neutral-300 truncate">{work.company}</div>
-          <div className="text-[11px] text-neutral-500 tabular-nums mt-0.5">
-            {work.start} – {work.end}
+          <div className="text-[11.5px] text-neutral-500 tabular-nums mt-0.5">
+            since {work.start}
           </div>
         </div>
       </div>
-      {work.description && (
-        <p className="text-[12.5px] text-neutral-300 leading-relaxed line-clamp-3">
-          {work.description.replace(/[*_`#>]/g, "").split("\n")[0]}
+      {!compact && work.description && (
+        <p className="text-[12.5px] text-neutral-400 leading-relaxed line-clamp-2 mt-3">
+          {stripMd(work.description).split("\n")[0]}
         </p>
       )}
     </>
@@ -627,8 +648,8 @@ function CareerCard({
 }) {
   return (
     <>
-      <CardLabel className="mb-4">Career timeline</CardLabel>
-      <ol className="space-y-3.5">
+      <CardLabel className="mb-3">Career timeline</CardLabel>
+      <ol className="space-y-3">
         {work.map((w, i) => (
           <li key={w.id} className="flex items-start gap-3">
             <div className="relative flex-none">
@@ -636,12 +657,12 @@ function CareerCard({
               {i < work.length - 1 && (
                 <span
                   aria-hidden
-                  className="absolute top-[100%] left-1/2 -translate-x-1/2 h-3.5 w-px bg-white/10"
+                  className="absolute top-[100%] left-1/2 -translate-x-1/2 h-3 w-px bg-white/10"
                 />
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-medium text-[14px]">
+              <div className="font-medium text-[13.5px]">
                 {w.title}{" "}
                 <span className="text-neutral-500">·</span>{" "}
                 <span className="text-neutral-300">{w.company}</span>
@@ -665,13 +686,13 @@ function EducationCard({
 }) {
   return (
     <>
-      <CardLabel className="mb-4">Education</CardLabel>
-      <ul className="space-y-3.5">
+      <CardLabel className="mb-3">Education</CardLabel>
+      <ul className="space-y-3">
         {education.map((e) => (
           <li key={e.id} className="flex items-start gap-3">
             <LogoOrInitials src={e.logoUrl} name={e.school} />
             <div className="flex-1 min-w-0">
-              <div className="font-medium text-[14px] truncate">{e.school}</div>
+              <div className="font-medium text-[13.5px] truncate">{e.school}</div>
               <div className="text-[12.5px] text-neutral-400 line-clamp-2">{e.degree}</div>
               <div className="text-[11.5px] text-neutral-500 tabular-nums mt-0.5">
                 {e.start} – {e.end}
@@ -691,8 +712,8 @@ function HackathonsCard({
 }) {
   return (
     <>
-      <CardLabel className="mb-4">Hackathons</CardLabel>
-      <ul className="space-y-3 text-[13.5px]">
+      <CardLabel className="mb-3">Hackathons</CardLabel>
+      <ul className="space-y-2.5 text-[13px]">
         {hackathons.slice(0, 6).map((h) => (
           <li key={h.id} className="border-l-2 border-violet-400/40 pl-3">
             <div className="font-medium text-white truncate">{h.title}</div>
@@ -714,8 +735,8 @@ function PublicationsCard({
 }) {
   return (
     <>
-      <CardLabel className="mb-4">Publications</CardLabel>
-      <ul className="space-y-3 text-[13.5px]">
+      <CardLabel className="mb-3">Publications</CardLabel>
+      <ul className="space-y-2.5 text-[13px]">
         {publications.slice(0, 6).map((p) => (
           <li key={p.id}>
             <a
@@ -744,7 +765,7 @@ function BuildLogCard({
 }) {
   return (
     <>
-      <CardLabel className="mb-4">Build log</CardLabel>
+      <CardLabel className="mb-3">Build log</CardLabel>
       <ol className="space-y-2 text-[12.5px]">
         {buildLog.slice(0, 8).map((b) => (
           <li key={b.id} className="flex items-baseline gap-2 leading-snug">
@@ -780,10 +801,10 @@ function ContactCard({
   return (
     <div className="flex items-center justify-between flex-wrap gap-4 h-full">
       <div>
-        <div className="text-2xl sm:text-3xl font-semibold tracking-tight">
+        <div className="text-xl sm:text-2xl font-semibold tracking-tight">
           Let's build something, {firstName}-style.
         </div>
-        <div className="text-neutral-400 text-[14px] mt-1">
+        <div className="text-neutral-400 text-[13px] mt-0.5">
           I'm reachable, and I read every email.
         </div>
       </div>
@@ -791,7 +812,7 @@ function ContactCard({
         {email && (
           <a
             href={`mailto:${email}`}
-            className="px-4 py-2 rounded-full bg-white text-black font-medium text-[14px] hover:bg-neutral-100 transition-all hover:-translate-y-px shadow-lg shadow-white/5 inline-flex items-center gap-1.5"
+            className="px-4 py-2 rounded-full bg-white text-black font-medium text-[13.5px] hover:bg-neutral-100 transition-all hover:-translate-y-px shadow-lg shadow-white/5 inline-flex items-center gap-1.5"
           >
             Email me
             <ArrowUpRight className="size-3.5" />
@@ -803,7 +824,7 @@ function ContactCard({
             href={s.url}
             target="_blank"
             rel="noreferrer"
-            className="px-4 py-2 rounded-full bg-white/10 border border-white/10 text-[14px] hover:bg-white/15 hover:border-white/20 hover:-translate-y-px transition-all"
+            className="px-4 py-2 rounded-full bg-white/10 border border-white/10 text-[13.5px] hover:bg-white/15 hover:border-white/20 hover:-translate-y-px transition-all"
           >
             {s.name}
           </a>
@@ -811,4 +832,10 @@ function ContactCard({
       </div>
     </div>
   );
+}
+
+/* ─────────────────────────  Helpers  ────────────────────────── */
+
+function stripMd(s: string): string {
+  return s.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").replace(/[*_`#>]/g, "");
 }
