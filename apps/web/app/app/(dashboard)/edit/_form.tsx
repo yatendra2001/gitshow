@@ -211,7 +211,7 @@ export function MediaUploadField({
             none
           </div>
         )}
-        <label className="flex-1 cursor-pointer rounded-xl border border-border/40 bg-card/30 px-3 py-2 text-[13px] text-muted-foreground hover:bg-card/50 transition-colors">
+        <label className="flex-1 cursor-pointer rounded-xl border border-border/40 bg-card/30 px-3 py-2 text-[13px] text-muted-foreground select-none transition-[background-color,border-color,color] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:bg-card/50 hover:border-foreground/25 hover:text-foreground active:scale-[0.98] focus-within:ring-2 focus-within:ring-ring/60 focus-within:ring-offset-2 focus-within:ring-offset-background">
           {busy ? "Uploading…" : value ? "Replace" : "Upload"}
           <input
             type="file"
@@ -227,7 +227,7 @@ export function MediaUploadField({
           <button
             type="button"
             onClick={() => onChange(undefined)}
-            className="rounded-xl border border-border/40 px-3 py-2 text-[12px] text-muted-foreground hover:text-foreground hover:border-border transition-colors"
+            className="rounded-xl border border-border/40 px-3 py-2 text-[12px] text-muted-foreground select-none transition-[background-color,border-color,color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:text-foreground hover:border-foreground/30 hover:bg-foreground/[0.04] active:scale-[0.97] active:duration-[80ms] outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             Clear
           </button>
@@ -311,7 +311,7 @@ export function ListEditor<T>({
                 disabled={i === 0}
                 aria-label="Move up"
                 className={cn(
-                  "h-6 w-6 rounded border border-border/40 text-[10px] text-muted-foreground hover:text-foreground hover:border-border transition-colors",
+                  "h-6 w-6 rounded border border-border/40 text-[10px] text-muted-foreground select-none transition-[background-color,border-color,color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:text-foreground hover:border-foreground/30 hover:bg-foreground/[0.04] active:scale-90 active:duration-[80ms] outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
                   i === 0 && "opacity-30 cursor-not-allowed",
                 )}
               >
@@ -323,7 +323,7 @@ export function ListEditor<T>({
                 disabled={i === items.length - 1}
                 aria-label="Move down"
                 className={cn(
-                  "h-6 w-6 rounded border border-border/40 text-[10px] text-muted-foreground hover:text-foreground hover:border-border transition-colors",
+                  "h-6 w-6 rounded border border-border/40 text-[10px] text-muted-foreground select-none transition-[background-color,border-color,color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:text-foreground hover:border-foreground/30 hover:bg-foreground/[0.04] active:scale-90 active:duration-[80ms] outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
                   i === items.length - 1 && "opacity-30 cursor-not-allowed",
                 )}
               >

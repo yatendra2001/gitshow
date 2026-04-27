@@ -56,11 +56,15 @@ export function PortalButton({
   };
 
   const base =
-    "inline-flex items-center justify-center rounded-xl px-4 py-2 text-[13px] font-medium transition-all min-h-11";
+    "inline-flex items-center justify-center min-h-11 rounded-xl px-4 py-2 text-[13px] font-medium select-none " +
+    "transition-[background-color,border-color,box-shadow,transform,opacity] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] " +
+    "active:scale-[0.97] active:duration-[80ms] " +
+    "outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background " +
+    "disabled:opacity-60 disabled:active:scale-100";
   const style =
     variant === "primary"
-      ? "bg-foreground text-background hover:opacity-90"
-      : "border border-border/60 bg-card/30 hover:bg-card/50";
+      ? "bg-foreground text-background shadow-[inset_0_1px_0_rgb(255_255_255_/_0.10),0_1px_2px_-1px_oklch(0_0_0_/_0.20)] hover:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.14),0_2px_8px_-3px_oklch(0_0_0_/_0.24)]"
+      : "border border-border/60 bg-card/30 hover:bg-card/50 hover:border-foreground/25";
 
   return (
     <div className="flex flex-col gap-2">
@@ -68,9 +72,16 @@ export function PortalButton({
         type="button"
         onClick={onClick}
         disabled={pending}
-        className={`${base} ${style} disabled:opacity-60`}
+        className={`${base} ${style}`}
       >
-        {pending ? "Opening…" : label}
+        {pending ? (
+          <span className="inline-flex items-center gap-2">
+            <span aria-hidden className={`size-3 rounded-full border-[1.5px] ${variant === "primary" ? "border-background/40 border-t-background" : "border-foreground/30 border-t-foreground"} animate-spin`} />
+            <span className="tabular">Opening…</span>
+          </span>
+        ) : (
+          label
+        )}
       </button>
       {error && (
         <p className="text-[12px] text-[var(--destructive)]">{error}</p>

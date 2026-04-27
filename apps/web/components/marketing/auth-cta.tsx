@@ -62,10 +62,12 @@ export function AuthCta({
                 asChild
                 size="lg"
                 className={cn(
-                    "rounded-full px-8 py-6 text-base font-medium text-white",
+                    "shine-on-hover rounded-full px-8 py-6 text-base font-medium text-white",
                     "bg-linear-to-b from-sky-500 to-sky-600",
                     "shadow-[0px_1px_2px_0px_#00000016,0px_2px_4px_0px_#00000006,inset_0px_0px_1.5px_#0084D1,inset_0px_2.5px_0px_#ffffff16,inset_0px_0px_2.5px_#ffffff08]",
                     "ring-2 ring-sky-600 hover:from-sky-600 hover:to-sky-700",
+                    "hover:shadow-[0px_2px_8px_-2px_#0c4a6e60,0px_4px_16px_-4px_#0c4a6e40,inset_0px_0px_1.5px_#0084D1,inset_0px_2.5px_0px_#ffffff20]",
+                    "transition-[background,box-shadow,transform] duration-[180ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
                     className,
                 )}
             >

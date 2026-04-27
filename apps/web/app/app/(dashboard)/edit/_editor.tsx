@@ -288,7 +288,7 @@ function Header({
       <div className="flex items-center justify-between gap-3">
         <Link
           href="/app"
-          className="inline-flex items-center gap-2 text-[12px] text-muted-foreground hover:text-foreground transition-colors border border-border/40 rounded-lg pl-1 pr-2 py-1"
+          className="group inline-flex items-center gap-2 text-[12px] text-muted-foreground border border-border/40 rounded-lg pl-1 pr-2 py-1 select-none transition-[background-color,border-color,color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:text-foreground hover:bg-foreground/[0.04] hover:border-foreground/25 active:scale-[0.97] active:duration-[80ms] outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           aria-label="Back to dashboard"
         >
           <LogoMark size={18} />
@@ -298,7 +298,7 @@ function Header({
           <Link
             href="/app/preview"
             target="_blank"
-            className="inline-flex items-center rounded-xl border border-border/40 bg-card/30 px-3 py-2 text-[13px] text-muted-foreground hover:text-foreground hover:bg-card/50 transition-colors min-h-10"
+            className="inline-flex items-center min-h-10 rounded-xl border border-border/40 bg-card/30 px-3 py-2 text-[13px] text-muted-foreground select-none transition-[background-color,border-color,color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:text-foreground hover:bg-card/50 hover:border-foreground/25 active:scale-[0.97] active:duration-[80ms] outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
           >
             Preview ↗
           </Link>
@@ -306,9 +306,16 @@ function Header({
             type="button"
             onClick={onPublish}
             disabled={publishing}
-            className="inline-flex items-center rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-10 disabled:opacity-60 disabled:cursor-not-allowed"
+            className="inline-flex items-center min-h-10 rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium select-none shadow-[inset_0_1px_0_rgb(255_255_255_/_0.10),0_1px_2px_-1px_oklch(0_0_0_/_0.20)] transition-[background-color,box-shadow,transform,opacity] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.14),0_2px_8px_-3px_oklch(0_0_0_/_0.24)] active:scale-[0.97] active:duration-[80ms] outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
           >
-            {publishing ? "Publishing…" : "Publish"}
+            {publishing ? (
+              <span className="inline-flex items-center gap-2">
+                <span aria-hidden className="size-3 rounded-full border-[1.5px] border-background/40 border-t-background animate-spin" />
+                <span className="tabular">Publishing…</span>
+              </span>
+            ) : (
+              "Publish"
+            )}
           </button>
         </div>
       </div>
@@ -424,9 +431,12 @@ function Sidebar({
               onClick={() => onSelect(tab.id)}
               aria-current={tab.id === active ? "true" : undefined}
               className={cn(
-                "w-full text-left rounded-lg px-3 py-2 text-[13px] transition-colors",
+                "w-full text-left rounded-lg px-3 py-2 text-[13px] select-none",
+                "transition-[background-color,border-color,color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+                "active:scale-[0.98] active:duration-[80ms]",
+                "outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset",
                 tab.id === active
-                  ? "bg-card text-foreground border border-border/60"
+                  ? "bg-card text-foreground border border-border/60 shadow-[0_1px_2px_-1px_oklch(0_0_0_/_0.06)]"
                   : "text-muted-foreground hover:text-foreground hover:bg-card/40",
               )}
             >

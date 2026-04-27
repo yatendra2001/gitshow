@@ -59,7 +59,13 @@ export function DeleteProfileButton() {
       <DialogTrigger asChild>
         <button
           type="button"
-          className="inline-flex items-center gap-2 rounded-xl border border-[var(--destructive)]/40 bg-[var(--destructive)]/[0.06] px-3 py-2 text-[13px] text-[var(--destructive)] hover:bg-[var(--destructive)]/[0.12] transition-colors min-h-10"
+          className={
+            "inline-flex items-center gap-2 min-h-10 rounded-xl border border-[var(--destructive)]/40 bg-[var(--destructive)]/[0.06] px-3 py-2 text-[13px] text-[var(--destructive)] select-none " +
+            "transition-[background-color,border-color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] " +
+            "hover:bg-[var(--destructive)]/[0.12] hover:border-[var(--destructive)]/60 " +
+            "active:scale-[0.97] active:duration-[80ms] " +
+            "outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          }
           aria-label="Delete profile and all scans"
         >
           <Trash2 className="size-3.5" />
@@ -85,7 +91,14 @@ export function DeleteProfileButton() {
             <button
               type="button"
               disabled={busy}
-              className="inline-flex items-center rounded-xl border border-border/40 bg-card/30 px-4 py-2 text-[13px] text-muted-foreground hover:text-foreground hover:bg-card/50 transition-colors min-h-10 disabled:opacity-60"
+              className={
+                "inline-flex items-center min-h-10 rounded-xl border border-border/40 bg-card/30 px-4 py-2 text-[13px] text-muted-foreground select-none " +
+                "transition-[background-color,border-color,color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] " +
+                "hover:text-foreground hover:bg-card/50 hover:border-foreground/20 " +
+                "active:scale-[0.97] active:duration-[80ms] " +
+                "outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background " +
+                "disabled:opacity-60 disabled:active:scale-100"
+              }
             >
               Cancel
             </button>
@@ -94,10 +107,21 @@ export function DeleteProfileButton() {
             type="button"
             onClick={onConfirm}
             disabled={busy}
-            className="inline-flex items-center gap-2 rounded-xl bg-[var(--destructive)] text-white px-4 py-2 text-[13px] font-medium hover:opacity-90 transition-opacity min-h-10 disabled:opacity-60 disabled:cursor-not-allowed"
+            className={
+              "inline-flex items-center gap-2 min-h-10 rounded-xl bg-[var(--destructive)] text-white px-4 py-2 text-[13px] font-medium select-none " +
+              "shadow-[inset_0_1px_0_rgb(255_255_255_/_0.10),0_1px_2px_-1px_oklch(0_0_0_/_0.20)] " +
+              "transition-[background-color,box-shadow,transform,opacity] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] " +
+              "hover:bg-[var(--destructive)]/90 hover:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.14),0_2px_8px_-3px_oklch(from_var(--destructive)_l_c_h_/_0.40)] " +
+              "active:scale-[0.97] active:duration-[80ms] " +
+              "outline-none focus-visible:ring-2 focus-visible:ring-destructive/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background " +
+              "disabled:opacity-60 disabled:cursor-not-allowed disabled:active:scale-100"
+            }
           >
             {busy ? (
-              "Deleting…"
+              <span className="inline-flex items-center gap-2">
+                <span aria-hidden className="size-3 rounded-full border-[1.5px] border-white/40 border-t-white animate-spin" />
+                <span className="tabular">Deleting…</span>
+              </span>
             ) : (
               <>
                 <Trash2 className="size-3.5" />

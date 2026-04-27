@@ -290,11 +290,13 @@ function RangeTabs({ current }: { current: string }) {
             href={r.key === "30d" ? "/app" : `/app?range=${r.key}`}
             scroll={false}
             className={cn(
-              "px-3 py-1 text-[12px] font-medium rounded-md",
-              "transition-[background-color,color] duration-150 ease",
+              "relative px-3 py-1 text-[12px] font-medium rounded-md",
+              "transition-[color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+              "active:scale-[0.97] active:duration-[80ms]",
+              "outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-inset",
               active
-                ? "bg-background text-foreground shadow-[0_0_0_1px_oklch(from_var(--foreground)_l_c_h/0.08)]"
-                : "text-muted-foreground hover:text-foreground",
+                ? "bg-background text-foreground shadow-[0_0_0_1px_oklch(from_var(--foreground)_l_c_h/0.08),0_1px_2px_-1px_oklch(0_0_0_/_0.06)]"
+                : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]",
             )}
           >
             {r.label}
@@ -342,14 +344,19 @@ function ChartEmptyState({ slug }: { slug: string }) {
         target="_blank"
         rel="noreferrer"
         className={cn(
-          "inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] font-medium",
-          "border border-border/60 bg-card/60 text-foreground",
-          "transition-[background-color] duration-150 ease",
-          "hover:bg-card",
+          "group inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-[12px] font-medium",
+          "border border-border/60 bg-card/60 text-foreground select-none",
+          "transition-[background-color,border-color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+          "hover:bg-card hover:border-foreground/25",
+          "active:scale-[0.97] active:duration-[80ms]",
+          "outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
         )}
       >
         Open your portfolio
-        <Icon icon={ArrowUpRight01Icon} className="size-3.5" />
+        <Icon
+          icon={ArrowUpRight01Icon}
+          className="size-3.5 transition-transform duration-[180ms] ease-[cubic-bezier(0.215,0.61,0.355,1)] group-hover:-translate-y-px group-hover:translate-x-px"
+        />
       </Link>
     </div>
   );

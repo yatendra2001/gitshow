@@ -35,29 +35,40 @@ function HamburgerButton({
   return (
     <button
       onClick={onClick}
-      className="md:hidden relative z-50 flex size-8 items-center justify-center rounded-full border border-border bg-background transition-colors hover:bg-accent"
+      className={
+        "md:hidden relative z-50 flex size-8 items-center justify-center rounded-full border border-border bg-background " +
+        "transition-[background-color,border-color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] " +
+        "hover:bg-accent hover:border-foreground/20 active:scale-[0.94] active:duration-[80ms] " +
+        "outline-none focus-visible:ring-2 focus-visible:ring-ring/60"
+      }
       aria-label="Toggle menu"
     >
       <div className="relative size-5 flex items-center justify-center">
         <motion.span
-          className="absolute h-0.5 w-4 bg-foreground"
+          className="absolute h-0.5 w-4 bg-foreground rounded-full"
           initial={false}
           animate={
             isOpen
               ? { rotate: 45, y: 0 }
               : { rotate: 0, y: -4 }
           }
-          transition={{ duration: 0.25, ease: "easeInOut" }}
+          transition={{
+            duration: 0.28,
+            ease: [0.215, 0.61, 0.355, 1] as [number, number, number, number],
+          }}
         />
         <motion.span
-          className="absolute h-0.5 w-4 bg-foreground"
+          className="absolute h-0.5 w-4 bg-foreground rounded-full"
           initial={false}
           animate={
             isOpen
               ? { rotate: -45, y: 0 }
               : { rotate: 0, y: 4 }
           }
-          transition={{ duration: 0.25, ease: "easeInOut" }}
+          transition={{
+            duration: 0.28,
+            ease: [0.215, 0.61, 0.355, 1] as [number, number, number, number],
+          }}
         />
       </div>
     </button>
