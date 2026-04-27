@@ -864,26 +864,27 @@ function BuildLogCard({
 }: {
   buildLog: ReturnType<typeof useResume>["buildLog"];
 }) {
+  // Each entry is a single line so 5 items fit cleanly inside row-span-2
+  // (~172px content area) with breathing room. Date sits on the right
+  // tabular-nums so titles/descriptions line up across the whole list.
   return (
     <>
       <CardLabel className="mb-4">Recently shipping</CardLabel>
-      <ol className="space-y-2 text-[12.5px]">
-        {buildLog.slice(0, 6).map((b) => (
-          <li key={b.id} className="flex items-baseline gap-2 leading-snug">
+      <ol className="space-y-2.5 text-[12.5px]">
+        {buildLog.slice(0, 5).map((b) => (
+          <li key={b.id} className="flex items-baseline gap-2.5 leading-snug">
             <span
               aria-hidden
               className="size-1.5 rounded-full flex-none translate-y-1"
               style={{ backgroundColor: b.languageColor ?? ACCENT_LIGHT }}
             />
-            <div className="flex-1 min-w-0">
-              <div className="text-neutral-100 truncate">
-                <span className="font-medium">{b.title}</span>
-                <span className="text-neutral-500"> — {b.description}</span>
-              </div>
-              <div className="text-[10.5px] text-neutral-600 tabular-nums font-mono">
-                {b.dates}
-              </div>
-            </div>
+            <span className="flex-1 min-w-0 truncate">
+              <span className="text-neutral-100 font-medium">{b.title}</span>
+              <span className="text-neutral-500"> — {b.description}</span>
+            </span>
+            <span className="text-[10.5px] text-neutral-600 tabular-nums font-mono flex-none">
+              {b.dates}
+            </span>
           </li>
         ))}
       </ol>
