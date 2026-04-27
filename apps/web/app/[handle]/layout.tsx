@@ -1,7 +1,5 @@
 import { notFound } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { FlickeringGrid } from "@/components/magicui/flickering-grid";
-import Navbar from "@/components/navbar";
 import { DataProvider } from "@/components/data-provider";
 import { TrackView } from "@/components/track-view";
 import { ShareButton } from "@/components/share-button";
@@ -9,10 +7,11 @@ import { loadPublishedResume } from "@/lib/resume-io";
 import { isReservedHandle } from "@/lib/profiles";
 
 /**
- * Portfolio subtree layout — matches the reference template's root
- * `layout.tsx` (FlickeringGrid header, max-w-2xl content column, floating
- * Navbar dock), and injects the per-handle Resume via `<DataProvider>` so
- * every downstream section renders the right user's data.
+ * Portfolio subtree layout — wires the per-handle Resume into the
+ * DataProvider so every downstream section renders the right user's
+ * data. The actual page chrome (background, max-width column, dock,
+ * fonts) is the *template's* responsibility — this layout deliberately
+ * stays empty so each template can render fullbleed if it wants.
  *
  * 404s for reserved-word handles (`/app`, `/api`, …) and for handles with
  * no published Resume.
@@ -36,21 +35,7 @@ export default async function PortfolioLayout({
     <DataProvider resume={resume} handle={handle}>
       <TrackView handle={handle} />
       <ShareButton handle={handle} name={resume.person.name} />
-      <div className="absolute inset-0 top-0 left-0 right-0 h-[100px] overflow-hidden z-0">
-        <FlickeringGrid
-          className="h-full w-full"
-          squareSize={2}
-          gridGap={2}
-          style={{
-            maskImage: "linear-gradient(to bottom, black, transparent)",
-            WebkitMaskImage: "linear-gradient(to bottom, black, transparent)",
-          }}
-        />
-      </div>
-      <div className="relative z-10 max-w-2xl mx-auto py-12 pb-24 sm:py-24 px-6">
-        {children}
-      </div>
-      <Navbar />
+      {children}
     </DataProvider>
   );
 }

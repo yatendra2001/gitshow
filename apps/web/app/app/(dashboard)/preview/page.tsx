@@ -3,18 +3,17 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import Link from "next/link";
 import { requireProPage } from "@/lib/entitlements";
 import { loadDraftResume, loadPublishedResume } from "@/lib/resume-io";
-import PortfolioPage from "@/components/portfolio-page";
-import { DataProvider } from "@/components/data-provider";
-import { FlickeringGrid } from "@/components/magicui/flickering-grid";
-import Navbar from "@/components/navbar";
-import { PreviewPublishButton } from "./_publish-button-compact";
+import { TemplatePreview } from "./_template-preview";
 
 /**
  * /app/preview — owner-only draft preview.
  *
- * Renders inside the dashboard shell — the sidebar persists. The
- * preview surface itself is the actual portfolio template against the
- * authenticated user's draft so they can review before publishing.
+ * Loads the user's draft and renders it inside the TemplatePreview
+ * client wrapper, which:
+ *   - Renders the chosen template (defaults to whatever's saved on the
+ *     draft) full-bleed.
+ *   - Floats a template chooser dock at the bottom for switching variants
+ *     and persisting the choice via PATCH/publish.
  *
  * Auth gate: unauthenticated → /signin. No draft → redirect back to
  * /app so the dashboard surfaces the appropriate empty / scan state.
@@ -36,24 +35,11 @@ export default async function PreviewPage() {
   return (
     <div className="portfolio-theme relative">
       <DraftStrip handle={handle} isPublished={isPublished} />
-      <DataProvider resume={draft} handle={handle}>
-        <div className="absolute inset-x-0 top-[40px] h-[100px] overflow-hidden z-0 pointer-events-none">
-          <FlickeringGrid
-            className="h-full w-full"
-            squareSize={2}
-            gridGap={2}
-            style={{
-              maskImage: "linear-gradient(to bottom, black, transparent)",
-              WebkitMaskImage:
-                "linear-gradient(to bottom, black, transparent)",
-            }}
-          />
-        </div>
-        <div className="relative z-10 max-w-2xl mx-auto pt-12 pb-24 sm:pt-20 px-6">
-          <PortfolioPage />
-        </div>
-        <Navbar />
-      </DataProvider>
+      <TemplatePreview
+        initialResume={draft}
+        handle={handle}
+        isPublished={isPublished}
+      />
     </div>
   );
 }
@@ -85,7 +71,9 @@ function DraftStrip({
           <> · not public yet</>
         )}
       </span>
-      <PreviewPublishButton isPublished={isPublished} />
+      <span className="text-[11px] text-muted-foreground hidden sm:inline">
+        Pick a template below ↓
+      </span>
     </div>
   );
 }
