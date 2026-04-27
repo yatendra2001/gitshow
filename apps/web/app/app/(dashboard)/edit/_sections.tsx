@@ -1352,23 +1352,27 @@ function TemplateSwatchLarge({ id }: { id: TemplateId }) {
         className="aspect-[16/10] flex flex-col gap-1.5 p-4 relative"
         style={{
           background: bg,
-          backgroundImage: `radial-gradient(ellipse at top, ${accent}33, transparent 60%)`,
+          backgroundImage:
+            "radial-gradient(ellipse at top right, rgba(99,102,241,0.32), transparent 60%), radial-gradient(ellipse at bottom left, rgba(14,165,233,0.18), transparent 60%)",
         }}
       >
         <div className="flex items-center gap-1.5">
-          <div className="size-2 rounded-full" style={{ background: accent }} />
+          <div
+            className="size-2 rounded-full"
+            style={{ background: "linear-gradient(135deg, #0ea5e9, #6366f1)" }}
+          />
           <div className="h-1 w-12 rounded-full" style={{ background: fg, opacity: 0.4 }} />
         </div>
         <div
           className="h-3 w-2/3 rounded-full mt-1"
-          style={{ background: `linear-gradient(135deg, ${fg}, ${accent})` }}
+          style={{ background: "linear-gradient(135deg, #ffffff, #93c5fd, #6366f1)" }}
         />
         <div className="h-1 w-3/4 rounded-full" style={{ background: fg, opacity: 0.4 }} />
         <div className="mt-auto grid grid-cols-2 gap-1">
           <div className="h-7 rounded" style={{ background: `${fg}1a` }} />
           <div
             className="h-7 rounded"
-            style={{ background: `linear-gradient(135deg, ${accent}40, ${fg}1a)` }}
+            style={{ background: "linear-gradient(135deg, rgba(14,165,233,0.45), rgba(99,102,241,0.30))" }}
           />
         </div>
       </div>
@@ -1378,14 +1382,17 @@ function TemplateSwatchLarge({ id }: { id: TemplateId }) {
   if (id === "bento") {
     return (
       <div className="aspect-[16/10] grid grid-cols-4 grid-rows-3 gap-1 p-2" style={{ background: bg }}>
-        <div className="col-span-2 row-span-2 rounded-md" style={{ background: `${accent}40` }} />
+        <div
+          className="col-span-2 row-span-2 rounded-md"
+          style={{ background: "linear-gradient(135deg, rgba(59,130,246,0.50), rgba(14,165,233,0.22))" }}
+        />
         <div className="rounded-md" style={{ background: `${fg}1a` }} />
         <div className="rounded-md" style={{ background: `${fg}14` }} />
         <div className="col-span-2 rounded-md" style={{ background: `${fg}1a` }} />
-        <div className="rounded-md" style={{ background: `${accent}50` }} />
+        <div className="rounded-md" style={{ background: "rgba(99,102,241,0.55)" }} />
         <div className="rounded-md" style={{ background: `${fg}14` }} />
         <div className="col-span-3 rounded-md" style={{ background: `${fg}1a` }} />
-        <div className="rounded-md" style={{ background: `${fg}14` }} />
+        <div className="rounded-md" style={{ background: "rgba(96,165,250,0.30)" }} />
       </div>
     );
   }
