@@ -29,11 +29,15 @@ export default async function ResumePage() {
 
   if (!doc) {
     return (
-      <ResumeEmpty
-        hasResume={Boolean(published || draft)}
-      />
+      <div className="gs-enter">
+        <ResumeEmpty hasResume={Boolean(published || draft)} />
+      </div>
     );
   }
 
-  return <ResumeEditor initialDoc={doc} />;
+  return (
+    <div className="gs-enter">
+      <ResumeEditor initialDoc={doc} />
+    </div>
+  );
 }

@@ -75,7 +75,7 @@ export default async function BillingPage() {
           : "bg-emerald-500";
 
   return (
-    <div className="mx-auto w-full max-w-3xl">
+    <div className="mx-auto w-full max-w-3xl gs-enter">
       <section className="px-4 sm:px-6 lg:px-8 py-10">
         <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
           Plan

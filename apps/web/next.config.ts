@@ -39,6 +39,22 @@ const nextConfig: NextConfig = {
       "@hugeicons/react",
       "@hugeicons/core-free-icons",
     ],
+    // Client-side Router Cache lifetime. Next 15 reset the default
+    // for `dynamic` routes to 0s — meaning every revisit to a
+    // `force-dynamic` page (and we have those across the dashboard)
+    // re-fetches the RSC payload AND re-shows the loading skeleton.
+    // That's why navigating Edit → Preview → Edit felt fresh on
+    // every click instead of snapping back from cache.
+    //
+    // Bumping `dynamic` to 60s gives sub/profile/analytics-style
+    // pages a generous "feels instant" window while still
+    // revalidating for users who linger on a tab. Mutations
+    // (publish, save, sign-out) call `router.refresh()` and bypass
+    // this cache, so freshness on actual changes is preserved.
+    staleTimes: {
+      dynamic: 60,
+      static: 300,
+    },
   },
   images: {
     remotePatterns: [
