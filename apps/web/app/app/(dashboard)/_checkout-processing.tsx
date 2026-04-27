@@ -48,7 +48,7 @@ export function CheckoutProcessingAutoRefresh() {
           {" "}— if the charge already succeeded we&apos;ll skip the
           second payment.{" "}
           <a
-            href="mailto:support@gitshow.io"
+            href="mailto:yatendra@gitshow.io"
             className="text-foreground underline-offset-2 hover:underline"
           >
             Email support

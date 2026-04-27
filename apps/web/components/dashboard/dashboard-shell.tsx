@@ -69,7 +69,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { href: "/app/billing", label: "Billing", icon: CreditCardIcon },
       {
-        href: "mailto:hi@gitshow.io",
+        href: "mailto:yatendra@gitshow.io",
         label: "Support",
         icon: HelpCircleIcon,
         external: true,

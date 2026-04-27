@@ -92,8 +92,8 @@ export default function PrivacyPage() {
         <h2>Contact</h2>
         <p>
           Questions or a data request? Email{" "}
-          <a href="mailto:yatendra2001kumar@gmail.com">
-            yatendra2001kumar@gmail.com
+          <a href="mailto:yatendra@gitshow.io">
+            yatendra@gitshow.io
           </a>
           .
         </p>

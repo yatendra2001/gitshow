@@ -66,7 +66,7 @@ export const siteConfig = {
         "commits to portfolio",
     ],
     links: {
-        email: "hi@gitshow.io",
+        email: "yatendra@gitshow.io",
         twitter: "https://twitter.com/gitshowio",
         github: "https://github.com/gitshow-io",
     },
@@ -597,7 +597,7 @@ export const siteConfig = {
     },
     faqSection: {
         title: "Questions.",
-        description: "If yours isn't here, email hi@gitshow.io.",
+        description: "If yours isn't here, email yatendra@gitshow.io.",
         faQitems: [
             {
                 id: 1,
@@ -668,7 +668,7 @@ export const siteConfig = {
             title: "Company",
             links: [
                 { id: 5, title: "About", url: "#" },
-                { id: 6, title: "Contact", url: "mailto:hi@gitshow.io" },
+                { id: 6, title: "Contact", url: "mailto:yatendra@gitshow.io" },
                 { id: 7, title: "Privacy", url: "#" },
                 { id: 8, title: "Terms", url: "#" },
             ],
