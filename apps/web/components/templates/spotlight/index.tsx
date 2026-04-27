@@ -10,6 +10,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LogoOrInitials } from "@/components/logo-or-initials";
 import { resolveSkillIcon } from "@/components/skill-icons";
 import { Icons } from "@/components/icons";
+import { formatResumeDateRange } from "@/lib/format-date";
 import { ArrowUpRight, Github, Linkedin, Mail, Twitter } from "lucide-react";
 
 /**
@@ -406,7 +407,7 @@ function Experience({ work }: { work: ReturnType<typeof useResume>["work"] }) {
                 className="absolute inset-0 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity ring-1 ring-[#64ffda]/10 pointer-events-none"
               />
               <div className="sm:col-span-3 text-[11.5px] uppercase tracking-[0.18em] text-[#8892b0] font-mono pt-1 tabular-nums">
-                {w.start} — {w.end}
+                {formatResumeDateRange(w.start, w.end)}
               </div>
               <div className="sm:col-span-9">
                 <h3 className="font-semibold text-[#e6f1ff] text-[16px] inline-flex items-baseline gap-2 leading-tight">
@@ -484,7 +485,7 @@ function Projects({
         <SectionHeader number="03" label="Selected Projects" />
       </motion.div>
 
-      <ol className="space-y-12">
+      <ol className="space-y-7">
         {projects.map((p, i) => (
           <motion.li
             key={p.id}
@@ -497,80 +498,113 @@ function Projects({
               href={p.href ?? "#"}
               target="_blank"
               rel="noreferrer"
-              className="group block sm:grid sm:grid-cols-12 sm:gap-4 sm:items-center"
+              className="group relative block rounded-2xl p-4 sm:p-5 -mx-4 sm:-mx-5 transition-all hover:bg-[#112240]/40"
             >
-              {/* Image — overlap into the text column on hover */}
-              <div className="sm:col-span-7">
-                <div className="relative aspect-[16/10] overflow-hidden rounded-md border border-[#233554]/50 bg-[#112240]">
-                  {p.video ? (
-                    <video
-                      src={p.video}
-                      muted
-                      loop
-                      playsInline
-                      autoPlay
-                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.02]"
-                    />
-                  ) : p.image ? (
-                    <img
-                      src={p.image}
-                      alt={p.title}
-                      className="absolute inset-0 w-full h-full object-cover opacity-90 transition-all duration-700 group-hover:opacity-100 group-hover:scale-[1.02]"
-                    />
-                  ) : (
-                    <div className="absolute inset-0 bg-gradient-to-br from-[#112240] to-[#1d3a5f]" />
-                  )}
-                  {/* Tinted veil that lifts on hover */}
-                  <div
-                    aria-hidden
-                    className="absolute inset-0 bg-[#64ffda]/15 group-hover:bg-transparent transition-colors duration-500"
-                  />
-                </div>
-              </div>
+              {/* Subtle hover ring */}
+              <div
+                aria-hidden
+                className="absolute inset-0 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity ring-1 ring-[#64ffda]/15 pointer-events-none"
+              />
 
-              <div className="sm:col-span-5 sm:pl-0 sm:-ml-12 mt-4 sm:mt-0 relative">
-                <div className="text-[11.5px] font-mono text-[#64ffda] mb-1 tracking-wider">
-                  Featured Project · {p.dates}
-                  {p.active && <span className="ml-2 text-[10px]">[ACTIVE]</span>}
-                </div>
-                <h3 className="text-2xl font-bold text-[#e6f1ff] leading-tight inline-flex items-baseline gap-2 group-hover:text-[#64ffda] transition-colors">
-                  {p.title}
-                  <ArrowUpRight className="size-4 transition-transform group-hover:rotate-12" />
-                </h3>
-                <div className="sm:bg-[#112240] sm:rounded-md sm:p-5 sm:mt-4 sm:shadow-[0_10px_30px_-15px_rgba(2,12,27,0.7)] text-[14.5px] leading-[1.7] text-[#a8b2d1] [&_p]:mb-2 [&_p:last-child]:mb-0">
-                  <Markdown
-                    components={{
-                      a: ({ href, children }) => (
-                        <a
-                          href={href}
-                          className="text-[#64ffda] underline-offset-4 decoration-[#64ffda]/40 hover:decoration-[#64ffda]"
-                        >
-                          {children}
-                        </a>
-                      ),
-                    }}
-                  >
-                    {p.description}
-                  </Markdown>
-                </div>
-                {p.technologies.length > 0 && (
-                  <ul className="flex flex-wrap gap-x-3 gap-y-1 mt-3 sm:mt-3 text-[12px] font-mono text-[#a8b2d1]">
-                    {p.technologies.slice(0, 6).map((t) => (
-                      <li key={t}>{t}</li>
-                    ))}
-                  </ul>
-                )}
-                {p.links && p.links.length > 0 && (
-                  <ul className="flex items-center gap-3 mt-3 text-[#ccd6f6]">
-                    {p.links.slice(0, 3).map((l) => (
-                      <li key={l.href}>
-                        <span className="text-[12px] font-mono inline-flex items-center gap-1 group-hover:text-[#64ffda] transition-colors">
-                          [{l.label.toLowerCase()}]
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-4 sm:gap-6 items-start">
+                {/* Image — clean, no overlay veil. Just sits on the left. */}
+                <div className="sm:col-span-4">
+                  <div className="relative aspect-[16/10] overflow-hidden rounded-md border border-[#233554]/40 bg-[#112240]">
+                    {p.video ? (
+                      <video
+                        src={p.video}
+                        muted
+                        loop
+                        playsInline
+                        autoPlay
+                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+                      />
+                    ) : p.image ? (
+                      <img
+                        src={p.image}
+                        alt={p.title}
+                        className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.04]"
+                      />
+                    ) : (
+                      <div className="absolute inset-0 bg-gradient-to-br from-[#112240] to-[#1d3a5f] flex items-center justify-center">
+                        <span className="font-mono text-[#64ffda]/60 text-[11px] tracking-wider uppercase">
+                          {p.title.slice(0, 2)}
                         </span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Content — clean column to the right */}
+                <div className="sm:col-span-8">
+                  <div className="flex items-baseline gap-2 mb-1.5 flex-wrap">
+                    <span className="text-[10.5px] font-mono uppercase tracking-[0.22em] text-[#64ffda]">
+                      {p.dates}
+                    </span>
+                    {p.active && (
+                      <span className="text-[10.5px] font-mono uppercase tracking-[0.22em] text-emerald-400 inline-flex items-center gap-1">
+                        <span
+                          aria-hidden
+                          className="size-1 rounded-full bg-emerald-400 animate-pulse"
+                        />
+                        live
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-xl font-semibold text-[#e6f1ff] leading-tight inline-flex items-baseline gap-2 group-hover:text-[#64ffda] transition-colors">
+                    {p.title}
+                    <ArrowUpRight
+                      aria-hidden
+                      className="size-4 -translate-y-0.5 transition-transform group-hover:rotate-12 group-hover:translate-y-0"
+                    />
+                  </h3>
+                  <div className="mt-2 text-[14.5px] leading-[1.7] text-[#a8b2d1] [&_p]:mb-2 [&_p:last-child]:mb-0 max-w-[60ch]">
+                    <Markdown
+                      components={{
+                        a: ({ href, children }) => (
+                          <a
+                            href={href}
+                            className="text-[#64ffda] underline-offset-4 decoration-[#64ffda]/40 hover:decoration-[#64ffda]"
+                          >
+                            {children}
+                          </a>
+                        ),
+                      }}
+                    >
+                      {p.description}
+                    </Markdown>
+                  </div>
+                  {p.technologies.length > 0 && (
+                    <ul className="flex flex-wrap gap-1.5 mt-3">
+                      {p.technologies.slice(0, 6).map((t) => (
+                        <li
+                          key={t}
+                          className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-[#64ffda]/[0.08] text-[#64ffda]"
+                        >
+                          {t}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                  {p.links && p.links.length > 0 && (
+                    <ul className="flex items-center gap-1.5 mt-3 flex-wrap">
+                      {p.links.slice(0, 3).map((l) => (
+                        <li key={l.href}>
+                          <span
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(l.href, "_blank", "noreferrer");
+                            }}
+                            className="cursor-pointer text-[11.5px] font-mono inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#233554]/60 text-[#a8b2d1] hover:border-[#64ffda]/40 hover:text-[#64ffda] transition-colors"
+                          >
+                            {l.label}
+                            <ArrowUpRight aria-hidden className="size-3" />
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
               </div>
             </a>
           </motion.li>
@@ -735,7 +769,7 @@ function More({
                       {e.degree}
                     </div>
                     <div className="text-[11.5px] text-[#8892b0] font-mono tabular-nums mt-0.5">
-                      {e.start} — {e.end}
+                      {formatResumeDateRange(e.start, e.end)}
                     </div>
                   </div>
                 </li>

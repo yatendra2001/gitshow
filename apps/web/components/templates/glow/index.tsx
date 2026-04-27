@@ -9,6 +9,7 @@ import { allSocials } from "@gitshow/shared/resume";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LogoOrInitials } from "@/components/logo-or-initials";
 import { resolveSkillIcon } from "@/components/skill-icons";
+import { formatResumeDate, formatResumeDateRange } from "@/lib/format-date";
 import { ArrowUpRight, Sparkles } from "lucide-react";
 
 /**
@@ -25,9 +26,9 @@ import { ArrowUpRight, Sparkles } from "lucide-react";
  */
 
 const GRAD = {
-  from: "#5e6ad2",
-  via: "#bd9bff",
-  to: "#fc7dab",
+  from: "#0ea5e9", // sky-500
+  via: "#3b82f6",  // blue-500
+  to: "#6366f1",   // indigo-500
 };
 
 export default function GlowTemplate() {
@@ -372,7 +373,7 @@ function CurrentlyBuilding({
             <span className="group-hover:text-white transition-colors">{work.company}</span>
           </div>
           <div className="text-[12px] text-neutral-500 font-mono mt-0.5">
-            since {work.start}
+            since {formatResumeDate(work.start)}
           </div>
         </div>
         <ArrowUpRight className="size-4 text-neutral-500 transition-transform group-hover:rotate-12 group-hover:text-white flex-none" />
@@ -560,7 +561,7 @@ function Experience({
               )}
             </div>
             <div className="text-[11.5px] font-mono text-neutral-500 tabular-nums flex-none">
-              {w.start} — {w.end}
+              {formatResumeDateRange(w.start, w.end)}
             </div>
           </a>
         </motion.li>
@@ -583,7 +584,7 @@ function WritingList({
       key: p.id,
       title: p.title,
       kind: p.kind,
-      date: p.publishedAt,
+      date: formatResumeDate(p.publishedAt),
       url: p.url,
       meta: p.venue,
     })),
@@ -658,7 +659,7 @@ function EducationList({
             <div className="text-[12.5px] text-neutral-400 truncate">{e.degree}</div>
           </div>
           <div className="text-[11.5px] font-mono text-neutral-500 tabular-nums flex-none">
-            {e.start} — {e.end}
+            {formatResumeDateRange(e.start, e.end)}
           </div>
         </li>
       ))}
