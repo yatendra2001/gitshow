@@ -17,8 +17,12 @@ import type {
   Link as ResumeLink,
   SocialLink,
   SectionKey,
+  TemplateId,
 } from "@gitshow/shared/resume";
 import { DEFAULT_SECTION_ORDER } from "@gitshow/shared/resume";
+import { TEMPLATES } from "@/components/templates/registry";
+import Link from "next/link";
+import { Check } from "lucide-react";
 import {
   CheckboxField,
   InputField,
@@ -1157,3 +1161,222 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   buildLog: "Build Log",
   contact: "Contact",
 };
+
+/**
+ * Template picker — gallery of every available template variant. The
+ * editor calls onPatch with `theme.template` on click; the live preview
+ * (in /app/preview) re-renders the new variant. Republishing the
+ * portfolio promotes the choice to the public page.
+ *
+ * The chooser shows a stylised swatch + the template's tagline and
+ * "best for" copy. We resist the temptation to render real screenshots
+ * here — those would quickly go stale; the swatches stay coherent.
+ */
+export function TemplateSectionForm({
+  resume,
+  onPatch,
+}: {
+  resume: Resume;
+  onPatch: (patch: Partial<Resume>) => void;
+}) {
+  const current = resume.theme.template;
+
+  const onPick = (id: TemplateId) => {
+    if (id === current) return;
+    onPatch({ theme: { ...resume.theme, template: id } });
+  };
+
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1">
+        <span className="text-[12px] font-medium text-foreground">
+          Visual template
+        </span>
+        <span className="text-[11px] text-muted-foreground">
+          The same Resume data, rendered with a different aesthetic. Pick one
+          here, then{" "}
+          <Link
+            href="/app/preview"
+            target="_blank"
+            className="underline underline-offset-2 hover:text-foreground"
+          >
+            preview ↗
+          </Link>{" "}
+          and republish.
+        </span>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        {TEMPLATES.map((t) => {
+          const active = t.id === current;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onPick(t.id)}
+              aria-pressed={active}
+              className={cn(
+                "group relative flex flex-col items-stretch overflow-hidden rounded-xl border text-left transition-all",
+                "outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                active
+                  ? "border-foreground/80 ring-2 ring-foreground/20"
+                  : "border-border/50 hover:border-foreground/40 hover:shadow-sm",
+              )}
+            >
+              <TemplateSwatchLarge id={t.id} />
+              <div className="p-3 bg-card/40 border-t border-border/40">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <div className="font-semibold text-[13.5px] leading-tight">
+                    {t.name}
+                  </div>
+                  {active && (
+                    <span className="size-5 rounded-full bg-foreground text-background flex items-center justify-center">
+                      <Check className="size-3" strokeWidth={3} />
+                    </span>
+                  )}
+                </div>
+                <div className="text-[11.5px] text-muted-foreground leading-snug min-h-[2.6em]">
+                  {t.tagline}
+                </div>
+                <div className="mt-2 pt-2 border-t border-border/30 text-[11px] text-muted-foreground/80 leading-snug min-h-[2.5em]">
+                  <span className="text-foreground/80 font-medium">Best for: </span>
+                  {t.bestFor}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {t.vibes.map((v) => (
+                    <span
+                      key={v}
+                      className="text-[10px] uppercase tracking-wide text-muted-foreground/80 border border-border/40 rounded-full px-1.5 py-0.5"
+                    >
+                      {v}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      <p className="text-[11px] text-muted-foreground">
+        Tip: open{" "}
+        <Link
+          href="/app/preview"
+          target="_blank"
+          className="underline underline-offset-2 hover:text-foreground"
+        >
+          /app/preview
+        </Link>{" "}
+        in another tab — there's a chooser dock at the bottom for quick
+        side-by-side comparison without leaving the page.
+      </p>
+    </div>
+  );
+}
+
+function TemplateSwatchLarge({ id }: { id: TemplateId }) {
+  const meta = TEMPLATES.find((t) => t.id === id)!;
+  const { bg, fg, accent } = meta.swatch;
+
+  if (id === "classic") {
+    return (
+      <div className="aspect-[16/10] flex flex-col gap-2 p-4" style={{ background: bg }}>
+        <div className="flex items-center gap-2">
+          <div className="size-5 rounded-full" style={{ background: fg, opacity: 0.85 }} />
+          <div className="h-2 w-24 rounded-full" style={{ background: fg, opacity: 0.4 }} />
+        </div>
+        <div className="h-1.5 w-3/4 rounded-full" style={{ background: fg, opacity: 0.55 }} />
+        <div className="h-1.5 w-1/2 rounded-full" style={{ background: fg, opacity: 0.35 }} />
+        <div className="mt-auto flex gap-1.5">
+          {[0.8, 0.45, 0.45, 0.45].map((o, i) => (
+            <div key={i} className="h-3 w-6 rounded-md" style={{ background: i === 0 ? accent : fg, opacity: o }} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (id === "terminal") {
+    return (
+      <div className="aspect-[16/10] flex flex-col gap-1 p-3 font-mono" style={{ background: bg }}>
+        <div className="flex gap-1">
+          <div className="size-2 rounded-full bg-[#ff5f56]" />
+          <div className="size-2 rounded-full bg-[#ffbd2e]" />
+          <div className="size-2 rounded-full bg-[#27c93f]" />
+        </div>
+        <div className="text-[10px] mt-1" style={{ color: fg }}>$ whoami</div>
+        <div className="text-[10px]" style={{ color: fg, opacity: 0.7 }}>{">"} engineer</div>
+        <div className="text-[10px]" style={{ color: fg, opacity: 0.5 }}>──────────</div>
+        <div className="text-[10px]" style={{ color: fg }}>$ cat about</div>
+        <div className="text-[10px]" style={{ color: fg, opacity: 0.7 }}>{">"} I build _</div>
+      </div>
+    );
+  }
+
+  if (id === "magazine") {
+    return (
+      <div className="aspect-[16/10] flex flex-col gap-1.5 p-4" style={{ background: bg }}>
+        <div className="text-[8px] uppercase tracking-[0.3em] font-bold" style={{ color: accent }}>The Quarterly</div>
+        <div className="font-serif text-[24px] leading-[0.9]" style={{ color: fg }}>Profile.</div>
+        <div className="font-serif text-[10px] italic" style={{ color: fg, opacity: 0.7 }}>“On craft, lately.”</div>
+        <div className="grid grid-cols-2 gap-1 mt-auto">
+          <div className="space-y-0.5">
+            <div className="h-1 rounded-full" style={{ background: fg, opacity: 0.55 }} />
+            <div className="h-1 w-3/4 rounded-full" style={{ background: fg, opacity: 0.45 }} />
+          </div>
+          <div className="space-y-0.5">
+            <div className="h-1 rounded-full" style={{ background: fg, opacity: 0.55 }} />
+            <div className="h-1 w-2/3 rounded-full" style={{ background: fg, opacity: 0.45 }} />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (id === "bento") {
+    return (
+      <div className="aspect-[16/10] grid grid-cols-4 grid-rows-3 gap-1 p-2" style={{ background: bg }}>
+        <div className="col-span-2 row-span-2 rounded-md" style={{ background: `${accent}40` }} />
+        <div className="rounded-md" style={{ background: `${fg}1a` }} />
+        <div className="rounded-md" style={{ background: `${fg}14` }} />
+        <div className="col-span-2 rounded-md" style={{ background: `${fg}1a` }} />
+        <div className="rounded-md" style={{ background: `${accent}50` }} />
+        <div className="rounded-md" style={{ background: `${fg}14` }} />
+        <div className="col-span-3 rounded-md" style={{ background: `${fg}1a` }} />
+        <div className="rounded-md" style={{ background: `${fg}14` }} />
+      </div>
+    );
+  }
+
+  if (id === "brutalist") {
+    return (
+      <div className="aspect-[16/10] flex flex-col gap-1 p-3" style={{ background: bg }}>
+        <div className="font-bold text-[18px] leading-[0.85] uppercase tracking-tight" style={{ color: fg }}>BIG.</div>
+        <div className="font-bold text-[18px] leading-[0.85] uppercase tracking-tight" style={{ color: accent }}>NAME.</div>
+        <div className="mt-auto h-[3px]" style={{ background: fg }} />
+        <div className="grid grid-cols-2 gap-1">
+          <div className="h-6 border-2" style={{ borderColor: fg }} />
+          <div className="h-6 border-2" style={{ borderColor: fg, background: accent }} />
+        </div>
+      </div>
+    );
+  }
+
+  // minimal
+  return (
+    <div className="aspect-[16/10] flex flex-col gap-1.5 p-4 font-mono" style={{ background: bg }}>
+      <div className="flex justify-between items-baseline">
+        <div className="h-1.5 w-16 rounded-full" style={{ background: accent, opacity: 0.95 }} />
+        <div className="h-1 w-8 rounded-full" style={{ background: fg, opacity: 0.4 }} />
+      </div>
+      <div className="h-1 w-3/4 rounded-full" style={{ background: fg, opacity: 0.55 }} />
+      <div className="h-1 w-1/2 rounded-full" style={{ background: fg, opacity: 0.4 }} />
+      <div className="h-px w-full" style={{ background: fg, opacity: 0.2 }} />
+      <div className="space-y-1 mt-auto">
+        <div className="flex justify-between"><div className="h-1 w-1/3 rounded-full" style={{ background: fg, opacity: 0.55 }} /><div className="h-1 w-8 rounded-full" style={{ background: fg, opacity: 0.35 }} /></div>
+        <div className="flex justify-between"><div className="h-1 w-1/2 rounded-full" style={{ background: fg, opacity: 0.55 }} /><div className="h-1 w-8 rounded-full" style={{ background: fg, opacity: 0.35 }} /></div>
+        <div className="flex justify-between"><div className="h-1 w-2/5 rounded-full" style={{ background: fg, opacity: 0.55 }} /><div className="h-1 w-8 rounded-full" style={{ background: fg, opacity: 0.35 }} /></div>
+      </div>
+    </div>
+  );
+}

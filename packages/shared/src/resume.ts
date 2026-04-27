@@ -388,11 +388,28 @@ export type BlogPost = z.infer<typeof BlogPostSchema>;
 // Theme + section layout controls
 // ──────────────────────────────────────────────────────────────
 
+/**
+ * Visual template the portfolio renders with. The same Resume JSON
+ * powers every variant — only the React component swaps. New templates
+ * can be added without breaking previously-published portfolios.
+ */
+export const TemplateIdSchema = z.enum([
+  "classic",
+  "terminal",
+  "magazine",
+  "bento",
+  "brutalist",
+  "minimal",
+]);
+export type TemplateId = z.infer<typeof TemplateIdSchema>;
+
 export const ThemeSchema = z.object({
   /** Default render mode. Dark is gitshow's default per product decision. */
   mode: z.enum(["light", "dark", "system"]).default("dark"),
   /** Future: bespoke accent color (hex). Not used in MVP rendering. */
   accentHex: z.string().optional(),
+  /** Visual template — defaults to "classic" so existing portfolios keep their look. */
+  template: TemplateIdSchema.default("classic"),
 });
 export type Theme = z.infer<typeof ThemeSchema>;
 
@@ -472,7 +489,7 @@ export const ResumeSchema = z.object({
   publications: z.array(PublicationEntrySchema).max(60).default([]),
   buildLog: z.array(BuildLogEntrySchema).max(500).default([]),
   blog: z.array(BlogPostSchema).max(50).default([]),
-  theme: ThemeSchema.default({ mode: "dark" }),
+  theme: ThemeSchema.default({ mode: "dark", template: "classic" }),
   sections: SectionsConfigSchema.default({
     order: DEFAULT_SECTION_ORDER,
     hidden: [],

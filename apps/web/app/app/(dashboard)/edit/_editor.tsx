@@ -15,6 +15,7 @@ import {
   LayoutSectionForm,
   ProjectsSectionForm,
   SkillsSectionForm,
+  TemplateSectionForm,
   ThemeSectionForm,
   WorkSectionForm,
 } from "./_sections";
@@ -45,6 +46,7 @@ type SectionId =
   | "buildLog"
   | "contact"
   | "blog"
+  | "template"
   | "theme"
   | "layout";
 
@@ -63,6 +65,7 @@ const TABS: Tab[] = [
   { id: "buildLog", label: "Build log" },
   { id: "contact", label: "Contact" },
   { id: "blog", label: "Blog" },
+  { id: "template", label: "Template" },
   { id: "theme", label: "Theme" },
   { id: "layout", label: "Layout" },
 ];
@@ -497,6 +500,8 @@ function SectionView({
       return (
         <BlogSectionForm resume={resume} onPatch={onPatch} handle={handle} />
       );
+    case "template":
+      return <TemplateSectionForm resume={resume} onPatch={onPatch} />;
     case "theme":
       return <ThemeSectionForm resume={resume} onPatch={onPatch} />;
     case "layout":
