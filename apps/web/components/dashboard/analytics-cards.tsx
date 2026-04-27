@@ -16,32 +16,25 @@ import Link from "next/link";
 import {
   ArrowDownRight01Icon,
   ArrowUpRight01Icon,
-  Compass01Icon,
   GlobeIcon,
 } from "@hugeicons/core-free-icons";
 import { Icon } from "./icon";
 import type {
   BrowserRow,
-  CountryRow,
   DeviceRow,
-  HourBucket,
   RecentVisitorRow,
-  ReferrerRow,
 } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import {
   countryFlag,
   countryName,
-  faviconUrl,
   formatCount,
   prettyReferrer,
   relativeTime,
-  SENTINEL_HOSTS,
 } from "./format";
 import {
   DonutLegend,
-  HourlyBarChart,
-  MonochromeDonut,
+  SegmentedDonut,
   SparklineMini,
 } from "./analytics-charts";
 
@@ -226,90 +219,7 @@ export function LiveTicker({
   );
 }
 
-// ─── Top referrers ────────────────────────────────────────────────
-
-export function ReferrersList({ rows }: { rows: ReferrerRow[] }) {
-  if (rows.length === 0) {
-    return (
-      <EmptyHint>
-        No traffic yet. Share your link on LinkedIn or Twitter to see sources
-        here.
-      </EmptyHint>
-    );
-  }
-  const max = Math.max(1, ...rows.map((r) => r.views));
-  return (
-    <ul className="flex flex-col">
-      {rows.map((r) => {
-        const isSentinel = SENTINEL_HOSTS.has(r.host);
-        const label = prettyReferrer(r.host);
-        return (
-          <li key={r.host}>
-            <RankRow
-              leading={
-                isSentinel ? (
-                  <span className="flex size-5 items-center justify-center rounded-md bg-muted/50 text-muted-foreground ring-1 ring-border/40">
-                    <Icon icon={Compass01Icon} className="size-3" />
-                  </span>
-                ) : (
-                  <span className="flex size-5 items-center justify-center overflow-hidden rounded-md bg-muted/50 ring-1 ring-border/40">
-                    <img
-                      src={faviconUrl(r.host)}
-                      alt=""
-                      width={16}
-                      height={16}
-                      className="size-3.5 object-contain"
-                      loading="lazy"
-                      referrerPolicy="no-referrer"
-                    />
-                  </span>
-                )
-              }
-              label={label}
-              sublabel={isSentinel || r.host === label ? undefined : r.host}
-              value={r.views}
-              barPct={Math.round((r.views / max) * 100)}
-            />
-          </li>
-        );
-      })}
-    </ul>
-  );
-}
-
-// ─── Top countries ────────────────────────────────────────────────
-
-export function CountriesList({ rows }: { rows: CountryRow[] }) {
-  if (rows.length === 0) {
-    return (
-      <EmptyHint>
-        We&apos;ll show where visitors are reading from once traffic comes
-        in.
-      </EmptyHint>
-    );
-  }
-  const max = Math.max(1, ...rows.map((r) => r.views));
-  return (
-    <ul className="flex flex-col">
-      {rows.map((r) => (
-        <li key={r.country}>
-          <RankRow
-            leading={
-              <span className="flex size-5 items-center justify-center text-[15px] leading-none">
-                {countryFlag(r.country)}
-              </span>
-            }
-            label={countryName(r.country)}
-            value={r.views}
-            barPct={Math.round((r.views / max) * 100)}
-          />
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-// ─── Devices donut ────────────────────────────────────────────────
+// ─── Devices: filled pie (variant: "filled") ──────────────────────
 
 const DEVICE_LABEL: Record<string, string> = {
   desktop: "Desktop",
@@ -326,21 +236,15 @@ export function DevicesDonut({ rows }: { rows: DeviceRow[] }) {
     label: DEVICE_LABEL[r.device] ?? r.device,
     value: r.views,
   }));
-  const total = filtered.reduce((acc, r) => acc + r.views, 0);
   return (
     <div className="grid grid-cols-[1fr_auto] items-center gap-5">
-      <MonochromeDonut
-        data={slices}
-        height={180}
-        centerLabel="Visits"
-        centerValue={formatCount(total)}
-      />
+      <SegmentedDonut data={slices} height={180} variant="filled" />
       <DonutLegend data={slices} />
     </div>
   );
 }
 
-// ─── Browsers donut ───────────────────────────────────────────────
+// ─── Browsers: donut with center number ──────────────────────────
 
 export function BrowsersDonut({ rows }: { rows: BrowserRow[] }) {
   if (rows.length === 0) {
@@ -355,54 +259,18 @@ export function BrowsersDonut({ rows }: { rows: BrowserRow[] }) {
     label: r.browser,
     value: r.views,
   }));
-  const total = rows.reduce((acc, r) => acc + r.views, 0);
   return (
     <div className="grid grid-cols-[1fr_auto] items-center gap-5">
-      <MonochromeDonut
+      <SegmentedDonut
         data={slices}
         height={180}
+        variant="donut"
         centerLabel="Browsers"
         centerValue={String(rows.length)}
       />
       <DonutLegend data={slices} />
     </div>
   );
-}
-
-// ─── Hour-of-day pattern ──────────────────────────────────────────
-
-export function HourlyTraffic({ rows }: { rows: HourBucket[] }) {
-  const total = rows.reduce((acc, r) => acc + r.views, 0);
-  if (total === 0) {
-    return (
-      <EmptyHint>
-        Once visits land we&apos;ll plot when your readers show up — by hour
-        of day.
-      </EmptyHint>
-    );
-  }
-  const peak = rows.reduce((best, r) => (r.views > best.views ? r : best), rows[0]);
-  const peakLabel = formatHourRange(peak.hour);
-  return (
-    <div>
-      <HourlyBarChart data={rows} />
-      <p className="mt-3 text-[11.5px] text-muted-foreground">
-        Peak hour:{" "}
-        <span className="text-foreground/80 font-medium">{peakLabel} UTC</span>
-        <Dim> · </Dim>
-        all times in coordinated universal time
-      </p>
-    </div>
-  );
-}
-
-function formatHourRange(h: number): string {
-  const fmt = (n: number) => {
-    if (n === 0) return "12am";
-    if (n === 12) return "12pm";
-    return n < 12 ? `${n}am` : `${n - 12}pm`;
-  };
-  return `${fmt(h)}–${fmt((h + 1) % 24)}`;
 }
 
 // ─── Recent activity feed ─────────────────────────────────────────

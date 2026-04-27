@@ -19,16 +19,18 @@ import { loadDraftResume } from "@/lib/resume-io";
 import { loadDashboard } from "@/lib/analytics";
 import {
   BrowsersDonut,
-  CountriesList,
   DevicesDonut,
-  HourlyTraffic,
   KpiCard,
   LiveTicker,
   RecentActivity,
-  ReferrersList,
   SectionCard,
 } from "@/components/dashboard/analytics-cards";
-import { ViewsAreaChart } from "@/components/dashboard/analytics-charts";
+import {
+  HourlyTraffic,
+  SourcesBarChart,
+  ViewsAreaChart,
+} from "@/components/dashboard/analytics-charts";
+import { CountriesMap } from "@/components/dashboard/analytics-map";
 import type {
   AccessState,
   DataSources,
@@ -255,17 +257,21 @@ export default async function AppHomePage({
         </SectionCard>
       </div>
 
-      {/* Two-up: referrers + countries */}
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 mb-3">
-        <SectionCard title="Top sources" subtitle="Where visitors came from">
-          <ReferrersList rows={data.referrers} />
-        </SectionCard>
+      {/* World map, full width */}
+      <div className="mb-3">
         <SectionCard title="Top countries" subtitle="Geographic reach">
-          <CountriesList rows={data.countries} />
+          <CountriesMap rows={data.countries} />
         </SectionCard>
       </div>
 
-      {/* Two-up: devices donut + browsers donut */}
+      {/* Top sources, full width — horizontal bar chart with favicons */}
+      <div className="mb-3">
+        <SectionCard title="Top sources" subtitle="Where visitors came from">
+          <SourcesBarChart rows={data.referrers} />
+        </SectionCard>
+      </div>
+
+      {/* Two-up: devices pie + browsers donut (mixed variants) */}
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 mb-3">
         <SectionCard title="Devices" subtitle="What people read you on">
           <DevicesDonut rows={data.devices} />

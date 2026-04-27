@@ -1,17 +1,24 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element */
+
 /**
  * Recharts-backed visuals for the analytics dashboard.
  *
  * Visual rules:
- *   - Single accent color (`--gradient-primary`) for everything,
- *     differentiated by opacity. Two-tone monochrome reads more
- *     premium than blue + purple.
- *   - Sparklines have no axes, no labels — just shape.
- *   - The big chart has hairline gridlines (currentColor at 0.05) so
- *     the gridlines don't shout over the data.
+ *   - Time-series charts (area, sparkline, hourly bars) use a single accent
+ *     hue (`--gradient-primary`) — premium, calm, reads like a ribbon.
+ *   - Categorical breakdowns (pie/donut/horizontal bar) use the
+ *     shadcn `--chart-1..5` palette — distinct hues, calibrated chroma so
+ *     no slice screams. Multi-hue is the only way 85/9/6 splits are
+ *     readable.
+ *   - Hairline gridlines (currentColor at 0.05) keep gridlines from
+ *     shouting over data.
+ *   - Hour-of-day chart shifts UTC buckets to the viewer's local timezone
+ *     on the client, so "9pm" means *their* 9pm.
  */
 
+import * as React from "react";
 import {
   Area,
   AreaChart,
@@ -31,7 +38,7 @@ import {
   ChartTooltipContent,
   type ChartConfig,
 } from "@/components/ui/chart";
-import { formatCount, formatDateShort } from "./format";
+import { faviconUrl, formatCount, formatDateShort, prettyReferrer, SENTINEL_HOSTS } from "./format";
 
 // ─── Sparkline (KPI card footer) ──────────────────────────────────
 
@@ -43,8 +50,6 @@ export function SparklineMini({
   color?: string;
 }) {
   if (!data.length) return null;
-  // Stable id for the gradient definition. Recharts dedupes on this
-  // string so multiple sparklines on the same page don't conflict.
   const gradientId = `gs-spark-${color.replace(/[^a-zA-Z0-9]/g, "")}`;
   return (
     <div className="h-9 w-full">
@@ -77,14 +82,8 @@ export function SparklineMini({
 // ─── Big views chart ──────────────────────────────────────────────
 
 const VIEWS_CHART_CONFIG: ChartConfig = {
-  views: {
-    label: "Views",
-    color: "var(--gradient-primary)",
-  },
-  uniques: {
-    label: "Uniques",
-    color: "var(--gradient-primary)",
-  },
+  views: { label: "Views", color: "var(--gradient-primary)" },
+  uniques: { label: "Uniques", color: "var(--gradient-primary)" },
 };
 
 export function ViewsAreaChart({
@@ -100,41 +99,18 @@ export function ViewsAreaChart({
       className="aspect-auto w-full"
       style={{ height }}
     >
-      <AreaChart
-        data={data}
-        margin={{ top: 8, right: 8, bottom: 0, left: 4 }}
-      >
+      <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 4 }}>
         <defs>
           <linearGradient id="fill-views" x1="0" y1="0" x2="0" y2="1">
-            <stop
-              offset="5%"
-              stopColor="var(--color-views)"
-              stopOpacity={0.22}
-            />
-            <stop
-              offset="95%"
-              stopColor="var(--color-views)"
-              stopOpacity={0}
-            />
+            <stop offset="5%" stopColor="var(--color-views)" stopOpacity={0.22} />
+            <stop offset="95%" stopColor="var(--color-views)" stopOpacity={0} />
           </linearGradient>
           <linearGradient id="fill-uniques" x1="0" y1="0" x2="0" y2="1">
-            <stop
-              offset="5%"
-              stopColor="var(--color-uniques)"
-              stopOpacity={0.10}
-            />
-            <stop
-              offset="95%"
-              stopColor="var(--color-uniques)"
-              stopOpacity={0}
-            />
+            <stop offset="5%" stopColor="var(--color-uniques)" stopOpacity={0.10} />
+            <stop offset="95%" stopColor="var(--color-uniques)" stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid
-          vertical={false}
-          stroke="currentColor"
-          strokeOpacity={0.05}
-        />
+        <CartesianGrid vertical={false} stroke="currentColor" strokeOpacity={0.05} />
         <XAxis
           dataKey="date"
           tickLine={false}
@@ -175,7 +151,6 @@ export function ViewsAreaChart({
             />
           }
         />
-        {/* Views: primary line, full-strength accent. */}
         <Area
           type="monotone"
           dataKey="views"
@@ -185,7 +160,6 @@ export function ViewsAreaChart({
           isAnimationActive={true}
           animationDuration={400}
         />
-        {/* Uniques: same hue, lower-strength stroke + fill. */}
         <Area
           type="monotone"
           dataKey="uniques"
@@ -203,133 +177,199 @@ export function ViewsAreaChart({
   );
 }
 
-// ─── Hour-of-day bar chart ────────────────────────────────────────
+// ─── Hour-of-day bar chart (timezone-aware) ───────────────────────
 
 const HOURLY_CHART_CONFIG: ChartConfig = {
-  views: {
-    label: "Views",
-    color: "var(--gradient-primary)",
-  },
+  views: { label: "Views", color: "var(--gradient-primary)" },
 };
 
-/** "13" → "1pm". Drops the leading zero and lowercases the suffix. */
 function formatHourLabel(h: number): string {
   if (h === 0) return "12am";
   if (h === 12) return "12pm";
   return h < 12 ? `${h}am` : `${h - 12}pm`;
 }
 
-export function HourlyBarChart({
-  data,
-  height = 180,
-}: {
-  data: { hour: number; views: number }[];
-  height?: number;
-}) {
+function formatHourRange(h: number): string {
+  return `${formatHourLabel(h)}–${formatHourLabel((h + 1) % 24)}`;
+}
+
+interface HourBucket {
+  hour: number;
+  views: number;
+}
+
+function shiftToLocal(rows: HourBucket[], offsetHours: number): HourBucket[] {
+  if (offsetHours === 0) return rows;
+  const result: HourBucket[] = Array.from({ length: 24 }, (_, h) => ({ hour: h, views: 0 }));
+  for (const r of rows) {
+    const localHourFloat = ((r.hour + offsetHours) % 24 + 24) % 24;
+    // Half-hour offsets (e.g. IST +5:30) round to nearest whole bucket.
+    const localHour = Math.round(localHourFloat) % 24;
+    result[localHour].views += r.views;
+  }
+  return result;
+}
+
+/**
+ * Returns the user's tz state. Initial render shows UTC (SSR-safe);
+ * after mount, swaps to the browser's actual offset + name.
+ */
+function useLocalTimezone() {
+  const [tz, setTz] = React.useState<{ offset: number; label: string }>({
+    offset: 0,
+    label: "UTC",
+  });
+  React.useEffect(() => {
+    const offsetHours = -new Date().getTimezoneOffset() / 60;
+    // toLocaleTimeString with timeZoneName: "short" yields "12:00:00 PM PST"
+    // or "12:00:00 PM GMT+5:30" — last token is the name.
+    const parts = new Date().toLocaleTimeString("en-US", { timeZoneName: "short" }).split(" ");
+    const label = parts[parts.length - 1] || "Local";
+    setTz({ offset: offsetHours, label });
+  }, []);
+  return tz;
+}
+
+/**
+ * Hour-of-day breakdown card. Owns its own tz shift + peak-hour callout
+ * so the whole flow is client-side and consistent. `rows` is the raw
+ * 24-bucket UTC histogram from the server.
+ */
+export function HourlyTraffic({ rows }: { rows: HourBucket[] }) {
+  const { offset, label: tzLabel } = useLocalTimezone();
+  const total = rows.reduce((acc, r) => acc + r.views, 0);
+
+  if (total === 0) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-dashed border-border/50 bg-muted/15 px-3 py-3 text-[12px] text-muted-foreground">
+        Once visits land we&apos;ll plot when your readers show up — by hour of day.
+      </div>
+    );
+  }
+
+  const shifted = React.useMemo(() => shiftToLocal(rows, offset), [rows, offset]);
+  const peak = shifted.reduce(
+    (best, r) => (r.views > best.views ? r : best),
+    shifted[0],
+  );
+
   return (
-    <ChartContainer
-      config={HOURLY_CHART_CONFIG}
-      className="aspect-auto w-full"
-      style={{ height }}
-    >
-      <BarChart
-        data={data}
-        margin={{ top: 8, right: 8, bottom: 0, left: 4 }}
+    <div>
+      <ChartContainer
+        config={HOURLY_CHART_CONFIG}
+        className="aspect-auto w-full"
+        style={{ height: 180 }}
       >
-        <defs>
-          <linearGradient id="fill-hourly" x1="0" y1="0" x2="0" y2="1">
-            <stop
-              offset="0%"
-              stopColor="var(--color-views)"
-              stopOpacity={0.85}
-            />
-            <stop
-              offset="100%"
-              stopColor="var(--color-views)"
-              stopOpacity={0.4}
-            />
-          </linearGradient>
-        </defs>
-        <CartesianGrid
-          vertical={false}
-          stroke="currentColor"
-          strokeOpacity={0.05}
-        />
-        <XAxis
-          dataKey="hour"
-          tickLine={false}
-          axisLine={false}
-          tickMargin={8}
-          interval={2}
-          tickFormatter={formatHourLabel}
-          stroke="currentColor"
-          strokeOpacity={0.35}
-          style={{ fontSize: 10.5 }}
-        />
-        <YAxis
-          tickLine={false}
-          axisLine={false}
-          tickMargin={4}
-          width={32}
-          stroke="currentColor"
-          strokeOpacity={0.35}
-          style={{ fontSize: 10.5 }}
-          allowDecimals={false}
-        />
-        <Tooltip
-          cursor={{ fill: "currentColor", fillOpacity: 0.04 }}
-          content={
-            <ChartTooltipContent
-              indicator="dot"
-              labelFormatter={(label) => `${formatHourLabel(Number(label))} UTC`}
-            />
-          }
-        />
-        <Bar
-          dataKey="views"
-          fill="url(#fill-hourly)"
-          radius={[3, 3, 0, 0]}
-          isAnimationActive={true}
-          animationDuration={400}
-        />
-      </BarChart>
-    </ChartContainer>
+        <BarChart data={shifted} margin={{ top: 8, right: 8, bottom: 0, left: 4 }}>
+          <defs>
+            <linearGradient id="fill-hourly" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--color-views)" stopOpacity={0.85} />
+              <stop offset="100%" stopColor="var(--color-views)" stopOpacity={0.4} />
+            </linearGradient>
+          </defs>
+          <CartesianGrid vertical={false} stroke="currentColor" strokeOpacity={0.05} />
+          <XAxis
+            dataKey="hour"
+            tickLine={false}
+            axisLine={false}
+            tickMargin={8}
+            interval={2}
+            tickFormatter={formatHourLabel}
+            stroke="currentColor"
+            strokeOpacity={0.35}
+            style={{ fontSize: 10.5 }}
+          />
+          <YAxis
+            tickLine={false}
+            axisLine={false}
+            tickMargin={4}
+            width={32}
+            stroke="currentColor"
+            strokeOpacity={0.35}
+            style={{ fontSize: 10.5 }}
+            allowDecimals={false}
+          />
+          <Tooltip
+            cursor={{ fill: "currentColor", fillOpacity: 0.04 }}
+            content={
+              <ChartTooltipContent
+                indicator="dot"
+                labelFormatter={(_label, payload) => {
+                  const point = payload?.[0]?.payload as HourBucket | undefined;
+                  if (!point || typeof point.hour !== "number") return "";
+                  return `${formatHourRange(point.hour)} ${tzLabel}`;
+                }}
+              />
+            }
+          />
+          <Bar
+            dataKey="views"
+            fill="url(#fill-hourly)"
+            radius={[3, 3, 0, 0]}
+            isAnimationActive={true}
+            animationDuration={400}
+          />
+        </BarChart>
+      </ChartContainer>
+      <p className="mt-3 text-[11.5px] text-muted-foreground">
+        Peak hour:{" "}
+        <span className="text-foreground/80 font-medium">
+          {formatHourRange(peak.hour)} {tzLabel}
+        </span>
+        <span className="text-muted-foreground/40"> · </span>
+        shown in your local time
+      </p>
+    </div>
   );
 }
 
-// ─── Donut chart (devices, browsers) ──────────────────────────────
+// ─── Donut + filled pie (devices, browsers) ───────────────────────
 
 /**
- * Monochrome opacity ladder. Sorted descending so the largest slice
- * gets full strength and small slices fade out — same logic as the
- * single-accent rule applied to area + bar charts above.
+ * Multi-hue palette tuned for dark + light mode (oklch in globals.css).
+ * Distinct hues so 85/9/6 splits are readable; chroma capped so no slice
+ * screams. Cycles when there are more slices than colors.
  */
-const SLICE_OPACITIES = [1, 0.78, 0.58, 0.42, 0.3, 0.2];
+const CHART_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+];
+
+function colorAt(i: number): string {
+  return CHART_COLORS[i % CHART_COLORS.length];
+}
 
 interface DonutSlice {
-  /** Stable id used for the legend + tooltip key. */
   key: string;
-  /** Display name. */
   label: string;
   value: number;
 }
 
-export function MonochromeDonut({
+/**
+ * Pie/donut variants of the same component. `variant: "filled"` = solid pie
+ * (no hole), good for small categorical breakdowns. `variant: "donut"` =
+ * hollow center, room for a center label/value.
+ */
+export function SegmentedDonut({
   data,
   height = 220,
+  variant = "donut",
   centerLabel,
   centerValue,
 }: {
   data: DonutSlice[];
   height?: number;
-  /** Small uppercase label above the big number in the donut hole. */
+  variant?: "donut" | "filled";
   centerLabel?: string;
-  /** The big number itself. Pre-formatted (we don't know the metric). */
   centerValue?: string;
 }) {
   const config: ChartConfig = Object.fromEntries(
-    data.map((d) => [d.key, { label: d.label, color: "var(--gradient-primary)" }]),
+    data.map((d, i) => [d.key, { label: d.label, color: colorAt(i) }]),
   );
+  const innerRadius = variant === "filled" ? 0 : "58%";
   return (
     <div className="relative w-full" style={{ height }}>
       <ChartContainer config={config} className="aspect-auto h-full w-full">
@@ -340,6 +380,7 @@ export function MonochromeDonut({
                 hideLabel
                 nameKey="key"
                 formatter={(value, _name, item) => {
+                  const idx = data.findIndex((d) => d.key === item.payload?.key);
                   const cfg = config[String(item.payload?.key ?? "")];
                   return (
                     <div className="flex w-full items-center justify-between gap-4">
@@ -347,10 +388,7 @@ export function MonochromeDonut({
                         <span
                           aria-hidden
                           className="size-2 rounded-[2px]"
-                          style={{
-                            background: "var(--gradient-primary)",
-                            opacity: item.payload?.__opacity ?? 1,
-                          }}
+                          style={{ background: colorAt(Math.max(0, idx)) }}
                         />
                         <span className="text-muted-foreground">
                           {cfg?.label ?? item.payload?.label}
@@ -366,34 +404,24 @@ export function MonochromeDonut({
             }
           />
           <Pie
-            data={data.map((d, i) => ({
-              ...d,
-              __opacity:
-                SLICE_OPACITIES[i] ?? SLICE_OPACITIES[SLICE_OPACITIES.length - 1],
-            }))}
+            data={data}
             dataKey="value"
             nameKey="key"
-            innerRadius="58%"
+            innerRadius={innerRadius}
             outerRadius="92%"
-            paddingAngle={1.5}
+            paddingAngle={variant === "filled" ? 0.8 : 1.5}
             stroke="var(--background)"
             strokeWidth={1.5}
             isAnimationActive={true}
             animationDuration={500}
           >
             {data.map((d, i) => (
-              <Cell
-                key={d.key}
-                fill="var(--gradient-primary)"
-                fillOpacity={
-                  SLICE_OPACITIES[i] ?? SLICE_OPACITIES[SLICE_OPACITIES.length - 1]
-                }
-              />
+              <Cell key={d.key} fill={colorAt(i)} />
             ))}
           </Pie>
         </PieChart>
       </ChartContainer>
-      {centerValue ? (
+      {variant === "donut" && centerValue ? (
         <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
           {centerLabel ? (
             <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">
@@ -409,20 +437,19 @@ export function MonochromeDonut({
   );
 }
 
-/** Compact legend rendered next to the donut. Server-renderable. */
+/** Compact legend rendered next to the donut. */
 export function DonutLegend({ data }: { data: DonutSlice[] }) {
   const total = data.reduce((acc, d) => acc + d.value, 0);
   return (
     <ul className="flex flex-col gap-2 text-[12px]">
       {data.map((d, i) => {
-        const opacity = SLICE_OPACITIES[i] ?? SLICE_OPACITIES[SLICE_OPACITIES.length - 1];
         const pct = total > 0 ? Math.round((d.value / total) * 100) : 0;
         return (
           <li key={d.key} className="flex items-center gap-2.5">
             <span
               aria-hidden
               className="size-2 shrink-0 rounded-[2px]"
-              style={{ background: "var(--gradient-primary)", opacity }}
+              style={{ background: colorAt(i) }}
             />
             <span className="flex-1 truncate text-foreground/85">{d.label}</span>
             <span className="font-medium tabular-nums">{formatCount(d.value)}</span>
@@ -433,5 +460,150 @@ export function DonutLegend({ data }: { data: DonutSlice[] }) {
         );
       })}
     </ul>
+  );
+}
+
+// ─── Top sources horizontal bar chart ─────────────────────────────
+
+interface SourceRow {
+  host: string;
+  views: number;
+}
+
+const SOURCES_CHART_CONFIG: ChartConfig = {
+  views: { label: "Views", color: "var(--chart-1)" },
+};
+
+/**
+ * Custom Y-axis tick that renders a favicon + label. Recharts passes
+ * `payload.value` (the host string) and (x, y) for positioning.
+ */
+function SourceTick(props: {
+  x?: number;
+  y?: number;
+  payload?: { value: string };
+}) {
+  const { x = 0, y = 0, payload } = props;
+  const host = payload?.value ?? "";
+  if (!host) return null;
+  const isSentinel = SENTINEL_HOSTS.has(host);
+  const label = prettyReferrer(host);
+  return (
+    <g transform={`translate(${x - 4}, ${y})`}>
+      <foreignObject x={-150} y={-11} width={146} height={22}>
+        <div className="flex h-full items-center justify-end gap-1.5 text-[11.5px] text-foreground/85">
+          <span className="truncate text-right">{label}</span>
+          {isSentinel ? (
+            <span
+              aria-hidden
+              className="flex size-4 shrink-0 items-center justify-center rounded-[3px] bg-muted/50 ring-1 ring-border/40"
+            >
+              <span className="size-1.5 rounded-full bg-muted-foreground/70" />
+            </span>
+          ) : (
+            <img
+              src={faviconUrl(host)}
+              alt=""
+              width={14}
+              height={14}
+              className="size-3.5 shrink-0 rounded-[2px] object-contain"
+              loading="lazy"
+              referrerPolicy="no-referrer"
+            />
+          )}
+        </div>
+      </foreignObject>
+    </g>
+  );
+}
+
+export function SourcesBarChart({
+  rows,
+  height,
+}: {
+  rows: SourceRow[];
+  height?: number;
+}) {
+  if (rows.length === 0) {
+    return (
+      <div className="flex items-center gap-2 rounded-lg border border-dashed border-border/50 bg-muted/15 px-3 py-3 text-[12px] text-muted-foreground">
+        No traffic yet. Share your link on LinkedIn or Twitter to see sources here.
+      </div>
+    );
+  }
+  // Per-row height so the chart scales gracefully with row count.
+  const computedHeight = height ?? Math.max(140, rows.length * 32 + 16);
+  return (
+    <ChartContainer
+      config={SOURCES_CHART_CONFIG}
+      className="aspect-auto w-full"
+      style={{ height: computedHeight }}
+    >
+      <BarChart
+        data={rows}
+        layout="vertical"
+        margin={{ top: 4, right: 32, bottom: 4, left: 156 }}
+      >
+        <defs>
+          <linearGradient id="fill-sources" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.55} />
+            <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.95} />
+          </linearGradient>
+        </defs>
+        <CartesianGrid horizontal={false} stroke="currentColor" strokeOpacity={0.05} />
+        <XAxis
+          type="number"
+          tickLine={false}
+          axisLine={false}
+          stroke="currentColor"
+          strokeOpacity={0.35}
+          style={{ fontSize: 10 }}
+          allowDecimals={false}
+          tickFormatter={(v) => formatCount(Number(v))}
+        />
+        <YAxis
+          type="category"
+          dataKey="host"
+          tickLine={false}
+          axisLine={false}
+          tick={<SourceTick />}
+          width={150}
+        />
+        <Tooltip
+          cursor={{ fill: "currentColor", fillOpacity: 0.04 }}
+          content={
+            <ChartTooltipContent
+              hideLabel
+              formatter={(value, _name, item) => {
+                const host = String(item.payload?.host ?? "");
+                return (
+                  <div className="flex w-full items-center justify-between gap-4">
+                    <span className="flex items-center gap-1.5">
+                      <span
+                        aria-hidden
+                        className="size-2 rounded-[2px]"
+                        style={{ background: "var(--chart-1)" }}
+                      />
+                      <span className="text-muted-foreground">{prettyReferrer(host)}</span>
+                    </span>
+                    <span className="font-mono font-medium tabular-nums text-foreground">
+                      {Number(value).toLocaleString()}
+                    </span>
+                  </div>
+                );
+              }}
+            />
+          }
+        />
+        <Bar
+          dataKey="views"
+          fill="url(#fill-sources)"
+          radius={[3, 3, 3, 3]}
+          isAnimationActive={true}
+          animationDuration={400}
+          barSize={18}
+        />
+      </BarChart>
+    </ChartContainer>
   );
 }
