@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { redirect } from "next/navigation";
+import { cache } from "react";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getSession, type AppSession } from "@/auth";
 
@@ -19,6 +20,12 @@ import { getSession, type AppSession } from "@/auth";
  *   - `requirePro()` is the guard for Server Components + route
  *     handlers: returns the session if Pro, otherwise a redirect /
  *     402 response the caller can hand straight to Next.
+ *   - All read paths (`getSubscription`, `requireProPage`,
+ *     `requireProApi`, `getProOrNull`) share a `React.cache()` so the
+ *     dashboard layout + page + pro-gate all collapse to one D1
+ *     roundtrip per request. Without this, every nav between
+ *     /app/edit ↔ /app/preview ↔ /app/resume paid for the
+ *     subscription row twice (layout once, page once).
  */
 
 export interface SubscriptionRow {
@@ -39,24 +46,30 @@ export interface SubscriptionRow {
 
 const ACTIVE_STATUSES = new Set(["active", "cancelled", "on_hold"]);
 
-export async function getSubscription(
-  db: D1Database,
-  userId: string,
-): Promise<SubscriptionRow | null> {
-  const row = await db
-    .prepare(
-      `SELECT id, user_id, customer_id, product_id, status, interval,
-              amount_cents, currency, current_period_end,
-              cancel_at_period_end, cancelled_at, created_at, updated_at
-         FROM subscription
-        WHERE user_id = ?
-        ORDER BY current_period_end DESC
-        LIMIT 1`,
-    )
-    .bind(userId)
-    .first<SubscriptionRow>();
-  return row ?? null;
-}
+/**
+ * Wrapped in `React.cache` so layout + page + pro-gate, all of which
+ * resolve subscription state during the same request, share one
+ * D1 query. `cache()` keys by argument identity — `db` is stable per
+ * isolate and `userId` is a string, so two callers with the same
+ * userId hit the cache.
+ */
+export const getSubscription = cache(
+  async (db: D1Database, userId: string): Promise<SubscriptionRow | null> => {
+    const row = await db
+      .prepare(
+        `SELECT id, user_id, customer_id, product_id, status, interval,
+                amount_cents, currency, current_period_end,
+                cancel_at_period_end, cancelled_at, created_at, updated_at
+           FROM subscription
+          WHERE user_id = ?
+          ORDER BY current_period_end DESC
+          LIMIT 1`,
+      )
+      .bind(userId)
+      .first<SubscriptionRow>();
+    return row ?? null;
+  },
+);
 
 /**
  * True if the user has current access to Pro features.

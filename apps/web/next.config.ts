@@ -17,9 +17,25 @@ const nextConfig: NextConfig = {
   // raw TypeScript from `@gitshow/shared` instead of expecting a prebuild.
   transpilePackages: ["@gitshow/shared"],
   experimental: {
+    // Tells Next to tree-shake these packages aggressively (only the
+    // sub-modules you actually import end up in the bundle). The win
+    // is largest for barrel-export packages that re-export hundreds
+    // of components — without this, importing one icon or one chart
+    // pulls the whole namespace into the route.
+    //
+    // Picks here:
+    //   - lucide-react / @hugeicons — icon barrels, used everywhere
+    //   - recharts — chart primitives barrel
+    //   - motion — used in 28 places across templates + marketing
+    //   - react-simple-maps / d3-geo — map deps, only used on /app
+    //   - react-markdown — only used by some templates and /blog/*
     optimizePackageImports: [
       "lucide-react",
       "recharts",
+      "motion",
+      "react-simple-maps",
+      "d3-geo",
+      "react-markdown",
       "@hugeicons/react",
       "@hugeicons/core-free-icons",
     ],

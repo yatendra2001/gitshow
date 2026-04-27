@@ -2,6 +2,7 @@ import { betterAuth, type BetterAuthPlugin } from "better-auth";
 import { withCloudflare } from "better-auth-cloudflare";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { headers } from "next/headers";
+import { cache } from "react";
 import DodoPayments from "dodopayments";
 import {
   dodopayments,
@@ -257,9 +258,18 @@ export interface AppSession {
  * Convenience: read the current session on the server. Returns
  * `{ user, session } | null`. All authenticated API routes go
  * through this — no cookie parsing sprinkled around the codebase.
+ *
+ * Wrapped in `React.cache` so layout + page + pro-gate (each
+ * independently calling `getSession()` during the same request)
+ * share one Better-Auth lookup. Better Auth has its own 5-min
+ * in-memory cookie cache, but the `headers()` parse + plugin
+ * pipeline still costs ~1-3ms per call — multiplied across the
+ * dashboard request graph, that adds up.
  */
-export async function getSession(): Promise<AppSession | null> {
-  const auth = await initAuth();
-  const raw = await auth.api.getSession({ headers: await headers() });
-  return (raw as AppSession | null) ?? null;
-}
+export const getSession = cache(
+  async (): Promise<AppSession | null> => {
+    const auth = await initAuth();
+    const raw = await auth.api.getSession({ headers: await headers() });
+    return (raw as AppSession | null) ?? null;
+  },
+);

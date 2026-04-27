@@ -10,6 +10,7 @@
  * backend copies draft → published.
  */
 
+import { cache } from "react";
 import { ResumeSchema, type Resume } from "@gitshow/shared/resume";
 
 export function publishedResumeKey(handle: string): string {
@@ -20,19 +21,33 @@ export function draftResumeKey(handle: string): string {
   return `resumes/${handle.toLowerCase()}/draft.json`;
 }
 
-export async function loadPublishedResume(
-  bucket: R2Bucket | undefined,
-  handle: string,
-): Promise<Resume | null> {
-  return loadResumeAt(bucket, publishedResumeKey(handle));
-}
+/**
+ * Wrapped in `React.cache` so the same resume is fetched at most once
+ * per request, even if multiple components on the same page need it
+ * (e.g. layout + page + a metadata helper). `cache()` keys by argument
+ * identity — `bucket` is stable per isolate, `handle` is a string.
+ *
+ * Cross-request caching (between two consecutive navs) would need
+ * Cache API or KV and is intentionally not done here: edits invalidate
+ * frequently and the read is ~30ms anyway.
+ */
+export const loadPublishedResume = cache(
+  async (
+    bucket: R2Bucket | undefined,
+    handle: string,
+  ): Promise<Resume | null> => {
+    return loadResumeAt(bucket, publishedResumeKey(handle));
+  },
+);
 
-export async function loadDraftResume(
-  bucket: R2Bucket | undefined,
-  handle: string,
-): Promise<Resume | null> {
-  return loadResumeAt(bucket, draftResumeKey(handle));
-}
+export const loadDraftResume = cache(
+  async (
+    bucket: R2Bucket | undefined,
+    handle: string,
+  ): Promise<Resume | null> => {
+    return loadResumeAt(bucket, draftResumeKey(handle));
+  },
+);
 
 async function loadResumeAt(
   bucket: R2Bucket | undefined,
