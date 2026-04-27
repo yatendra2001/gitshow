@@ -348,7 +348,6 @@ export const RESUME_PRINT_CSS = `
   .resume-pubs li { margin-bottom: 3pt; }
 
   @media print {
-    @page { size: letter; margin: 0; }
     html, body { margin: 0; padding: 0; background: #fff; }
     .resume-doc { box-shadow: none !important; }
   }

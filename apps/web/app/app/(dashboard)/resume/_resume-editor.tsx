@@ -59,6 +59,12 @@ import {
 const SAVE_DEBOUNCE_MS = 700;
 
 type Status = "idle" | "saving" | "saved" | "error";
+type PageFit = {
+  pages: number;
+  pageHeightPx: number;
+  scrollHeight: number;
+  overflowPx: number;
+};
 
 export function ResumeEditor({
   initialDoc,
@@ -80,6 +86,7 @@ export function ResumeEditor({
   const progressRafRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = useRef(false);
+  const [pageFit, setPageFit] = useState<PageFit | null>(null);
 
   const flush = useCallback(async () => {
     const patch = pendingRef.current;
@@ -162,7 +169,11 @@ export function ResumeEditor({
     progressRafRef.current = requestAnimationFrame(tick);
 
     try {
-      const resp = await fetch("/api/resume/doc/pdf", { method: "POST" });
+      const resp = await fetch("/api/resume/doc/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ doc }),
+      });
       if (!resp.ok) {
         const err = (await resp.json().catch(() => ({}))) as {
           error?: string;
@@ -209,7 +220,7 @@ export function ResumeEditor({
       setErrMsg("PDF download failed");
       setDownloading(false);
     }
-  }, [doc.header.name, downloading]);
+  }, [doc, downloading]);
 
   // Cancel any pending progress tick if the editor unmounts mid-render.
   useEffect(() => {
@@ -220,7 +231,7 @@ export function ResumeEditor({
   }, []);
 
   const lineCount = useMemo(() => estimateContentLines(doc), [doc]);
-  const overBudget = lineCount > ONE_PAGE_LINE_BUDGET;
+  const overBudget = pageFit ? pageFit.pages > 1 : false;
 
   return (
     <div className="flex flex-col min-h-[calc(100svh-3.5rem)]">
@@ -232,6 +243,7 @@ export function ResumeEditor({
         downloadPct={downloadPct}
         downloadLabel={downloadLabel}
         lineCount={lineCount}
+        pageFit={pageFit}
         overBudget={overBudget}
       />
 
@@ -252,7 +264,7 @@ export function ResumeEditor({
         </div>
 
         {/* Preview pane */}
-        <PreviewPane doc={doc} />
+        <PreviewPane doc={doc} onFitChange={setPageFit} />
       </div>
     </div>
   );
@@ -270,6 +282,7 @@ function Toolbar({
   downloadPct,
   downloadLabel,
   lineCount,
+  pageFit,
   overBudget,
 }: {
   status: Status;
@@ -279,6 +292,7 @@ function Toolbar({
   downloadPct: number;
   downloadLabel: string;
   lineCount: number;
+  pageFit: PageFit | null;
   overBudget: boolean;
 }) {
   return (
@@ -291,7 +305,11 @@ function Toolbar({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <FitIndicator count={lineCount} over={overBudget} />
+        <FitIndicator
+          fit={pageFit}
+          estimatedLines={lineCount}
+          over={overBudget}
+        />
         <SaveBadge status={status} errMsg={errMsg} />
         <DownloadButton
           onClick={onDownload}
@@ -417,7 +435,25 @@ function labelForPct(pct: number): string {
   return "Almost there";
 }
 
-function FitIndicator({ count, over }: { count: number; over: boolean }) {
+function FitIndicator({
+  fit,
+  estimatedLines,
+  over,
+}: {
+  fit: PageFit | null;
+  estimatedLines: number;
+  over: boolean;
+}) {
+  const label = fit
+    ? `${fit.pages} ${fit.pages === 1 ? "page" : "pages"}`
+    : "Measuring";
+  const title = fit
+    ? over
+      ? `Rendered resume spans ${fit.pages} pages. Overflow: ${Math.ceil(fit.overflowPx)}px. Estimate: ${estimatedLines}/${ONE_PAGE_LINE_BUDGET} lines.`
+      : `Rendered resume fits on one page. Estimate: ${estimatedLines}/${ONE_PAGE_LINE_BUDGET} lines.`
+    : `Measuring rendered resume layout. Estimate: ${estimatedLines}/${ONE_PAGE_LINE_BUDGET} lines.`;
+  const icon = fit ? (over ? AlertCircleIcon : Tick02Icon) : Loading03Icon;
+
   return (
     <div
       className={cn(
@@ -427,19 +463,16 @@ function FitIndicator({ count, over }: { count: number; over: boolean }) {
           ? "bg-foreground/[0.06] text-foreground"
           : "bg-foreground/[0.04] text-muted-foreground",
       )}
-      title={
-        over
-          ? "Content likely exceeds one page — trim bullets or hide a section"
-          : "Fits on one page"
-      }
+      title={title}
     >
       <HugeiconsIcon
-        icon={over ? AlertCircleIcon : Tick02Icon}
+        icon={icon}
         size={12}
         strokeWidth={2}
+        className={fit ? undefined : "animate-spin"}
       />
       <span style={{ fontVariantNumeric: "tabular-nums" }}>
-        {count}/{ONE_PAGE_LINE_BUDGET}
+        {label}
       </span>
     </div>
   );
@@ -1438,7 +1471,58 @@ function BulletsInput({
 // Preview
 // ──────────────────────────────────────────────────────────────
 
-function PreviewPane({ doc }: { doc: ResumeDoc }) {
+function PreviewPane({
+  doc,
+  onFitChange,
+}: {
+  doc: ResumeDoc;
+  onFitChange: (fit: PageFit) => void;
+}) {
+  const previewRef = useRef<HTMLDivElement | null>(null);
+  const [localFit, setLocalFit] = useState<PageFit | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    let raf = 0;
+
+    const measure = () => {
+      if (raf) window.cancelAnimationFrame(raf);
+      raf = window.requestAnimationFrame(() => {
+        const article = previewRef.current?.querySelector(".resume-doc");
+        if (!(article instanceof HTMLElement) || cancelled) return;
+
+        const pageHeightPx = pageHeightForSize(doc.page.size);
+        const scrollHeight = article.scrollHeight;
+        const fit = {
+          pages: Math.max(1, Math.ceil(scrollHeight / pageHeightPx)),
+          pageHeightPx,
+          scrollHeight,
+          overflowPx: scrollHeight - pageHeightPx,
+        };
+
+        setLocalFit(fit);
+        onFitChange(fit);
+      });
+    };
+
+    measure();
+
+    const article = previewRef.current?.querySelector(".resume-doc");
+    const observer = new ResizeObserver(measure);
+    if (article instanceof HTMLElement) observer.observe(article);
+    if (previewRef.current) observer.observe(previewRef.current);
+
+    window.addEventListener("resize", measure);
+    void document.fonts?.ready.then(measure).catch(() => {});
+
+    return () => {
+      cancelled = true;
+      if (raf) window.cancelAnimationFrame(raf);
+      observer.disconnect();
+      window.removeEventListener("resize", measure);
+    };
+  }, [doc, onFitChange]);
+
   return (
     <div className="bg-foreground/[0.015] dark:bg-foreground/[0.04] hidden lg:block lg:overflow-y-auto lg:max-h-[calc(100svh-3.5rem-3.5rem)] gs-pane-scroll">
       {/* Plain <style> tag with dangerouslySetInnerHTML — styled-jsx
@@ -1455,7 +1539,22 @@ function PreviewPane({ doc }: { doc: ResumeDoc }) {
             transformOrigin: "top center",
           }}
         >
-          <PrintableResume doc={doc} />
+          <div ref={previewRef} className="relative">
+            <PrintableResume doc={doc} />
+            {localFit && localFit.pages > 1 ? (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-x-0 z-20 flex items-center gap-2"
+                style={{ top: localFit.pageHeightPx }}
+              >
+                <span className="h-px flex-1 bg-red-500/70" />
+                <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-white shadow-sm">
+                  Page 2 starts
+                </span>
+                <span className="h-px flex-1 bg-red-500/70" />
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
@@ -1465,6 +1564,10 @@ function PreviewPane({ doc }: { doc: ResumeDoc }) {
 // ──────────────────────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────────────────────
+
+function pageHeightForSize(size: ResumeDoc["page"]["size"]): number {
+  return size === "a4" ? (297 / 25.4) * 96 : 11 * 96;
+}
 
 function mergeShallowDeep(
   base: ResumeDoc,

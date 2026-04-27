@@ -6,6 +6,7 @@ import {
   renderResumeHtml,
   RESUME_PRINT_CSS,
 } from "@/components/resume/printable-html";
+import { ResumeDocSchema, type ResumeDoc } from "@gitshow/shared/resume-doc";
 
 /**
  * POST /api/resume/doc/pdf — render the user's ResumeDoc to a PDF via
@@ -19,7 +20,7 @@ import {
 
 export const maxDuration = 60;
 
-export async function POST() {
+export async function POST(req: Request) {
   const gate = await requireProApi();
   if (!gate.ok) return gate.response;
   const session = gate.session;
@@ -38,7 +39,12 @@ export async function POST() {
   }
 
   const handle = session.user.login;
-  const doc = await loadResumeDoc(env.BUCKET, handle);
+  const requestDoc = await readRequestDoc(req);
+  if (!requestDoc.ok) {
+    return jsonError(requestDoc.error, 400, requestDoc.detail);
+  }
+
+  const doc = requestDoc.doc ?? (await loadResumeDoc(env.BUCKET, handle));
   if (!doc) {
     return jsonError("no_doc", 404, "Generate the resume first.");
   }
@@ -86,6 +92,44 @@ export async function POST() {
     const msg = err instanceof Error ? err.message : "unknown";
     return jsonError("pdf_render_failed", 502, msg);
   }
+}
+
+async function readRequestDoc(
+  req: Request,
+): Promise<
+  | { ok: true; doc: ResumeDoc | null }
+  | { ok: false; error: string; detail: string }
+> {
+  const text = await req.text().catch(() => "");
+  if (!text.trim()) return { ok: true, doc: null };
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(text);
+  } catch {
+    return {
+      ok: false,
+      error: "invalid_body",
+      detail: "Expected JSON body shaped like { doc: ResumeDoc }.",
+    };
+  }
+
+  const doc =
+    payload && typeof payload === "object"
+      ? (payload as { doc?: unknown }).doc
+      : undefined;
+  if (doc === undefined) return { ok: true, doc: null };
+
+  const parsed = ResumeDocSchema.safeParse(doc);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: "invalid_doc",
+      detail: "Submitted resume document is malformed.",
+    };
+  }
+
+  return { ok: true, doc: parsed.data };
 }
 
 function jsonError(code: string, status: number, detail?: string) {
