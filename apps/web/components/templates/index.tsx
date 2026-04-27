@@ -13,17 +13,17 @@
 import type { TemplateId } from "@gitshow/shared/resume";
 import ClassicTemplate from "./classic";
 import TerminalTemplate from "./terminal";
-import MagazineTemplate from "./magazine";
+import SpotlightTemplate from "./spotlight";
+import GlowTemplate from "./glow";
 import BentoTemplate from "./bento";
-import BrutalistTemplate from "./brutalist";
 import MinimalTemplate from "./minimal";
 
 const COMPONENTS: Record<TemplateId, React.ComponentType> = {
   classic: ClassicTemplate,
   terminal: TerminalTemplate,
-  magazine: MagazineTemplate,
+  spotlight: SpotlightTemplate,
+  glow: GlowTemplate,
   bento: BentoTemplate,
-  brutalist: BrutalistTemplate,
   minimal: MinimalTemplate,
 };
 
