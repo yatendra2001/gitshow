@@ -77,8 +77,8 @@ export default function TermsPage() {
         <h2>Contact</h2>
         <p>
           Questions? Email{" "}
-          <a href="mailto:yatendra2001kumar@gmail.com">
-            yatendra2001kumar@gmail.com
+          <a href="mailto:yatendra@gitshow.io">
+            yatendra@gitshow.io
           </a>
           .
         </p>

@@ -32,7 +32,7 @@ const resume: Resume = ResumeSchema.parse({
     url: "https://gitshow.io/yatendra2001",
   },
   contact: {
-    email: "yatendra2001kumar@gmail.com",
+    email: "yatendra@gitshow.io",
     socials: {
       github: {
         name: "GitHub",
@@ -54,7 +54,7 @@ const resume: Resume = ResumeSchema.parse({
       },
       email: {
         name: "Email",
-        url: "mailto:yatendra2001kumar@gmail.com",
+        url: "mailto:yatendra@gitshow.io",
         iconKey: "email",
         navbar: false,
       },
