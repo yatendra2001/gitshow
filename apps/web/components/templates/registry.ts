@@ -52,7 +52,7 @@ export const TEMPLATES: TemplateMeta[] = [
     tagline: "Animated dark hero, gradient name, marquee tech logos, glowing project cards.",
     bestFor: "AI builders, indie hackers, and anyone shipping shadcn-grade UI today.",
     vibes: ["modern", "animated", "linear"],
-    swatch: { bg: "#0a0a0a", fg: "#fafafa", accent: "#bd9bff" },
+    swatch: { bg: "#0a0a0a", fg: "#fafafa", accent: "#6366f1" },
     preferredMode: "dark",
   },
   {
@@ -61,7 +61,7 @@ export const TEMPLATES: TemplateMeta[] = [
     tagline: "Apple-style bento grid — facet cards of varied size at a single glance.",
     bestFor: "Full-stack devs, product engineers, and visual thinkers.",
     vibes: ["modern", "grid", "playful"],
-    swatch: { bg: "#0a0a0a", fg: "#fafafa", accent: "#a78bfa" },
+    swatch: { bg: "#0a0a0a", fg: "#fafafa", accent: "#3b82f6" },
     preferredMode: "dark",
   },
   {
