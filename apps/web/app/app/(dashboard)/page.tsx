@@ -326,7 +326,7 @@ async function LiveTickerStream({ db, slug, days }: SectionProps) {
     return pd >= todayMidnight.getTime() ? acc + p.views : acc;
   }, 0);
   return (
-    <div className="mb-6">
+    <div className="mb-6 gs-enter">
       <LiveTicker todayViews={todayViews} lastVisitor={recent[0] ?? null} />
     </div>
   );
@@ -345,7 +345,7 @@ async function KpiStream({
   const sparkViews = timeseries.map((p, i) => ({ x: i, value: p.views }));
   const sparkUniques = timeseries.map((p, i) => ({ x: i, value: p.uniques }));
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-3">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-2 lg:grid-cols-4 mb-3 gs-enter">
       <KpiCard
         label="Views"
         value={kpis.views}
@@ -401,6 +401,7 @@ async function TimeseriesStream({
       title="Views over time"
       subtitle={`Daily totals · ${rangeLabel.toLowerCase()}`}
       action={hasEvents ? <ChartLegend /> : null}
+      className="gs-enter"
     >
       {hasEvents ? (
         <ViewsAreaChart data={timeseries} />
@@ -413,32 +414,56 @@ async function TimeseriesStream({
 
 async function HourlyStream({ db, slug, days }: SectionProps) {
   const hourly = await getHourlyPattern(db, slug, days);
-  return <HourlyTraffic rows={hourly} />;
+  return (
+    <div className="gs-enter">
+      <HourlyTraffic rows={hourly} />
+    </div>
+  );
 }
 
 async function CountriesStream({ db, slug, days }: SectionProps) {
   const countries = await getTopCountries(db, slug, days, 8);
-  return <CountriesMap rows={countries} />;
+  return (
+    <div className="gs-enter">
+      <CountriesMap rows={countries} />
+    </div>
+  );
 }
 
 async function SourcesStream({ db, slug, days }: SectionProps) {
   const referrers = await getTopReferrers(db, slug, days, 8);
-  return <SourcesBarChart rows={referrers} />;
+  return (
+    <div className="gs-enter">
+      <SourcesBarChart rows={referrers} />
+    </div>
+  );
 }
 
 async function DevicesStream({ db, slug, days }: SectionProps) {
   const devices = await getDeviceBreakdown(db, slug, days);
-  return <DevicesDonut rows={devices} />;
+  return (
+    <div className="gs-enter">
+      <DevicesDonut rows={devices} />
+    </div>
+  );
 }
 
 async function BrowsersStream({ db, slug, days }: SectionProps) {
   const browsers = await getBrowserBreakdown(db, slug, days, 6);
-  return <BrowsersDonut rows={browsers} />;
+  return (
+    <div className="gs-enter">
+      <BrowsersDonut rows={browsers} />
+    </div>
+  );
 }
 
 async function RecentStream({ db, slug }: Omit<SectionProps, "days">) {
   const recent = await getRecentVisitors(db, slug, 12);
-  return <RecentActivity rows={recent} />;
+  return (
+    <div className="gs-enter">
+      <RecentActivity rows={recent} />
+    </div>
+  );
 }
 
 // ─── Range tabs ───────────────────────────────────────────────────

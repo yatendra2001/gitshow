@@ -28,17 +28,19 @@ export default async function EditPage() {
   }
 
   return (
-    <Editor
-      initialResume={resume}
-      handle={handle}
-      initialPublished={Boolean(published)}
-    />
+    <div className="gs-enter">
+      <Editor
+        initialResume={resume}
+        handle={handle}
+        initialPublished={Boolean(published)}
+      />
+    </div>
   );
 }
 
 function EmptyState() {
   return (
-    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16">
+    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16 gs-enter">
       <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
         Nothing to edit yet
       </div>

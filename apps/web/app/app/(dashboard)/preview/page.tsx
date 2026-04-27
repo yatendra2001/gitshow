@@ -33,7 +33,7 @@ export default async function PreviewPage() {
   const isPublished = Boolean(published);
 
   return (
-    <div className="portfolio-theme relative">
+    <div className="portfolio-theme relative gs-enter">
       <DraftStrip handle={handle} isPublished={isPublished} />
       <TemplatePreview
         initialResume={draft}
