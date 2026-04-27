@@ -4,8 +4,7 @@ import * as React from "react";
 import { ChevronDown, Check, AlertTriangle, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
-import { Matrix } from "@/components/ui/matrix";
-import { breathingDot } from "@/components/ui/matrix-loaders";
+import { DotMatrix } from "@/components/ui/dot-matrix";
 
 /**
  * Tool — per-invocation row showing one tool call.
@@ -35,6 +34,8 @@ export interface ToolProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Friendly purpose line, shown next to the tool name when present. */
   subtitle?: string;
   defaultOpen?: boolean;
+  /** Stable identifier used to pick a varied loader pattern. */
+  seed?: string;
 }
 
 export function Tool({
@@ -45,6 +46,7 @@ export function Tool({
   error,
   subtitle,
   defaultOpen = false,
+  seed,
   className,
   ...props
 }: ToolProps) {
@@ -72,7 +74,7 @@ export function Tool({
           !hasBody && "cursor-default",
         )}
       >
-        <StatusGlyph status={status} />
+        <StatusGlyph status={status} seed={seed ?? name} />
         <span className="flex-1 min-w-0 flex flex-col">
           <span className="flex items-center gap-2 truncate text-[12.5px] font-medium tracking-tight">
             {running ? (
@@ -150,19 +152,18 @@ export function Tool({
  * is a faint dot. All sized to ~10px so they sit politely next to
  * the body text.
  */
-function StatusGlyph({ status }: { status: ToolStatus }) {
+function StatusGlyph({ status, seed }: { status: ToolStatus; seed: string }) {
   if (status === "running") {
+    // Tool-pool patterns (Stream, Compile, Cipher, Bar, Boot) read as
+    // "structured work happening" — a register apart from the agent
+    // patterns on the parent phase row, so the two don't visually merge.
     return (
-      <Matrix
-        rows={5}
-        cols={5}
-        frames={breathingDot}
-        fps={6}
-        size={3}
-        gap={1}
-        palette={{ on: "var(--foreground)", off: "transparent" }}
+      <DotMatrix
+        variant="tool"
+        seed={seed}
+        size={18}
         ariaLabel="Running"
-        className="shrink-0"
+        className="text-foreground"
       />
     );
   }
