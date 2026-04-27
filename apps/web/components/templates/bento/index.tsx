@@ -12,23 +12,28 @@ import {
 } from "react";
 import { useResume, useHandle } from "@/components/data-provider";
 import { allSocials } from "@gitshow/shared/resume";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { LogoOrInitials } from "@/components/logo-or-initials";
 import { resolveSkillIcon } from "@/components/skill-icons";
-import { ArrowUpRight, Sparkles } from "lucide-react";
+import { formatResumeDate, formatResumeDateRange } from "@/lib/format-date";
+import { ArrowUpRight } from "lucide-react";
 
 /**
- * Bento — Apple/Vercel-style bento grid.
+ * Bento — premium minimalistic bento grid.
  *
- * Cards of intentionally varied size that tile together with no
- * leftover empty columns. Rows are composed dynamically based on what
- * data the user has — hackathons + publications + buildLog only render
- * when present, and the row layout adapts so we never have a 4-col card
- * sitting next to 8 empty columns.
+ * Subtle, restrained, intentional. Cards have generous whitespace,
+ * one focal element each, soft borders, and a single cohesive blue
+ * accent throughout. The layout adapts to data density so we never
+ * have a card cut off mid-content or a row with empty columns.
  *
  * Best for: full-stack devs, product engineers, and visual thinkers.
  */
 const STAGGER = 0.04;
+
+// Cohesive blue palette — used throughout, not a rainbow.
+const ACCENT = "#3b82f6"; // blue-500
+const ACCENT_LIGHT = "#60a5fa"; // blue-400
+const ACCENT_DEEP = "#1e40af"; // blue-800
 
 export default function BentoTemplate() {
   const r = useResume();
@@ -40,7 +45,7 @@ export default function BentoTemplate() {
   const sideProjects = projects.slice(1, 4);
   const stats = useMemo(
     () => computeStats(r),
-    [r.skills.length, r.projects.length, r.work.length, r.buildLog.length, r.publications.length],
+    [r.skills.length, r.projects.length, r.work.length, r.buildLog.length],
   );
 
   const showWork = !hidden.has("work") && r.work.length > 0;
@@ -49,8 +54,6 @@ export default function BentoTemplate() {
   const showPubs = !hidden.has("publications") && r.publications.length > 0;
   const showBuild = !hidden.has("buildLog") && r.buildLog.length > 0;
 
-  // Dynamic row composition for "extras": fill 12 cols regardless of
-  // how many of hackathons/publications/buildLog are present.
   const extras = [
     showHack && { id: "hack" as const },
     showPubs && { id: "pubs" as const },
@@ -64,20 +67,23 @@ export default function BentoTemplate() {
         : "col-span-12 md:col-span-4";
 
   return (
-    <div className="min-h-dvh bg-[#070708] text-neutral-100 selection:bg-violet-400/30 antialiased">
+    <div
+      className="min-h-dvh text-neutral-100 antialiased"
+      style={{ background: "#06070a" }}
+    >
       <Aurora />
 
-      <div className="relative z-10 mx-auto max-w-[1400px] px-3 sm:px-6 py-6 sm:py-10">
+      <div className="relative z-10 mx-auto max-w-[1280px] px-4 sm:px-6 py-8 sm:py-12">
         <TopBar handle={handle} socials={socials} />
 
-        {/* Density goes up: smaller min row height, tighter gaps */}
-        <div className="grid grid-cols-12 gap-3 auto-rows-[100px]">
-          {/* Row 1: hero (8) + avatar/currently combo (4) */}
-          <Card className="col-span-12 md:col-span-8 row-span-3 p-6 sm:p-9 flex flex-col justify-between" tone="bright" delay={1}>
+        {/* Density goes up: smaller min row height, generous gaps */}
+        <div className="grid grid-cols-12 gap-3 sm:gap-4 auto-rows-[110px]">
+          {/* Row 1: hero (8) + avatar (4) */}
+          <Card className="col-span-12 md:col-span-8 row-span-3 p-7 sm:p-9 flex flex-col justify-between" tone="hero" delay={1}>
             <Hero r={r} />
           </Card>
 
-          <Card className="col-span-6 md:col-span-4 row-span-3 p-0 overflow-hidden" delay={2}>
+          <Card className="col-span-12 md:col-span-4 row-span-3 p-0 overflow-hidden" delay={2}>
             <AvatarCard r={r} />
           </Card>
 
@@ -85,19 +91,17 @@ export default function BentoTemplate() {
           {stats.map((s, i) => (
             <Card
               key={s.label}
-              className="col-span-6 md:col-span-3 row-span-1 px-4 py-3 flex flex-col justify-between"
+              className="col-span-6 md:col-span-3 row-span-1 px-5 py-4 flex flex-col justify-between"
               delay={3 + i}
-              tone={s.tone}
             >
               <StatCard {...s} />
             </Card>
           ))}
 
-          {/* Row 3: about (7) + featured project (5) — fills 12 always.
-               If no featured project, about expands to full width. */}
+          {/* Row 3: about (7) + featured project (5) */}
           {featured ? (
             <>
-              <Card className="col-span-12 md:col-span-7 row-span-3 p-5 sm:p-6" delay={7}>
+              <Card className="col-span-12 md:col-span-7 row-span-3 p-6" delay={7}>
                 <AboutCard summary={r.person.summary} />
               </Card>
               <Card className="col-span-12 md:col-span-5 row-span-3 p-0 overflow-hidden group" delay={8}>
@@ -105,37 +109,36 @@ export default function BentoTemplate() {
               </Card>
             </>
           ) : (
-            <Card className="col-span-12 row-span-2 p-5 sm:p-6" delay={7}>
+            <Card className="col-span-12 row-span-2 p-6" delay={7}>
               <AboutCard summary={r.person.summary} />
             </Card>
           )}
 
-          {/* Row 4: skills (7) + currently (5) OR skills (12) if no current work.
-               Skills row count adapts to skill count. */}
+          {/* Row 4: skills (8) + currently (4) — currently is THE focal "now" card */}
           {r.skills.length > 0 && r.work[0] ? (
             <>
-              <Card className="col-span-12 md:col-span-7 row-span-2 p-5" delay={9}>
+              <Card className="col-span-12 md:col-span-8 row-span-2 p-6" delay={9}>
                 <SkillsCard skills={r.skills} />
               </Card>
-              <Card className="col-span-12 md:col-span-5 row-span-2 p-5" delay={10} tone="bright">
+              <Card className="col-span-12 md:col-span-4 row-span-2 p-6" delay={10} tone="bright">
                 <CurrentlyCard work={r.work[0]} />
               </Card>
             </>
           ) : r.skills.length > 0 ? (
-            <Card className="col-span-12 row-span-2 p-5" delay={9}>
+            <Card className="col-span-12 row-span-2 p-6" delay={9}>
               <SkillsCard skills={r.skills} />
             </Card>
           ) : r.work[0] ? (
-            <Card className="col-span-12 row-span-1 p-5" delay={10} tone="bright">
-              <CurrentlyCard work={r.work[0]} compact />
+            <Card className="col-span-12 row-span-2 p-6" delay={10} tone="bright">
+              <CurrentlyCard work={r.work[0]} />
             </Card>
           ) : null}
 
-          {/* Row 5: side projects — fills 12 by sizing dynamically */}
+          {/* Row 5: side projects */}
           {sideProjects.length > 0 && (() => {
             const sideSpanClass =
               sideProjects.length === 1
-                ? "col-span-12 md:col-span-12"
+                ? "col-span-12"
                 : sideProjects.length === 2
                   ? "col-span-12 md:col-span-6"
                   : "col-span-12 md:col-span-4";
@@ -150,44 +153,49 @@ export default function BentoTemplate() {
             ));
           })()}
 
-          {/* Row 6: career (7) + education (5) — both fill, regardless of
-               how short education is, by setting row-span = 2 (compact) */}
-          {showWork && showEdu && (
-            <>
-              <Card className="col-span-12 md:col-span-7 row-span-3 p-5" delay={14}>
-                <CareerCard work={r.work.slice(0, 6)} />
-              </Card>
-              <Card className="col-span-12 md:col-span-5 row-span-3 p-5" delay={15}>
-                <EducationCard education={r.education} />
-              </Card>
-            </>
-          )}
-          {showWork && !showEdu && (
-            <Card className="col-span-12 row-span-3 p-5" delay={14}>
-              <CareerCard work={r.work.slice(0, 6)} />
-            </Card>
-          )}
-          {!showWork && showEdu && (
-            <Card className="col-span-12 row-span-2 p-5" delay={15}>
-              <EducationCard education={r.education} />
+          {/* Row 6: career roster — full width with horizontal cards.
+               Only the 4 most recent roles, no overflow possible. */}
+          {showWork && (
+            <Card className="col-span-12 row-span-2 p-6" delay={14}>
+              <CareerRoster work={r.work.slice(0, 4)} />
             </Card>
           )}
 
-          {/* Row 7: extras — dynamically sized to fill 12 */}
-          {extras.map((ex, i) => (
+          {/* Row 7: education — full width if no extras, half if extras present */}
+          {showEdu && (
             <Card
-              key={ex.id}
-              className={`${extraSpanClass} row-span-3 p-5`}
-              delay={16 + i}
+              className={
+                extras.length > 0
+                  ? "col-span-12 md:col-span-5 row-span-2 p-6"
+                  : "col-span-12 row-span-2 p-6"
+              }
+              delay={15}
             >
-              {ex.id === "hack" && <HackathonsCard hackathons={r.hackathons} />}
-              {ex.id === "pubs" && <PublicationsCard publications={r.publications} />}
-              {ex.id === "build" && <BuildLogCard buildLog={r.buildLog} />}
+              <EducationCard education={r.education.slice(0, 3)} />
             </Card>
-          ))}
+          )}
+
+          {/* Extras row — only if data present, sized to fill remaining cols */}
+          {extras.map((ex, i) => {
+            const cls =
+              showEdu && extras.length > 0
+                ? extras.length === 1
+                  ? "col-span-12 md:col-span-7 row-span-2 p-6"
+                  : extras.length === 2
+                    ? "col-span-12 md:col-span-7 row-span-2 p-6"
+                    : `${extraSpanClass} row-span-2 p-6`
+                : `${extraSpanClass} row-span-2 p-6`;
+            return (
+              <Card key={ex.id} className={cls} delay={16 + i}>
+                {ex.id === "hack" && <HackathonsCard hackathons={r.hackathons} />}
+                {ex.id === "pubs" && <PublicationsCard publications={r.publications} />}
+                {ex.id === "build" && <BuildLogCard buildLog={r.buildLog} />}
+              </Card>
+            );
+          })}
 
           {/* Final: contact CTA */}
-          <Card className="col-span-12 row-span-2 p-5 sm:p-7" tone="hero" delay={20}>
+          <Card className="col-span-12 row-span-2 p-6 sm:p-8" tone="hero" delay={20}>
             <ContactCard email={r.contact.email} socials={socials} name={r.person.name} />
           </Card>
         </div>
@@ -196,7 +204,7 @@ export default function BentoTemplate() {
   );
 }
 
-/* ─────────────────────────  Card primitives  ────────────────────────── */
+/* ─────────────────────────  Card primitive  ────────────────────────── */
 
 type Tone = "default" | "bright" | "hero";
 
@@ -230,29 +238,34 @@ function Card({
     };
   }, []);
 
+  // Restrained tones — the same blue, just more or less of it.
+  // No 3-color rainbow gradients (those read as "AI generated").
   const baseBg =
-    tone === "bright"
-      ? "bg-gradient-to-br from-violet-500/[0.10] via-fuchsia-500/[0.04] to-transparent"
-      : tone === "hero"
-        ? "bg-gradient-to-br from-violet-500/[0.18] via-transparent to-cyan-500/[0.10]"
-        : "bg-white/[0.025]";
+    tone === "hero"
+      ? "bg-[radial-gradient(ellipse_at_top_left,rgba(59,130,246,0.12),transparent_60%)]"
+      : tone === "bright"
+        ? "bg-[radial-gradient(ellipse_at_top,rgba(34,211,238,0.08),transparent_60%)]"
+        : "bg-white/[0.018]";
 
-  const spotlight: CSSProperties | undefined =
-    coords && tone !== "hero"
-      ? {
-          background: `radial-gradient(360px circle at ${coords.x}px ${coords.y}px, rgba(167,139,250,0.10), transparent 60%)`,
-        }
-      : undefined;
+  const spotlight: CSSProperties | undefined = coords
+    ? {
+        background: `radial-gradient(280px circle at ${coords.x}px ${coords.y}px, rgba(96,165,250,0.06), transparent 60%)`,
+      }
+    : undefined;
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 8, filter: "blur(6px)" }}
+      initial={{ opacity: 0, y: 8, filter: "blur(4px)" }}
       whileInView={{ opacity: 1, y: 0, filter: "blur(0px)" }}
       viewport={{ once: true, margin: "-50px" }}
-      transition={{ delay: delay * STAGGER, duration: 0.45, ease: "easeOut" }}
-      whileHover={{ y: -2, transition: { duration: 0.15 } }}
+      transition={{ delay: delay * STAGGER, duration: 0.5, ease: "easeOut" }}
+      whileHover={{ y: -1, transition: { duration: 0.18 } }}
       ref={ref}
-      className={`relative rounded-[18px] border border-white/[0.08] ${baseBg} backdrop-blur-sm shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset,0_20px_50px_-30px_rgba(0,0,0,0.4)] overflow-hidden ${className}`}
+      className={`relative rounded-[20px] border border-white/[0.05] ${baseBg} backdrop-blur-sm overflow-hidden ${className}`}
+      style={{
+        boxShadow:
+          "inset 0 1px 0 0 rgba(255,255,255,0.03), 0 12px 32px -16px rgba(0,0,0,0.4)",
+      }}
     >
       {spotlight && (
         <div
@@ -269,13 +282,16 @@ function Card({
 function CardLabel({
   children,
   className = "",
+  style,
 }: {
   children: React.ReactNode;
   className?: string;
+  style?: CSSProperties;
 }) {
   return (
     <div
-      className={`text-[10px] tracking-[0.22em] uppercase text-neutral-400 font-semibold ${className}`}
+      className={`text-[10.5px] tracking-[0.22em] uppercase text-neutral-500 font-medium ${className}`}
+      style={style}
     >
       {children}
     </div>
@@ -291,14 +307,14 @@ function Aurora() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 1.5, ease: "easeOut" }}
-        className="absolute inset-x-0 top-0 h-[800px]"
+        className="absolute inset-x-0 top-0 h-[700px]"
         style={{
           background:
-            "radial-gradient(ellipse 800px 600px at 30% 0%, rgba(167,139,250,0.18), transparent 60%), radial-gradient(ellipse 600px 400px at 70% 10%, rgba(56,189,248,0.10), transparent 60%)",
+            "radial-gradient(ellipse 900px 500px at 35% -100px, rgba(59,130,246,0.16), transparent 60%), radial-gradient(ellipse 700px 400px at 75% 0%, rgba(34,211,238,0.08), transparent 60%)",
         }}
       />
       <div
-        className="absolute inset-0"
+        className="absolute inset-0 opacity-60"
         style={{
           background:
             "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.025) 1px, transparent 0)",
@@ -309,7 +325,7 @@ function Aurora() {
   );
 }
 
-/* ─────────────────────────  Card content  ────────────────────────── */
+/* ─────────────────────────  Top bar  ────────────────────────── */
 
 function TopBar({
   handle,
@@ -323,20 +339,26 @@ function TopBar({
       initial={{ opacity: 0, y: -4 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, ease: "easeOut" }}
-      className="flex items-center justify-between mb-3"
+      className="flex items-center justify-between mb-4"
     >
-      <span className="text-[12px] tracking-[0.15em] uppercase text-neutral-500 inline-flex items-center gap-2">
-        <span className="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]" />
+      <span
+        className="text-[12px] tracking-[0.15em] uppercase text-neutral-500 inline-flex items-center gap-2"
+        style={{ fontFamily: "ui-monospace, SFMono-Regular, monospace" }}
+      >
+        <span
+          className="size-1.5 rounded-full bg-emerald-400"
+          style={{ boxShadow: "0 0 8px rgba(52,211,153,0.5)" }}
+        />
         @{handle}
       </span>
-      <nav className="flex items-center gap-1.5 text-[12px] text-neutral-300">
+      <nav className="flex items-center gap-1.5 text-[12.5px] text-neutral-300">
         {socials.slice(0, 4).map((s) => (
           <a
             key={s.url}
             href={s.url}
             target="_blank"
             rel="noreferrer"
-            className="px-2.5 py-1 rounded-full bg-white/5 border border-white/10 hover:bg-white/10 hover:border-white/20 transition-all"
+            className="px-2.5 py-1 rounded-full bg-white/[0.04] border border-white/[0.05] hover:bg-white/[0.07] hover:border-white/[0.10] transition-all"
           >
             {s.name}
           </a>
@@ -346,27 +368,37 @@ function TopBar({
   );
 }
 
+/* ─────────────────────────  Hero  ────────────────────────── */
+
 function Hero({ r }: { r: ReturnType<typeof useResume> }) {
   return (
     <>
       <div>
-        <CardLabel className="text-violet-300 mb-2.5 inline-flex items-center gap-1.5">
-          <Sparkles className="size-3" />
+        <CardLabel className="mb-3" style={{ color: ACCENT_LIGHT }}>
           Hello there
         </CardLabel>
-        <h1 className="text-3xl sm:text-5xl font-semibold tracking-tight leading-[1.02]">
+        <h1 className="text-3xl sm:text-4xl md:text-5xl font-semibold tracking-[-0.02em] leading-[1.05]">
           I'm{" "}
-          <span className="bg-gradient-to-r from-white via-violet-100 to-violet-300 bg-clip-text text-transparent">
+          <span
+            className="bg-clip-text text-transparent"
+            style={{
+              backgroundImage: `linear-gradient(135deg, #ffffff 30%, ${ACCENT_LIGHT} 80%)`,
+              ["WebkitBackgroundClip" as string]: "text",
+            }}
+          >
             {r.person.name}
           </span>
           .
         </h1>
-        <p className="mt-4 text-base sm:text-lg text-neutral-300 max-w-2xl leading-snug">
+        <p className="mt-4 text-[16px] sm:text-lg text-neutral-300 max-w-2xl leading-snug">
           {r.person.description}
         </p>
       </div>
-      <div className="flex items-center justify-between flex-wrap gap-3 mt-5">
-        <div className="text-[12.5px] text-neutral-400 inline-flex items-center gap-3">
+      <div className="flex items-center justify-between flex-wrap gap-3 mt-6">
+        <div
+          className="text-[12.5px] text-neutral-400 inline-flex items-center gap-3"
+          style={{ fontFamily: "ui-monospace, SFMono-Regular, monospace" }}
+        >
           {r.person.location && (
             <span className="inline-flex items-center gap-1.5">
               <span aria-hidden>📍</span>
@@ -381,7 +413,8 @@ function Hero({ r }: { r: ReturnType<typeof useResume> }) {
         {r.contact.email && (
           <a
             href={`mailto:${r.contact.email}`}
-            className="inline-flex items-center gap-1.5 text-[13px] text-violet-200 hover:text-white transition-colors group"
+            className="inline-flex items-center gap-1.5 text-[13px] hover:text-white transition-colors group"
+            style={{ color: ACCENT_LIGHT }}
           >
             Get in touch
             <ArrowUpRight className="size-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
@@ -395,8 +428,8 @@ function Hero({ r }: { r: ReturnType<typeof useResume> }) {
 function AvatarCard({ r }: { r: ReturnType<typeof useResume> }) {
   if (!r.person.avatarUrl) {
     return (
-      <div className="flex items-center justify-center w-full h-full bg-gradient-to-br from-violet-500/15 to-cyan-500/10">
-        <Avatar className="size-32 ring-4 ring-white/10">
+      <div className="flex items-center justify-center w-full h-full bg-[radial-gradient(ellipse_at_center,rgba(59,130,246,0.12),transparent_70%)]">
+        <Avatar className="size-32 ring-1 ring-white/10">
           <AvatarFallback className="text-3xl font-semibold">{r.person.initials}</AvatarFallback>
         </Avatar>
       </div>
@@ -410,8 +443,10 @@ function AvatarCard({ r }: { r: ReturnType<typeof useResume> }) {
         className="absolute inset-0 w-full h-full object-cover"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
-      <div className="absolute bottom-3 left-4 right-4">
-        <CardLabel className="text-neutral-300 mb-1">Currently</CardLabel>
+      <div className="absolute bottom-4 left-5 right-5">
+        <CardLabel className="mb-1" style={{ color: "#cbd5e1" }}>
+          Currently
+        </CardLabel>
         <div className="text-base font-semibold text-white truncate">
           {r.work[0]?.title ?? "Building"}
         </div>
@@ -423,11 +458,12 @@ function AvatarCard({ r }: { r: ReturnType<typeof useResume> }) {
   );
 }
 
+/* ─────────────────────────  Stats  ────────────────────────── */
+
 interface Stat {
   label: string;
   value: number;
   suffix?: string;
-  tone?: Tone;
 }
 function computeStats(r: ReturnType<typeof useResume>): Stat[] {
   return [
@@ -442,9 +478,9 @@ function StatCard({ label, value, suffix }: Stat) {
   return (
     <>
       <CardLabel>{label}</CardLabel>
-      <div className="text-2xl sm:text-3xl font-semibold tabular-nums tracking-tight">
+      <div className="text-[28px] sm:text-[32px] font-semibold tabular-nums tracking-tight leading-none">
         <CountUp to={value} />
-        {suffix}
+        <span style={{ color: ACCENT_LIGHT }}>{suffix}</span>
       </div>
     </>
   );
@@ -468,16 +504,34 @@ function CountUp({ to }: { to: number }) {
   return <span>{n}</span>;
 }
 
+/* ─────────────────────────  About  ────────────────────────── */
+
 function AboutCard({ summary }: { summary: string }) {
   return (
     <>
       <CardLabel className="mb-3">About</CardLabel>
-      <div className="prose prose-invert max-w-none text-[14px] leading-[1.65] text-neutral-300 [&_p]:mb-2.5 [&_p:last-child]:mb-0 [&_a]:text-violet-300 [&_a]:underline-offset-2 hover:[&_a]:underline [&_strong]:text-white overflow-hidden">
-        <Markdown>{summary}</Markdown>
+      <div className="prose prose-invert max-w-none text-[14px] leading-[1.7] text-neutral-300 [&_p]:mb-2.5 [&_p:last-child]:mb-0 [&_strong]:text-white overflow-hidden">
+        <Markdown
+          components={{
+            a: ({ href, children }) => (
+              <a
+                href={href}
+                style={{ color: ACCENT_LIGHT }}
+                className="underline-offset-2 hover:underline"
+              >
+                {children}
+              </a>
+            ),
+          }}
+        >
+          {summary}
+        </Markdown>
       </div>
     </>
   );
 }
+
+/* ─────────────────────────  Featured project  ────────────────────────── */
 
 function FeaturedProjectCard({
   project,
@@ -507,28 +561,41 @@ function FeaturedProjectCard({
           className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-[1.05]"
         />
       ) : (
-        <div className="absolute inset-0 bg-gradient-to-br from-violet-500/30 to-cyan-500/20" />
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(135deg, ${ACCENT_DEEP}, ${ACCENT})`,
+          }}
+        />
       )}
-      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
-      <div className="absolute top-3 right-3 flex items-center gap-1.5 px-2 py-1 rounded-full bg-white/15 backdrop-blur-sm text-[10px] font-semibold text-white tracking-wider uppercase">
-        <Sparkles className="size-3" />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent" />
+      <div
+        className="absolute top-3 right-3 px-2 py-0.5 rounded-full text-[10px] font-medium text-white tracking-wider uppercase"
+        style={{ background: "rgba(255,255,255,0.14)", backdropFilter: "blur(8px)" }}
+      >
         Featured
       </div>
       <div className="absolute bottom-0 left-0 right-0 p-5">
-        <div className="text-[10px] tracking-[0.2em] uppercase text-violet-200 font-semibold mb-1">
+        <div
+          className="text-[10.5px] tracking-[0.2em] uppercase font-medium mb-1.5"
+          style={{ color: ACCENT_LIGHT }}
+        >
           {project.dates}
         </div>
         <h3 className="text-xl sm:text-2xl font-semibold mb-1.5 leading-tight inline-flex items-baseline gap-2">
           {project.title}
           <ArrowUpRight className="size-4 transition-transform group-hover:rotate-12" />
         </h3>
-        <p className="text-[13px] text-neutral-200 line-clamp-2 mb-2.5">{project.description}</p>
+        <p className="text-[13px] text-neutral-200 line-clamp-2 mb-2.5">
+          {stripMd(project.description)}
+        </p>
         {project.technologies.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {project.technologies.slice(0, 4).map((t) => (
               <span
                 key={t}
-                className="text-[10.5px] px-1.5 py-0.5 rounded-full bg-white/15 text-white backdrop-blur-sm"
+                className="text-[10.5px] px-1.5 py-0.5 rounded-full bg-white/[0.12] text-white"
+                style={{ backdropFilter: "blur(4px)" }}
               >
                 {t}
               </span>
@@ -539,6 +606,8 @@ function FeaturedProjectCard({
     </a>
   );
 }
+
+/* ─────────────────────────  Side projects  ────────────────────────── */
 
 function SideProjectCard({
   project,
@@ -559,11 +628,16 @@ function SideProjectCard({
           className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.05]"
         />
       ) : (
-        <div className="absolute inset-0 bg-gradient-to-br from-neutral-800 to-neutral-900" />
+        <div
+          className="absolute inset-0"
+          style={{
+            background: `linear-gradient(135deg, rgba(30,64,175,0.4), rgba(8,12,20,1))`,
+          }}
+        />
       )}
       <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
-      <div className="absolute bottom-0 left-0 right-0 p-3.5">
-        <h4 className="font-semibold text-white text-sm inline-flex items-baseline gap-1.5">
+      <div className="absolute bottom-0 left-0 right-0 p-4">
+        <h4 className="font-semibold text-white text-[14.5px] inline-flex items-baseline gap-1.5">
           {project.title}
           <ArrowUpRight className="size-3 opacity-70 transition-transform group-hover:rotate-12" />
         </h4>
@@ -580,6 +654,8 @@ function SideProjectCard({
   );
 }
 
+/* ─────────────────────────  Skills  ────────────────────────── */
+
 function SkillsCard({
   skills,
 }: {
@@ -587,7 +663,7 @@ function SkillsCard({
 }) {
   return (
     <>
-      <CardLabel className="mb-3">Toolbox</CardLabel>
+      <CardLabel className="mb-4">Toolbox</CardLabel>
       <div className="flex flex-wrap gap-1.5">
         {skills.map((s) => {
           const Icon = resolveSkillIcon(s.iconKey ?? s.name);
@@ -595,14 +671,14 @@ function SkillsCard({
             <motion.span
               key={s.name}
               whileHover={{ y: -2, transition: { duration: 0.15 } }}
-              className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[12px] text-neutral-200 hover:bg-white/10 hover:border-white/20 transition-all cursor-default"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/[0.04] border border-white/[0.05] text-[12.5px] text-neutral-200 hover:bg-white/[0.07] hover:border-white/[0.12] transition-all cursor-default"
               title={
                 s.usageCount
                   ? `Used in ${s.usageCount} repo${s.usageCount === 1 ? "" : "s"}`
                   : undefined
               }
             >
-              {Icon && <Icon className="size-3" />}
+              {Icon && <Icon className="size-3.5" />}
               {s.name}
             </motion.span>
           );
@@ -612,28 +688,35 @@ function SkillsCard({
   );
 }
 
+/* ─────────────────────────  Currently  ────────────────────────── */
+
 function CurrentlyCard({
   work,
-  compact = false,
 }: {
   work: ReturnType<typeof useResume>["work"][number];
-  compact?: boolean;
 }) {
   return (
     <>
-      <CardLabel className="text-cyan-300 mb-3">Currently</CardLabel>
+      <CardLabel className="mb-4 inline-flex items-center gap-2" style={{ color: ACCENT_LIGHT }}>
+        <span
+          aria-hidden
+          className="size-1.5 rounded-full bg-emerald-400 animate-pulse"
+          style={{ boxShadow: "0 0 6px rgba(52,211,153,0.6)" }}
+        />
+        Currently
+      </CardLabel>
       <div className="flex items-start gap-3">
         <LogoOrInitials src={work.logoUrl} name={work.company} />
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-[15px] text-white">{work.title}</div>
           <div className="text-[13px] text-neutral-300 truncate">{work.company}</div>
-          <div className="text-[11.5px] text-neutral-500 tabular-nums mt-0.5">
-            since {work.start}
+          <div className="text-[11.5px] text-neutral-500 tabular-nums mt-0.5 font-mono">
+            since {formatResumeDate(work.start)}
           </div>
         </div>
       </div>
-      {!compact && work.description && (
-        <p className="text-[12.5px] text-neutral-400 leading-relaxed line-clamp-2 mt-3">
+      {work.description && (
+        <p className="text-[12.5px] text-neutral-400 leading-relaxed line-clamp-2 mt-4">
           {stripMd(work.description).split("\n")[0]}
         </p>
       )}
@@ -641,36 +724,36 @@ function CurrentlyCard({
   );
 }
 
-function CareerCard({
+/* ─────────────────────────  Career roster — horizontal, no cutoff  ────────────────────────── */
+
+function CareerRoster({
   work,
 }: {
   work: ReturnType<typeof useResume>["work"];
 }) {
   return (
     <>
-      <CardLabel className="mb-3">Career timeline</CardLabel>
-      <ol className="space-y-3">
-        {work.map((w, i) => (
-          <li key={w.id} className="flex items-start gap-3">
-            <div className="relative flex-none">
+      <div className="flex items-baseline justify-between gap-2 mb-4">
+        <CardLabel>Recent roles</CardLabel>
+        <span className="text-[10.5px] text-neutral-600 font-mono tabular-nums">
+          showing {work.length} of {work.length}
+        </span>
+      </div>
+      <ol className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        {work.map((w) => (
+          <li
+            key={w.id}
+            className="rounded-xl bg-white/[0.018] border border-white/[0.04] p-3 hover:bg-white/[0.035] hover:border-white/[0.08] transition-all"
+          >
+            <div className="flex items-start gap-2.5 mb-2">
               <LogoOrInitials src={w.logoUrl} name={w.company} />
-              {i < work.length - 1 && (
-                <span
-                  aria-hidden
-                  className="absolute top-[100%] left-1/2 -translate-x-1/2 h-3 w-px bg-white/10"
-                />
-              )}
+              <div className="flex-1 min-w-0">
+                <div className="font-medium text-[13px] truncate">{w.title}</div>
+                <div className="text-[11.5px] text-neutral-400 truncate">{w.company}</div>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <div className="font-medium text-[13.5px]">
-                {w.title}{" "}
-                <span className="text-neutral-500">·</span>{" "}
-                <span className="text-neutral-300">{w.company}</span>
-              </div>
-              <div className="text-[11.5px] text-neutral-500 tabular-nums">
-                {w.start} – {w.end}
-                {w.location && ` · ${w.location}`}
-              </div>
+            <div className="text-[10.5px] text-neutral-500 tabular-nums font-mono">
+              {formatResumeDateRange(w.start, w.end)}
             </div>
           </li>
         ))}
@@ -678,6 +761,8 @@ function CareerCard({
     </>
   );
 }
+
+/* ─────────────────────────  Education  ────────────────────────── */
 
 function EducationCard({
   education,
@@ -686,7 +771,7 @@ function EducationCard({
 }) {
   return (
     <>
-      <CardLabel className="mb-3">Education</CardLabel>
+      <CardLabel className="mb-4">Education</CardLabel>
       <ul className="space-y-3">
         {education.map((e) => (
           <li key={e.id} className="flex items-start gap-3">
@@ -694,8 +779,8 @@ function EducationCard({
             <div className="flex-1 min-w-0">
               <div className="font-medium text-[13.5px] truncate">{e.school}</div>
               <div className="text-[12.5px] text-neutral-400 line-clamp-2">{e.degree}</div>
-              <div className="text-[11.5px] text-neutral-500 tabular-nums mt-0.5">
-                {e.start} – {e.end}
+              <div className="text-[11px] text-neutral-500 tabular-nums mt-0.5 font-mono">
+                {formatResumeDateRange(e.start, e.end)}
               </div>
             </div>
           </li>
@@ -704,6 +789,8 @@ function EducationCard({
     </>
   );
 }
+
+/* ─────────────────────────  Hackathons  ────────────────────────── */
 
 function HackathonsCard({
   hackathons,
@@ -712,14 +799,20 @@ function HackathonsCard({
 }) {
   return (
     <>
-      <CardLabel className="mb-3">Hackathons</CardLabel>
+      <CardLabel className="mb-4">Hackathons</CardLabel>
       <ul className="space-y-2.5 text-[13px]">
-        {hackathons.slice(0, 6).map((h) => (
-          <li key={h.id} className="border-l-2 border-violet-400/40 pl-3">
+        {hackathons.slice(0, 4).map((h) => (
+          <li key={h.id} className="border-l-2 pl-3" style={{ borderColor: `${ACCENT}66` }}>
             <div className="font-medium text-white truncate">{h.title}</div>
-            {h.rank && <div className="text-[11.5px] text-violet-300">★ {h.rank}</div>}
+            {h.rank && (
+              <div className="text-[11.5px]" style={{ color: ACCENT_LIGHT }}>
+                ★ {h.rank}
+              </div>
+            )}
             {h.date && (
-              <div className="text-[11px] text-neutral-500 tabular-nums">{h.date}</div>
+              <div className="text-[11px] text-neutral-500 tabular-nums font-mono">
+                {h.date}
+              </div>
             )}
           </li>
         ))}
@@ -727,6 +820,8 @@ function HackathonsCard({
     </>
   );
 }
+
+/* ─────────────────────────  Publications  ────────────────────────── */
 
 function PublicationsCard({
   publications,
@@ -735,28 +830,34 @@ function PublicationsCard({
 }) {
   return (
     <>
-      <CardLabel className="mb-3">Publications</CardLabel>
+      <CardLabel className="mb-4">Publications</CardLabel>
       <ul className="space-y-2.5 text-[13px]">
-        {publications.slice(0, 6).map((p) => (
+        {publications.slice(0, 4).map((p) => (
           <li key={p.id}>
             <a
               href={p.url}
               target="_blank"
               rel="noreferrer"
-              className="text-neutral-100 hover:text-violet-300 inline-flex items-baseline gap-1 group"
+              className="text-neutral-100 hover:text-white inline-flex items-baseline gap-1 group"
             >
               <span className="line-clamp-2">{p.title}</span>
-              <ArrowUpRight className="size-3 opacity-0 group-hover:opacity-100 transition-opacity flex-none" />
+              <ArrowUpRight
+                className="size-3 opacity-0 group-hover:opacity-100 transition-opacity flex-none"
+                style={{ color: ACCENT_LIGHT }}
+              />
             </a>
-            {p.venue && (
-              <div className="text-[11.5px] text-neutral-500 italic truncate">{p.venue}</div>
-            )}
+            <div className="text-[11px] text-neutral-500 italic truncate">
+              {p.venue}
+              {p.publishedAt && ` · ${formatResumeDate(p.publishedAt)}`}
+            </div>
           </li>
         ))}
       </ul>
     </>
   );
 }
+
+/* ─────────────────────────  Build log  ────────────────────────── */
 
 function BuildLogCard({
   buildLog,
@@ -765,21 +866,23 @@ function BuildLogCard({
 }) {
   return (
     <>
-      <CardLabel className="mb-3">Build log</CardLabel>
+      <CardLabel className="mb-4">Recently shipping</CardLabel>
       <ol className="space-y-2 text-[12.5px]">
-        {buildLog.slice(0, 8).map((b) => (
+        {buildLog.slice(0, 6).map((b) => (
           <li key={b.id} className="flex items-baseline gap-2 leading-snug">
             <span
               aria-hidden
               className="size-1.5 rounded-full flex-none translate-y-1"
-              style={{ backgroundColor: b.languageColor ?? "#a78bfa" }}
+              style={{ backgroundColor: b.languageColor ?? ACCENT_LIGHT }}
             />
             <div className="flex-1 min-w-0">
               <div className="text-neutral-100 truncate">
                 <span className="font-medium">{b.title}</span>
                 <span className="text-neutral-500"> — {b.description}</span>
               </div>
-              <div className="text-[10.5px] text-neutral-600 tabular-nums">{b.dates}</div>
+              <div className="text-[10.5px] text-neutral-600 tabular-nums font-mono">
+                {b.dates}
+              </div>
             </div>
           </li>
         ))}
@@ -787,6 +890,8 @@ function BuildLogCard({
     </>
   );
 }
+
+/* ─────────────────────────  Contact  ────────────────────────── */
 
 function ContactCard({
   email,
@@ -801,10 +906,10 @@ function ContactCard({
   return (
     <div className="flex items-center justify-between flex-wrap gap-4 h-full">
       <div>
-        <div className="text-xl sm:text-2xl font-semibold tracking-tight">
-          Let's build something, {firstName}-style.
+        <div className="text-xl sm:text-2xl font-semibold tracking-[-0.01em]">
+          Let's build something, {firstName}.
         </div>
-        <div className="text-neutral-400 text-[13px] mt-0.5">
+        <div className="text-neutral-400 text-[13.5px] mt-0.5">
           I'm reachable, and I read every email.
         </div>
       </div>
@@ -812,7 +917,7 @@ function ContactCard({
         {email && (
           <a
             href={`mailto:${email}`}
-            className="px-4 py-2 rounded-full bg-white text-black font-medium text-[13.5px] hover:bg-neutral-100 transition-all hover:-translate-y-px shadow-lg shadow-white/5 inline-flex items-center gap-1.5"
+            className="px-4 py-2 rounded-full bg-white text-black font-medium text-[13.5px] hover:bg-neutral-100 transition-all hover:-translate-y-px shadow-[0_8px_24px_-8px_rgba(96,165,250,0.4)] inline-flex items-center gap-1.5"
           >
             Email me
             <ArrowUpRight className="size-3.5" />
@@ -824,7 +929,7 @@ function ContactCard({
             href={s.url}
             target="_blank"
             rel="noreferrer"
-            className="px-4 py-2 rounded-full bg-white/10 border border-white/10 text-[13.5px] hover:bg-white/15 hover:border-white/20 hover:-translate-y-px transition-all"
+            className="px-4 py-2 rounded-full bg-white/[0.06] border border-white/[0.06] text-[13.5px] hover:bg-white/[0.10] hover:border-white/[0.12] hover:-translate-y-px transition-all"
           >
             {s.name}
           </a>

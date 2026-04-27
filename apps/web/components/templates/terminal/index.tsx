@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { useResume, useHandle } from "@/components/data-provider";
 import { allSocials } from "@gitshow/shared/resume";
+import { formatResumeDate, formatResumeDateRange } from "@/lib/format-date";
 
 /**
  * Terminal — a portfolio that lives in a terminal.
@@ -378,7 +379,7 @@ function WorkLog({ work }: { work: ReturnType<typeof useResume>["work"] }) {
           </div>
           <div className="mt-1 text-[12.5px] flex items-center gap-3 flex-wrap" style={{ color: FG_FAINT }}>
             <span className="tabular-nums">
-              {w.start} → {w.end}
+              {formatResumeDateRange(w.start, w.end)}
             </span>
             {w.location && <span>· {w.location}</span>}
           </div>
@@ -522,7 +523,7 @@ function EducationList({
               {e.school}
             </span>
             <span style={{ color: FG_FAINT }} className="text-[12px] tabular-nums">
-              {e.start} → {e.end}
+              {formatResumeDateRange(e.start, e.end)}
             </span>
           </div>
           <div style={{ color: FG_DIM }} className="text-[13px]">
@@ -600,7 +601,7 @@ function PublicationsList({
           {p.venue && (
             <div className="text-[12.5px] mt-0.5 italic" style={{ color: FG_DIM }}>
               {p.venue}
-              {p.publishedAt && ` · ${p.publishedAt}`}
+              {p.publishedAt && ` · ${formatResumeDate(p.publishedAt)}`}
             </div>
           )}
         </article>
