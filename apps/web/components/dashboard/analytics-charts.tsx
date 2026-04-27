@@ -211,23 +211,18 @@ function shiftToLocal(rows: HourBucket[], offsetHours: number): HourBucket[] {
 }
 
 /**
- * Returns the user's tz state. Initial render shows UTC (SSR-safe);
- * after mount, swaps to the browser's actual offset + name.
+ * Returns the user's UTC offset in hours (e.g. 5.5 for IST). Initial
+ * render is 0 (SSR-safe); after mount, swaps to the browser's actual
+ * offset. We deliberately don't expose a timezone name — strings like
+ * "GMT+5:30" are noisy clutter, and the surrounding copy already says
+ * "your local time" so the reader doesn't need a label to interpret it.
  */
-function useLocalTimezone() {
-  const [tz, setTz] = React.useState<{ offset: number; label: string }>({
-    offset: 0,
-    label: "UTC",
-  });
+function useLocalOffsetHours(): number {
+  const [offset, setOffset] = React.useState(0);
   React.useEffect(() => {
-    const offsetHours = -new Date().getTimezoneOffset() / 60;
-    // toLocaleTimeString with timeZoneName: "short" yields "12:00:00 PM PST"
-    // or "12:00:00 PM GMT+5:30" — last token is the name.
-    const parts = new Date().toLocaleTimeString("en-US", { timeZoneName: "short" }).split(" ");
-    const label = parts[parts.length - 1] || "Local";
-    setTz({ offset: offsetHours, label });
+    setOffset(-new Date().getTimezoneOffset() / 60);
   }, []);
-  return tz;
+  return offset;
 }
 
 /**
@@ -236,7 +231,7 @@ function useLocalTimezone() {
  * 24-bucket UTC histogram from the server.
  */
 export function HourlyTraffic({ rows }: { rows: HourBucket[] }) {
-  const { offset, label: tzLabel } = useLocalTimezone();
+  const offset = useLocalOffsetHours();
   const total = rows.reduce((acc, r) => acc + r.views, 0);
 
   if (total === 0) {
@@ -297,7 +292,7 @@ export function HourlyTraffic({ rows }: { rows: HourBucket[] }) {
                 labelFormatter={(_label, payload) => {
                   const point = payload?.[0]?.payload as HourBucket | undefined;
                   if (!point || typeof point.hour !== "number") return "";
-                  return `${formatHourRange(point.hour)} ${tzLabel}`;
+                  return formatHourRange(point.hour);
                 }}
               />
             }
@@ -314,7 +309,7 @@ export function HourlyTraffic({ rows }: { rows: HourBucket[] }) {
       <p className="mt-3 text-[11.5px] text-muted-foreground">
         Peak hour:{" "}
         <span className="text-foreground/80 font-medium">
-          {formatHourRange(peak.hour)} {tzLabel}
+          {formatHourRange(peak.hour)}
         </span>
         <span className="text-muted-foreground/40"> · </span>
         shown in your local time
