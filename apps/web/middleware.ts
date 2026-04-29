@@ -63,7 +63,11 @@ export async function middleware(request: NextRequest) {
       path === "/robots.txt" ||
       path === "/sitemap.xml" ||
       path === "/manifest.json" ||
-      path.startsWith("/r2/")
+      path.startsWith("/r2/") ||
+      // Reachability probe used by /api/domains/verify to confirm DNS
+      // actually points at our worker (vs a stale origin from a prior
+      // host). Pure JSON, no PII, identical for every caller.
+      path === "/.well-known/gitshow-probe"
     ) {
       return NextResponse.next();
     }
