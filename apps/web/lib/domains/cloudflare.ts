@@ -244,42 +244,19 @@ export async function createCustomHostname(
         method: "http",
         type: "dv",
       },
-      // Critical for SaaS+Workers: CF-for-SaaS must use the fallback
-      // origin's hostname as the SNI on the internal forward, NOT the
-      // customer's Host header (the default). Otherwise:
-      //   forward SNI = www.customer.com → CF routes by SNI → finds
-      //   the same Custom Hostname → re-enters SaaS pipeline → loop →
-      //   522 timeout.
-      // Setting custom_origin_sni to the fallback origin breaks the
-      // loop: SNI = cname.gitshow.io → CF routes via Worker Custom
-      // Domain → worker handles request → reads Host header → renders.
-      custom_origin_sni: "cname.gitshow.io",
+      // NOTE: custom_origin_sni would break the SaaS forwarding loop
+      // (SNI = customer hostname → CF re-enters SaaS pipeline → 522)
+      // but it's Enterprise-gated. The Free-tier workaround is to
+      // configure the fallback origin as an originless DNS record
+      // (e.g. AAAA `100::`) and add a Worker Route on the zone that
+      // catches the forwarded traffic. See:
+      //   https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/start/advanced-settings/worker-as-origin/
+      // The originless DNS record + Worker Route combo means CF can't
+      // actually establish a TCP connection back to its own anycast
+      // for the fallback hostname — the Worker Route intercepts at
+      // the routing layer and dispatches to the worker, with Host
+      // header preserved as the customer's original hostname.
     },
-  });
-}
-
-/**
- * One-shot PATCH to set custom_origin_sni on an already-created
- * hostname. Used by the migration script for the customer who hit
- * this bug before custom_origin_sni was set on create.
- */
-export async function setCustomOriginSni(
-  env: CloudflareEnv,
-  id: string,
-  sni: string,
-): Promise<CFCustomHostname> {
-  const cfg = readConfig(env);
-  if (!cfg) {
-    throw new CFForSaasError(
-      "config_missing",
-      "CF_FOR_SAAS_ZONE_ID / CF_FOR_SAAS_API_TOKEN are not configured.",
-      503,
-    );
-  }
-  return call<CFCustomHostname>(cfg, {
-    method: "PATCH",
-    path: `/custom_hostnames/${encodeURIComponent(id)}`,
-    body: { custom_origin_sni: sni },
   });
 }
 
