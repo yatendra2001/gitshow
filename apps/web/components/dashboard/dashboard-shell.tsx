@@ -28,6 +28,7 @@ import {
   Cancel01Icon,
   CreditCardIcon,
   File02Icon,
+  Globe02Icon,
   HelpCircleIcon,
   Menu01Icon,
   MoonIcon,
@@ -62,6 +63,7 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/app/edit", label: "Edit", icon: PencilEdit01Icon },
       { href: "/app/preview", label: "Preview", icon: ViewIcon },
       { href: "/app/resume", label: "Resume", icon: File02Icon },
+      { href: "/app/domain", label: "Custom domain", icon: Globe02Icon },
     ],
   },
   {

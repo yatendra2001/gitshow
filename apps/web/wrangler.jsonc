@@ -50,10 +50,19 @@
     // Flip to "live_mode" when you're done with test_mode verification.
     // The Better Auth Dodo plugin reads this from the env at runtime.
     "DODO_PAYMENTS_ENVIRONMENT": "test_mode"
-  }
+  },
   // DODO_PAYMENTS_API_KEY + DODO_PAYMENTS_WEBHOOK_SECRET ship via
   // `wrangler secret put` — never commit them.
   // DODO_PRODUCT_ID_MONTHLY + DODO_PRODUCT_ID_YEARLY are safe to put
   // in `vars` above once the live product ids exist — they're not
   // secrets, just ids. For now they live in .dev.vars for test_mode.
+  //
+  // Custom-domain re-resolution cron: not wired here because OpenNext's
+  // Next.js worker exports `fetch` only — `scheduled()` triggers don't
+  // route to a Next.js route handler. Instead, an external scheduler
+  // (GitHub Actions cron-workflow, cron-job.org, Cloudflare's HTTP
+  // trigger from a separate worker, etc.) POSTs to
+  //   https://gitshow.io/api/cron/domains-recheck
+  // every hour with `Authorization: Bearer ${CRON_SECRET}`. The
+  // endpoint is idempotent and bounded to 100 hostnames per run.
 }

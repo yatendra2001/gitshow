@@ -70,10 +70,12 @@ export async function POST(
     // populated when the HTTP Referer header was stripped).
     let path: string | null = null;
     let clientReferrer: string | null = null;
+    let bodyHostname: string | null = null;
     try {
       const body = (await req.clone().json().catch(() => null)) as {
         path?: string;
         referrer?: string;
+        host?: string;
       } | null;
       if (body?.path && typeof body.path === "string") {
         path = body.path.slice(0, 256);
@@ -81,8 +83,43 @@ export async function POST(
       if (body?.referrer && typeof body.referrer === "string") {
         clientReferrer = body.referrer.slice(0, 512);
       }
+      if (body?.host && typeof body.host === "string") {
+        bodyHostname = body.host.slice(0, 253).toLowerCase();
+      }
     } catch {
       // tolerate
+    }
+
+    // Pulled from the middleware — when set, the request landed on a
+    // custom domain. We trust the middleware-injected value first, fall
+    // back to body.host (set by TrackView), then to the request host.
+    const middlewareHostname = req.headers.get("x-gs-served-hostname");
+    const isCustomDomain = req.headers.get("x-gs-custom-domain") === "1";
+    const servedHostname =
+      middlewareHostname ??
+      bodyHostname ??
+      selfHost.toLowerCase();
+    const isCustom = isCustomDomain
+      ? 1
+      : !servedHostname || /(^|\.)gitshow\.io$|workers\.dev$|localhost/.test(servedHostname)
+        ? 0
+        : 1;
+
+    // UTM capture from the path's query string. We already canonicalize
+    // utm_source to a host (referrer chain below); store the raw values
+    // separately for campaign reporting.
+    let utmSource: string | null = null;
+    let utmMedium: string | null = null;
+    let utmCampaign: string | null = null;
+    if (path && path.includes("?")) {
+      try {
+        const u = new URL(path, "https://x.invalid");
+        utmSource = (u.searchParams.get("utm_source") ?? "").slice(0, 64) || null;
+        utmMedium = (u.searchParams.get("utm_medium") ?? "").slice(0, 64) || null;
+        utmCampaign = (u.searchParams.get("utm_campaign") ?? "").slice(0, 64) || null;
+      } catch {
+        // tolerate
+      }
     }
 
     // Referrer resolution chain (most explicit → most defensive):
@@ -112,8 +149,9 @@ export async function POST(
     await env.DB.prepare(
       `INSERT INTO view_events
          (slug, visitor_hash, referrer_host, referrer_url,
-          country, region, city, device, browser, os, path, ts)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          country, region, city, device, browser, os, path, ts,
+          served_hostname, is_custom_domain, utm_source, utm_medium, utm_campaign)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
         slug,
@@ -128,6 +166,11 @@ export async function POST(
         os,
         path,
         Date.now(),
+        servedHostname,
+        isCustom,
+        utmSource,
+        utmMedium,
+        utmCampaign,
       )
       .run();
   } catch {

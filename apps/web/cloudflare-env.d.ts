@@ -58,6 +58,16 @@ declare global {
     // research phase. Pipeline falls back gracefully when missing.
     TINYFISH_API_KEY?: string;
 
+    // ── Custom domains ────────────────────────────────────────────
+    // Cloudflare for SaaS — scoped to a SINGLE zone, permission
+    // `Custom Hostnames:Edit` only. If this leaks the blast radius
+    // is "attacker can register hostnames on our zone" — they can't
+    // pivot to other zones or modify code.
+    CF_FOR_SAAS_ZONE_ID?: string;
+    CF_FOR_SAAS_API_TOKEN?: string;
+    // Shared secret for the daily re-resolution cron endpoint.
+    CRON_SECRET?: string;
+
     // Billing (Dodo Payments). The Better Auth Dodo plugin reads API
     // key + webhook secret; product ids are consumed by lib/dodo.ts to
     // map slugs ('pro-monthly' / 'pro-yearly') → Dodo product ids.
