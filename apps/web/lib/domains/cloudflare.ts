@@ -223,12 +223,21 @@ export async function createCustomHostname(
     path: "/custom_hostnames",
     body: {
       hostname: input.hostname,
+      // SSL config: keep it MINIMAL on Free/Pro plans. Several
+      // fields here are Enterprise-only and 1459-error the entire
+      // create call:
+      //   - `certificate_authority` (lets_encrypt / google / etc.)
+      //   - `bundle_method` (ubiquitous / optimal / force)
+      //   - `settings.min_tls_version`
+      //   - `settings.ciphers`
+      //   - `wildcard`
+      // Cloudflare picks sane defaults (DV cert via HTTP DCV, LE or
+      // Google as the issuing CA depending on availability). We only
+      // need to specify `method: "http"` so it uses HTTP DCV through
+      // the customer's CNAME (no DNS access required).
       ssl: {
         method: "http",
         type: "dv",
-        settings: { min_tls_version: "1.2" },
-        bundle_method: "ubiquitous",
-        certificate_authority: "lets_encrypt",
       },
       custom_metadata: input.customMetadata,
     },
