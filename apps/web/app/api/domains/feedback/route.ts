@@ -12,7 +12,6 @@ import { PROVIDERS, type ProviderId } from "@/lib/domains/providers";
  * popular providers into the curated tier.
  */
 
-export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 interface FeedbackBody {

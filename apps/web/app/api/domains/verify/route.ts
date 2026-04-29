@@ -46,7 +46,6 @@ import { clientIp } from "@/lib/visitor";
  *   - Returns the current full state for the UI to render the timeline.
  */
 
-export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 interface VerifyResponse {

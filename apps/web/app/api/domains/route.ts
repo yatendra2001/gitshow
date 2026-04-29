@@ -35,7 +35,6 @@ import { deleteCustomHostname } from "@/lib/domains/cloudflare";
  * DELETE /api/domains?id= — disconnect.
  */
 
-export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 interface CreateBody {

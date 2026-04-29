@@ -31,7 +31,6 @@ import { getDomainByHostname, getDomainByUser } from "@/lib/domains/repo";
  * are pure functions.
  */
 
-export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 interface PreviewBody {

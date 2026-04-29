@@ -18,7 +18,6 @@ import { lookupRoutingByHostname } from "@/lib/domains/repo";
  * one row.
  */
 
-export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
