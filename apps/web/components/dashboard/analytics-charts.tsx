@@ -354,15 +354,21 @@ export function SegmentedDonut({
   variant = "donut",
   centerLabel,
   centerValue,
+  colors,
 }: {
   data: DonutSlice[];
   height?: number;
   variant?: "donut" | "filled";
   centerLabel?: string;
   centerValue?: string;
+  /** Override the categorical palette. Useful for binary splits where
+   *  the default chart-1/chart-2 hues are too similar in weight. */
+  colors?: string[];
 }) {
+  const palette = colors ?? CHART_COLORS;
+  const pick = (i: number) => palette[i % palette.length];
   const config: ChartConfig = Object.fromEntries(
-    data.map((d, i) => [d.key, { label: d.label, color: colorAt(i) }]),
+    data.map((d, i) => [d.key, { label: d.label, color: pick(i) }]),
   );
   const innerRadius = variant === "filled" ? 0 : "58%";
   return (
@@ -383,7 +389,7 @@ export function SegmentedDonut({
                         <span
                           aria-hidden
                           className="size-2 rounded-[2px]"
-                          style={{ background: colorAt(Math.max(0, idx)) }}
+                          style={{ background: pick(Math.max(0, idx)) }}
                         />
                         <span className="text-muted-foreground">
                           {cfg?.label ?? item.payload?.label}
@@ -411,7 +417,7 @@ export function SegmentedDonut({
             animationDuration={500}
           >
             {data.map((d, i) => (
-              <Cell key={d.key} fill={colorAt(i)} />
+              <Cell key={d.key} fill={pick(i)} />
             ))}
           </Pie>
         </PieChart>
@@ -432,8 +438,17 @@ export function SegmentedDonut({
   );
 }
 
-/** Compact legend rendered next to the donut. */
-export function DonutLegend({ data }: { data: DonutSlice[] }) {
+/** Compact legend rendered next to the donut. Pass `colors` to match
+ *  whatever palette the donut was rendered with. */
+export function DonutLegend({
+  data,
+  colors,
+}: {
+  data: DonutSlice[];
+  colors?: string[];
+}) {
+  const palette = colors ?? CHART_COLORS;
+  const pick = (i: number) => palette[i % palette.length];
   const total = data.reduce((acc, d) => acc + d.value, 0);
   return (
     <ul className="flex flex-col gap-2 text-[12px]">
@@ -444,7 +459,7 @@ export function DonutLegend({ data }: { data: DonutSlice[] }) {
             <span
               aria-hidden
               className="size-2 shrink-0 rounded-[2px]"
-              style={{ background: colorAt(i) }}
+              style={{ background: pick(i) }}
             />
             <span className="flex-1 truncate text-foreground/85">{d.label}</span>
             <span className="font-medium tabular-nums">{formatCount(d.value)}</span>

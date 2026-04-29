@@ -35,10 +35,12 @@ import {
   DevicesDonut,
   KpiCard,
   LiveTicker,
+  PeakDayStat,
   RecentActivity,
   SectionCard,
+  TopCountriesChips,
 } from "@/components/dashboard/analytics-cards";
-import { DomainAttributionCard } from "@/components/dashboard/domain-attribution";
+import { DomainAttribution } from "@/components/dashboard/domain-attribution";
 import {
   HourlyTraffic,
   SourcesBarChart,
@@ -224,13 +226,6 @@ export default async function AppHomePage({
         <LiveTickerStream db={db} slug={slug} days={days} />
       </Suspense>
 
-      {/* Custom domain attribution — only renders if the user has an
-          active custom domain. Streams independently so it doesn't
-          delay anything else. */}
-      <Suspense fallback={null}>
-        <AttributionStream db={db} slug={slug} userId={ctx.userId} days={days} />
-      </Suspense>
-
       {/* Hero KPIs */}
       <Suspense fallback={<KpiGridSkeleton />}>
         <KpiStream db={db} slug={slug} days={days} rangeLabel={rangeLabel} />
@@ -280,13 +275,19 @@ export default async function AppHomePage({
         </SectionCard>
       </div>
 
-      {/* Top sources, full width — horizontal bar chart with favicons */}
+      {/* Top sources — pairs with the custom-domain split when the
+          user has one attached. The combined stream decides the
+          layout: 2-col when there's a domain to show, full-width
+          otherwise. */}
       <div className="mb-3">
-        <SectionCard title="Top sources" subtitle="Where visitors came from">
-          <Suspense fallback={<Skeleton className="h-[220px] w-full rounded-xl" />}>
-            <SourcesStream db={db} slug={slug} days={days} />
-          </Suspense>
-        </SectionCard>
+        <Suspense fallback={<SourcesAndDomainSkeleton />}>
+          <SourcesAndDomainStream
+            db={db}
+            slug={slug}
+            userId={ctx.userId}
+            days={days}
+          />
+        </Suspense>
       </div>
 
       {/* Two-up: devices pie + browsers donut (mixed variants) */}
@@ -355,9 +356,13 @@ async function KpiStream({
   days,
   rangeLabel,
 }: SectionProps & { rangeLabel: string }) {
-  const [kpis, timeseries] = await Promise.all([
+  // `getTopCountries(... 8)` is also fetched by CountriesStream — same
+  // arg list, so React.cache returns the same Promise and only one
+  // round-trip lands.
+  const [kpis, timeseries, countries] = await Promise.all([
     getOverviewKPIs(db, slug, days),
     getViewsTimeseries(db, slug, days),
+    getTopCountries(db, slug, days, 8),
   ]);
   const sparkViews = timeseries.map((p, i) => ({ x: i, value: p.views }));
   const sparkUniques = timeseries.map((p, i) => ({ x: i, value: p.uniques }));
@@ -381,11 +386,13 @@ async function KpiStream({
         label="Countries"
         value={kpis.countriesReached}
         hint="reached this period"
+        extra={<TopCountriesChips rows={countries} />}
       />
       <KpiCard
         label="All-time views"
         value={kpis.viewsAllTime}
         hint="since launch"
+        extra={<PeakDayStat timeseries={timeseries} />}
       />
     </div>
   );
@@ -447,13 +454,49 @@ async function CountriesStream({ db, slug, days }: SectionProps) {
   );
 }
 
-async function SourcesStream({ db, slug, days }: SectionProps) {
-  const referrers = await getTopReferrers(db, slug, days, 8);
+async function SourcesAndDomainStream({
+  db,
+  slug,
+  userId,
+  days,
+}: SectionProps & { userId: string }) {
+  const [referrers, domain, split] = await Promise.all([
+    getTopReferrers(db, slug, days, 8),
+    getDomainByUser(db, userId),
+    getAttributionSplit(db, slug, days),
+  ]);
+  const showDomain =
+    domain?.status === "active" && split.total > 0 && Boolean(domain.hostname);
+
+  if (!showDomain) {
+    return (
+      <SectionCard
+        title="Top sources"
+        subtitle="Where visitors came from"
+        className="gs-enter"
+      >
+        <SourcesBarChart rows={referrers} />
+      </SectionCard>
+    );
+  }
+
   return (
-    <div className="gs-enter">
-      <SourcesBarChart rows={referrers} />
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 gs-enter">
+      <SectionCard title="Top sources" subtitle="Where visitors came from">
+        <SourcesBarChart rows={referrers} />
+      </SectionCard>
+      <SectionCard
+        title="Your domain"
+        subtitle="How visitors are finding you"
+      >
+        <DomainAttribution split={split} customHostname={domain!.hostname} />
+      </SectionCard>
     </div>
   );
+}
+
+function SourcesAndDomainSkeleton() {
+  return <Skeleton className="h-[260px] w-full rounded-2xl" />;
 }
 
 async function DevicesStream({ db, slug, days }: SectionProps) {
@@ -479,25 +522,6 @@ async function RecentStream({ db, slug }: Omit<SectionProps, "days">) {
   return (
     <div className="gs-enter">
       <RecentActivity rows={recent} />
-    </div>
-  );
-}
-
-async function AttributionStream({
-  db,
-  slug,
-  userId,
-  days,
-}: SectionProps & { userId: string }) {
-  const [domain, split] = await Promise.all([
-    getDomainByUser(db, userId),
-    getAttributionSplit(db, slug, days),
-  ]);
-  if (!domain || domain.status !== "active") return null;
-  if (!split.total) return null;
-  return (
-    <div className="mb-3 gs-enter">
-      <DomainAttributionCard split={split} customHostname={domain.hostname} />
     </div>
   );
 }

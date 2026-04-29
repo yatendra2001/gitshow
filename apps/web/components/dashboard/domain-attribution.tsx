@@ -1,23 +1,29 @@
 /**
- * Custom-domain attribution card. Shows the share of traffic that
- * arrived via the user's custom domain vs the canonical gitshow.io URL.
+ * Custom-domain attribution. Shows the share of traffic that arrived
+ * via the user's custom domain vs the canonical gitshow.io URL.
  *
  * Only renders when:
  *   - The user has an active custom domain attached, AND
  *   - There's at least one view in the window.
  *
- * Renders a single bar with two stacked segments + readable counts.
- * No icons, no gradients, no hover — premium quiet (DESIGN.md §1).
+ * Visual: a donut + legend, sitting next to "Top sources" in a 2-col
+ * grid. Quieter than the chart-1/chart-2 default palette — we use
+ * foreground (custom) vs muted foreground (canonical) so the user's
+ * own domain reads as the hero of the split.
  */
 
 import Link from "next/link";
 import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "./icon";
 import type { AttributionSplit } from "@/lib/analytics";
-import { formatCount } from "./format";
-import { cn } from "@/lib/utils";
+import { DonutLegend, SegmentedDonut } from "./analytics-charts";
 
-export function DomainAttributionCard({
+const DOMAIN_PALETTE = [
+  "oklch(from var(--foreground) l c h / 0.78)",
+  "oklch(from var(--foreground) l c h / 0.18)",
+];
+
+export function DomainAttribution({
   split,
   customHostname,
 }: {
@@ -26,19 +32,24 @@ export function DomainAttributionCard({
 }) {
   if (!split.total) return null;
   const customPct = split.customSharePct ?? 0;
-  const canonicalPct = 100 - customPct;
-  const dominantCustom = customPct >= 50;
+  const data = [
+    { key: "custom", label: customHostname, value: split.customViews },
+    { key: "canonical", label: "gitshow.io", value: split.canonicalViews },
+  ];
   return (
-    <div className="rounded-2xl border border-border/50 bg-card/60 p-5">
-      <div className="flex items-baseline justify-between gap-3">
-        <div>
-          <h3 className="text-[13px] font-semibold leading-tight tracking-tight">
-            Your domain
-          </h3>
-          <p className="mt-1 text-[11.5px] text-muted-foreground/80 leading-tight">
-            How visitors are finding you
-          </p>
-        </div>
+    <div className="flex h-full flex-col">
+      <div className="grid flex-1 grid-cols-[1fr_auto] items-center gap-5">
+        <SegmentedDonut
+          data={data}
+          height={180}
+          variant="donut"
+          centerLabel="VIA YOUR DOMAIN"
+          centerValue={`${customPct}%`}
+          colors={DOMAIN_PALETTE}
+        />
+        <DonutLegend data={data} colors={DOMAIN_PALETTE} />
+      </div>
+      <div className="mt-4 flex items-center justify-end">
         <Link
           href={`https://${customHostname}`}
           target="_blank"
@@ -51,43 +62,6 @@ export function DomainAttributionCard({
             className="size-2.5 transition-transform duration-[180ms] ease-[cubic-bezier(0.215,0.61,0.355,1)] group-hover:-translate-y-px group-hover:translate-x-px"
           />
         </Link>
-      </div>
-      <div className="mt-4 flex items-baseline gap-2 tabular-nums">
-        <span className="text-[28px] font-semibold tracking-tight leading-none">
-          {customPct}%
-        </span>
-        <span className="text-[12px] text-muted-foreground">
-          via {customHostname}
-        </span>
-      </div>
-      <div className="mt-3 flex h-2 w-full overflow-hidden rounded-full bg-foreground/[0.04]">
-        <div
-          aria-hidden
-          className={cn(
-            "h-full rounded-l-full",
-            dominantCustom ? "bg-foreground" : "bg-foreground/70",
-          )}
-          style={{ width: `${customPct}%` }}
-        />
-        <div
-          aria-hidden
-          className="h-full rounded-r-full bg-foreground/[0.10]"
-          style={{ width: `${canonicalPct}%` }}
-        />
-      </div>
-      <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11.5px] text-muted-foreground tabular-nums">
-        <span>
-          <span className="text-foreground font-medium">
-            {formatCount(split.customViews)}
-          </span>{" "}
-          via {customHostname}
-        </span>
-        <span>
-          <span className="text-foreground font-medium">
-            {formatCount(split.canonicalViews)}
-          </span>{" "}
-          via gitshow.io
-        </span>
       </div>
     </div>
   );
