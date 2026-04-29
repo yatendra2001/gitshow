@@ -513,17 +513,32 @@ const CURATED: Partial<Record<ProviderId, Partial<Record<InstructionSet["kind"],
       title: "Route apex to www via a Redirect Rule",
       deepLink: PROVIDERS.cloudflare.helpUrl,
       steps: [
-        { text: "Open Cloudflare dashboard → DNS → Records." },
+        { text: "Open Cloudflare → DNS → Records." },
         {
-          text: "If the root has any existing A, AAAA, or CNAME records, delete them — they'd shadow the redirect rule.",
+          text: "If the root has any existing A, AAAA, or CNAME records, delete them first.",
         },
-        { text: "Click Add record. Type: CNAME, Name: www." },
+        { text: "Add record. Type: CNAME, Name: www." },
         { text: `Target: ${c.cnameTarget}`, copyValue: c.cnameTarget },
         { text: "Proxy status: DNS only (grey cloud). Save." },
         {
-          text: "Then go to Rules → Redirect Rules → Create rule. When hostname equals " +
+          text: "Add another CNAME for the apex: Name @ (root), same Target, Proxied (orange cloud). This lets the redirect rule fire.",
+          copyValue: c.cnameTarget,
+        },
+        {
+          text: "Go to Rules → Redirect Rules → Create rule. Name: apex to www.",
+        },
+        {
+          text:
+            "Custom filter expression: (http.host eq \"" +
             rootDomain(c.hostname) +
-            ", static redirect (301) to https://www." + rootDomain(c.hostname) + " — preserve query string and path.",
+            "\") — Then: Type Dynamic, URL expression: " +
+            'concat("https://www.' +
+            rootDomain(c.hostname) +
+            '", http.request.uri.path), Status 301, Preserve query string ON. Deploy.',
+          copyValue:
+            'concat("https://www.' +
+            rootDomain(c.hostname) +
+            '", http.request.uri.path)',
         },
       ],
     }),
