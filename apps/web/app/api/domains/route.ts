@@ -59,7 +59,11 @@ export async function POST(req: Request) {
   );
   if (!userRl.ok) {
     return NextResponse.json(
-      { error: "rate_limited", retryAfter: userRl.retryAfterSec },
+      {
+        error: "rate_limited",
+        retryAfter: userRl.retryAfterSec,
+        message: `Too many attempts. Try again in ${formatRetry(userRl.retryAfterSec)}.`,
+      },
       { status: 429, headers: { "retry-after": String(userRl.retryAfterSec) } },
     );
   }
@@ -71,7 +75,11 @@ export async function POST(req: Request) {
   );
   if (!ipRl.ok) {
     return NextResponse.json(
-      { error: "rate_limited", retryAfter: ipRl.retryAfterSec },
+      {
+        error: "rate_limited",
+        retryAfter: ipRl.retryAfterSec,
+        message: `Too many attempts from your network. Try again in ${formatRetry(ipRl.retryAfterSec)}.`,
+      },
       { status: 429, headers: { "retry-after": String(ipRl.retryAfterSec) } },
     );
   }
@@ -81,7 +89,10 @@ export async function POST(req: Request) {
   try {
     body = (await req.json()) as CreateBody;
   } catch {
-    return NextResponse.json({ error: "invalid_json" }, { status: 400 });
+    return NextResponse.json(
+      { error: "invalid_json", message: "Couldn't read your request. Refresh and try again." },
+      { status: 400 },
+    );
   }
 
   const validated = validateHostname(body.hostname ?? "");
@@ -267,4 +278,13 @@ function sanitizeProvider(input: string | undefined): ProviderId | null {
   // Allow any of our known provider ids
   const v = input as ProviderId;
   return v in PROVIDERS ? v : null;
+}
+
+/** "3 min 29 sec" / "47 sec" — used in user-facing rate-limit messages. */
+function formatRetry(seconds: number): string {
+  if (seconds < 60) return `${seconds} sec`;
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  if (s === 0) return `${m} min`;
+  return `${m} min ${s} sec`;
 }
