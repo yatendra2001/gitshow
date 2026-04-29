@@ -302,119 +302,120 @@ function TemplatesTrigger({
         />
       </button>
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            ref={popRef}
-            initial={{ opacity: 0, y: -6, scale: 0.98 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -6, scale: 0.98 }}
-            transition={{ duration: 0.18, ease: "easeOut" }}
-            className="absolute right-0 top-[calc(100%+8px)] z-[60] w-[min(92vw,540px)] overflow-hidden rounded-2xl border border-border/60 bg-background/95 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.5)] backdrop-blur-xl"
-            role="dialog"
-            aria-label="Pick a template"
-          >
-            <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
-              <div className="flex items-baseline gap-2">
-                <Sparkles className="size-3.5 text-foreground/70" />
-                <span className="text-[13px] font-semibold">Templates</span>
-                <span className="text-[11.5px] text-muted-foreground">
-                  · pick a look, preview swaps live
-                </span>
-              </div>
+      {/* Close is instant — no AnimatePresence/exit. A lingering exit
+          let the trigger's `!open` toggle re-open the popover during
+          the fade-out, so picking a template or hitting X felt like
+          it took a second click to close. */}
+      {open && (
+        <motion.div
+          ref={popRef}
+          initial={{ opacity: 0, y: -6, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+          className="absolute right-0 top-[calc(100%+8px)] z-[60] w-[min(92vw,540px)] overflow-hidden rounded-2xl border border-border/60 bg-background/95 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.5)] backdrop-blur-xl"
+          role="dialog"
+          aria-label="Pick a template"
+        >
+          <div className="flex items-center justify-between border-b border-border/40 px-4 py-3">
+            <div className="flex items-baseline gap-2">
+              <Sparkles className="size-3.5 text-foreground/70" />
+              <span className="text-[13px] font-semibold">Templates</span>
+              <span className="text-[11.5px] text-muted-foreground">
+                · pick a look, preview swaps live
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => onOpen(false)}
+              aria-label="Close"
+              className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/60 hover:text-foreground"
+            >
+              <X className="size-4" />
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3">
+            {TEMPLATES.map((t) => {
+              const active = t.id === pendingTemplate;
+              const saved = t.id === savedTemplate;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => onPick(t.id)}
+                  title={t.tagline}
+                  className={`group relative flex flex-col items-stretch overflow-hidden rounded-xl border text-left transition-all ${
+                    active
+                      ? "border-foreground/80 ring-2 ring-foreground/15"
+                      : "border-border/40 hover:border-border hover:shadow-sm"
+                  }`}
+                >
+                  <TemplateSwatch id={t.id} />
+                  <div className="flex items-center justify-between gap-2 bg-card/30 px-2.5 py-1.5">
+                    <div className="min-w-0">
+                      <div className="truncate text-[12.5px] font-semibold leading-tight">
+                        {t.name}
+                      </div>
+                      <div className="truncate text-[10.5px] leading-tight text-muted-foreground">
+                        {t.vibes[0]}
+                      </div>
+                    </div>
+                    {saved && (
+                      <span
+                        className={`flex size-4 flex-none items-center justify-center rounded-full ${
+                          active && saved
+                            ? "bg-emerald-500 text-white"
+                            : "bg-foreground text-background"
+                        }`}
+                        title={
+                          active && saved
+                            ? "Active and saved"
+                            : "Currently saved"
+                        }
+                      >
+                        <Check className="size-2.5" strokeWidth={3} />
+                      </span>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between gap-3 border-t border-border/40 px-4 py-3">
+            <div className="min-w-0 text-[11.5px] text-muted-foreground">
+              <span className="font-medium text-foreground/80">
+                {meta.name}
+              </span>
+              <span className="hidden sm:inline"> · {meta.bestFor}</span>
+            </div>
+            {dirty ? (
               <button
                 type="button"
-                onClick={() => onOpen(false)}
-                aria-label="Close"
-                className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-card/60 hover:text-foreground"
+                disabled={busy}
+                onClick={onSave}
+                className="inline-flex h-8 flex-none items-center gap-1.5 rounded-md bg-foreground px-3 text-[12.5px] font-medium text-background hover:opacity-90 disabled:opacity-60"
               >
-                <X className="size-4" />
+                {busy ? (
+                  <>
+                    <Loader2 className="size-3.5 animate-spin" />
+                    Publishing
+                  </>
+                ) : isPublished ? (
+                  "Save & republish"
+                ) : (
+                  "Save & publish"
+                )}
               </button>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 p-3 sm:grid-cols-3">
-              {TEMPLATES.map((t) => {
-                const active = t.id === pendingTemplate;
-                const saved = t.id === savedTemplate;
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => onPick(t.id)}
-                    title={t.tagline}
-                    className={`group relative flex flex-col items-stretch overflow-hidden rounded-xl border text-left transition-all ${
-                      active
-                        ? "border-foreground/80 ring-2 ring-foreground/15"
-                        : "border-border/40 hover:border-border hover:shadow-sm"
-                    }`}
-                  >
-                    <TemplateSwatch id={t.id} />
-                    <div className="flex items-center justify-between gap-2 bg-card/30 px-2.5 py-1.5">
-                      <div className="min-w-0">
-                        <div className="truncate text-[12.5px] font-semibold leading-tight">
-                          {t.name}
-                        </div>
-                        <div className="truncate text-[10.5px] leading-tight text-muted-foreground">
-                          {t.vibes[0]}
-                        </div>
-                      </div>
-                      {saved && (
-                        <span
-                          className={`flex size-4 flex-none items-center justify-center rounded-full ${
-                            active && saved
-                              ? "bg-emerald-500 text-white"
-                              : "bg-foreground text-background"
-                          }`}
-                          title={
-                            active && saved
-                              ? "Active and saved"
-                              : "Currently saved"
-                          }
-                        >
-                          <Check className="size-2.5" strokeWidth={3} />
-                        </span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-
-            <div className="flex items-center justify-between gap-3 border-t border-border/40 px-4 py-3">
-              <div className="min-w-0 text-[11.5px] text-muted-foreground">
-                <span className="font-medium text-foreground/80">
-                  {meta.name}
-                </span>
-                <span className="hidden sm:inline"> · {meta.bestFor}</span>
-              </div>
-              {dirty ? (
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={onSave}
-                  className="inline-flex h-8 flex-none items-center gap-1.5 rounded-md bg-foreground px-3 text-[12.5px] font-medium text-background hover:opacity-90 disabled:opacity-60"
-                >
-                  {busy ? (
-                    <>
-                      <Loader2 className="size-3.5 animate-spin" />
-                      Publishing
-                    </>
-                  ) : isPublished ? (
-                    "Save & republish"
-                  ) : (
-                    "Save & publish"
-                  )}
-                </button>
-              ) : (
-                <span className="inline-flex flex-none items-center gap-1 text-[11.5px] text-muted-foreground">
-                  <Check className="size-3 text-emerald-500" />
-                  Saved
-                </span>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            ) : (
+              <span className="inline-flex flex-none items-center gap-1 text-[11.5px] text-muted-foreground">
+                <Check className="size-3 text-emerald-500" />
+                Saved
+              </span>
+            )}
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }
