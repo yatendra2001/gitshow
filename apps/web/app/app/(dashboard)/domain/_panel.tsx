@@ -107,13 +107,67 @@ export function DomainPanel({
   publicSlug: string;
 }) {
   const [domain, setDomain] = useState<DomainState | null>(initial);
+  const lastStatusRef = useRef<string | null>(initial?.status ?? null);
+
+  // Background refresh: every 4 seconds, refetch the row from /api/domains
+  // and update local state if anything changed. Catches cron-driven
+  // transitions (provisioning → active, active → suspended) so the user
+  // doesn't have to manually reload to see status updates.
+  //
+  // GET /api/domains is read-only and cheap — single indexed D1 query,
+  // no CF API calls. Polling at 4s is well below the 12/hour /verify
+  // rate limit (those are POSTs, separate path).
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch("/api/domains", { cache: "no-store" });
+        if (!res.ok) return;
+        const json = (await res.json()) as { domain: DomainState | null };
+        if (!json.domain) {
+          // Row was deleted (e.g. user disconnected from another tab).
+          setDomain(null);
+          lastStatusRef.current = null;
+          return;
+        }
+        // Update only when something the UI cares about changed —
+        // avoids re-render churn on identical polls.
+        setDomain((prev) => {
+          if (
+            prev &&
+            prev.status === json.domain!.status &&
+            prev.cfSslStatus === json.domain!.cfSslStatus &&
+            prev.failureReason === json.domain!.failureReason &&
+            prev.activatedAt === json.domain!.activatedAt
+          ) {
+            return prev;
+          }
+          // Surface activation as a toast — but only on the actual
+          // transition, not on every poll while active.
+          if (
+            json.domain!.status === "active" &&
+            lastStatusRef.current !== "active"
+          ) {
+            toast.success(`${json.domain!.hostname} is live`);
+          }
+          lastStatusRef.current = json.domain!.status;
+          return json.domain;
+        });
+      } catch {
+        // Best effort; no UI for transient poll failures.
+      }
+    }, 4000);
+    return () => clearInterval(interval);
+  }, []);
 
   if (!domain) {
     return (
       <EmptyState
         cnameTarget={cnameTarget}
         publicSlug={publicSlug}
-        onCreated={(s) => setDomain(s)}
+        onCreated={(s) => {
+          setDomain(s);
+          lastStatusRef.current = s.status;
+        }}
       />
     );
   }
@@ -122,7 +176,10 @@ export function DomainPanel({
       <ActiveState
         domain={domain}
         publicSlug={publicSlug}
-        onDisconnected={() => setDomain(null)}
+        onDisconnected={() => {
+          setDomain(null);
+          lastStatusRef.current = null;
+        }}
       />
     );
   }
@@ -130,8 +187,14 @@ export function DomainPanel({
     <SetupState
       domain={domain}
       cnameTarget={cnameTarget}
-      onUpdated={(s) => setDomain(s)}
-      onDisconnected={() => setDomain(null)}
+      onUpdated={(s) => {
+        setDomain(s);
+        lastStatusRef.current = s.status;
+      }}
+      onDisconnected={() => {
+        setDomain(null);
+        lastStatusRef.current = null;
+      }}
     />
   );
 }

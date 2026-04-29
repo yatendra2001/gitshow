@@ -276,11 +276,27 @@ export async function tombstoneHostname(
 // ─── CNAME target — single source of truth ─────────────────────────────
 
 /**
- * The target hostname users CNAME to. Industry convention: dedicated
- * subdomain so we can change the underlying target (Worker, fallback
- * origin, region) without touching customer DNS.
+ * The target hostname users CNAME to. Customers point their DNS here.
  *
- * Configured once on our Cloudflare zone:
- *   `cname.gitshow.io  CNAME  gitshow-web.workers.dev` (proxied)
+ * Architecture (see docs/custom-domains/architecture.md):
+ *   - `saas-fallback.gitshow.io` is configured on our zone with an
+ *     AAAA `100::` record (originless — RFC 6666 discard prefix) and
+ *     proxied through Cloudflare.
+ *   - It's set as the Cloudflare for SaaS *fallback origin* on the zone.
+ *   - A Worker Route `* /*` (without the space — JSDoc parser is finicky)
+ *     on the zone catches all SaaS-forwarded traffic and dispatches to
+ *     the gitshow-web worker.
+ *   - Worker reads the customer's Host header and rewrites to /{slug}.
+ *
+ * Why the originless + Worker Route combo: when CF for SaaS forwards
+ * to a *real* fallback origin on Cloudflare, it creates an internal
+ * routing loop (SNI=customer-host → CF re-engages SaaS → 522 timeout).
+ * The originless trick prevents the TCP round-trip entirely; the
+ * Worker Route catches the request at the routing layer instead.
+ * Free-tier compatible. See:
+ *   https://developers.cloudflare.com/cloudflare-for-platforms/cloudflare-for-saas/start/advanced-settings/worker-as-origin/
+ *
+ * Customer-facing: this is just "the hostname you CNAME to". They
+ * never need to know about the underlying mechanics.
  */
-export const CNAME_TARGET = "cname.gitshow.io";
+export const CNAME_TARGET = "saas-fallback.gitshow.io";
