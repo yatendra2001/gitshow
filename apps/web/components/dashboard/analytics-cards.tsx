@@ -29,6 +29,7 @@ import {
   countryFlag,
   countryName,
   formatCount,
+  formatDateShort,
   prettyReferrer,
   relativeTime,
 } from "./format";
@@ -86,12 +87,18 @@ export function KpiCard({
   deltaPct,
   sparkline,
   hint,
+  extra,
 }: {
   label: string;
   value: number;
   deltaPct?: number | null;
   sparkline?: { x: number; value: number }[];
   hint?: string;
+  /** Replaces the sparkline footer slot when there's no time-series to
+   *  draw. Use for cards like "Countries" or "All-time views" that need
+   *  to fill the same 36px footprint with a categorical or aggregate
+   *  visual instead of an empty rectangle. */
+  extra?: React.ReactNode;
 }) {
   return (
     <div
@@ -123,11 +130,82 @@ export function KpiCard({
         <div className="mt-4 -mx-1">
           <SparklineMini data={sparkline} />
         </div>
+      ) : extra ? (
+        // Same 36px footprint as the sparkline so the grid stays
+        // aligned across all cards.
+        <div className="mt-4 flex h-9 items-center">{extra}</div>
       ) : (
-        // Hold the same vertical footprint so cards align even when
-        // some don't have a sparkline. Emil: no layout shift.
         <div className="mt-4 h-9" aria-hidden />
       )}
+    </div>
+  );
+}
+
+// ─── KPI extras: visuals for cards that don't have a time series ──
+
+/**
+ * Top-countries chip row for the "Countries" KPI. Shows the leading
+ * 3 country flags + view counts inline, plus a "+N" tail when there's
+ * more. Falls back to the empty 36px slot if there's no data.
+ */
+export function TopCountriesChips({
+  rows,
+}: {
+  rows: { country: string; views: number }[];
+}) {
+  if (!rows.length) return null;
+  const head = rows.slice(0, 3);
+  const tail = rows.length - head.length;
+  return (
+    <div className="flex flex-wrap items-center gap-1 -mx-0.5 tabular-nums">
+      {head.map((r) => (
+        <span
+          key={r.country}
+          className="inline-flex items-center gap-1 rounded-md bg-foreground/[0.04] px-1.5 py-0.5 text-[11px]"
+          title={`${countryName(r.country)} · ${formatCount(r.views)}`}
+        >
+          <span className="text-[12px] leading-none" aria-hidden>
+            {countryFlag(r.country)}
+          </span>
+          <span className="text-foreground/85 font-medium">
+            {formatCount(r.views)}
+          </span>
+        </span>
+      ))}
+      {tail > 0 ? (
+        <span className="text-[11px] text-muted-foreground/70 px-1">
+          +{tail}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Compact "peak day" stat for the "All-time views" KPI. Surfaces the
+ * busiest day in the current window so the empty slot earns its space.
+ */
+export function PeakDayStat({
+  timeseries,
+}: {
+  timeseries: { date: string; views: number }[];
+}) {
+  if (!timeseries.length) return null;
+  const peak = timeseries.reduce(
+    (best, p) => (p.views > best.views ? p : best),
+    timeseries[0],
+  );
+  if (peak.views === 0) return null;
+  return (
+    <div className="inline-flex items-baseline gap-1.5 text-[11.5px]">
+      <span className="text-muted-foreground/70">Peak</span>
+      <span className="font-medium tabular-nums text-foreground/85">
+        {formatCount(peak.views)}
+      </span>
+      <span className="text-muted-foreground/40">·</span>
+      <span className="tabular-nums text-muted-foreground/80">
+        {formatDateShort(peak.date)}
+      </span>
     </div>
   );
 }
