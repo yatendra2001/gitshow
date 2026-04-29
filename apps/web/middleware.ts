@@ -67,7 +67,15 @@ export async function middleware(request: NextRequest) {
       // Reachability probe used by /api/domains/verify to confirm DNS
       // actually points at our worker (vs a stale origin from a prior
       // host). Pure JSON, no PII, identical for every caller.
-      path === "/.well-known/gitshow-probe"
+      path === "/.well-known/gitshow-probe" ||
+      // Internal hostname-to-slug lookup. The middleware itself calls
+      // this via same-origin fetch — when the original request was
+      // for a custom domain, the inner fetch lands here too. If we
+      // 404'd it like other /api paths, every custom-domain request
+      // would resolve to slug=null → /not-found. The route enforces
+      // its own auth via x-internal-route header (set by middleware,
+      // not exposed otherwise).
+      path === "/api/internal/route-host"
     ) {
       return NextResponse.next();
     }
