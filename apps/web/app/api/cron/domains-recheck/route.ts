@@ -13,6 +13,7 @@ import {
   CNAME_TARGET,
 } from "@/lib/domains/security";
 import { resolveCnameQuorum } from "@/lib/domains/verifier";
+import { notifyDomainActivatedIfTransitioned } from "@/lib/domains/notify";
 
 /**
  * Daily re-resolution cron.
@@ -135,6 +136,17 @@ export async function POST(req: Request) {
           cfStatus,
         },
       });
+
+      // Fire the activation email when the cron observes a transition
+      // into `active` from any non-active state. Same dedupe logic as
+      // the verify endpoint (handled inside the helper).
+      if (nextStatus === "active" && fullRow.status !== "active") {
+        await notifyDomainActivatedIfTransitioned(env, env.DB, {
+          domainId: row.id,
+          prevStatus: fullRow.status,
+          nextStatus,
+        });
+      }
     } catch {
       // skip — try again next run
     }

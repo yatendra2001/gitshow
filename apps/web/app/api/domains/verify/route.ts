@@ -21,8 +21,8 @@ import {
 import {
   checkApexRedirect,
   resolveCnameQuorum,
-  resolveTxtQuorum,
 } from "@/lib/domains/verifier";
+import { notifyDomainActivatedIfTransitioned } from "@/lib/domains/notify";
 import { clientIp } from "@/lib/visitor";
 
 /**
@@ -234,6 +234,22 @@ export async function POST(req: Request) {
         cfError: createError,
       },
     });
+
+    // Activation email — fires only when prev !== 'active' && next === 'active'.
+    // Use ctx.waitUntil so the API response returns immediately and the
+    // email continues in the background; if `ctx` isn't available
+    // (rare — local dev), fall through to a void promise.
+    const cf = await getCloudflareContext({ async: true });
+    const emailPromise = notifyDomainActivatedIfTransitioned(env, env.DB, {
+      domainId: row.id,
+      prevStatus: row.status,
+      nextStatus,
+    });
+    if (cf.ctx?.waitUntil) {
+      cf.ctx.waitUntil(emailPromise);
+    } else {
+      void emailPromise;
+    }
   } else {
     // No state change — still record a verify_attempt for the audit log
     // (helps support diagnose "I clicked verify 50 times" cases).
