@@ -488,6 +488,10 @@ const CURATED: Partial<Record<ProviderId, Partial<Record<InstructionSet["kind"],
       deepLink: PROVIDERS.cloudflare.helpUrl,
       steps: [
         { text: "Open Cloudflare dashboard → DNS → Records." },
+        {
+          text:
+            "If the root has any existing A or AAAA records, delete them first — Cloudflare won't allow a root CNAME alongside them.",
+        },
         { text: "Click Add record. Type: CNAME." },
         { text: "Name: @ (Cloudflare flattens this to A records automatically.)" },
         { text: `Target: ${c.cnameTarget}`, copyValue: c.cnameTarget },

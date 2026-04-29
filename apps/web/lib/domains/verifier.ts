@@ -79,19 +79,24 @@ async function queryAll(
 }
 
 /**
- * Returns true if at least QUORUM resolvers report a CNAME on `name`
- * that resolves (potentially through a chain) to `expectedTarget` (or
- * any apex-flatten A/AAAA glue that points at our CF edge — we accept
- * either the literal CNAME or a flattened variant).
+ * Confirms a hostname is wired up to land on *our* worker.
  *
- * Apex flattening note: when a Cloudflare-hosted apex CNAME is queried,
- * the response contains the FLATTENED A records (no CNAME). To handle
- * that, we accept either:
- *   - A CNAME record literally pointing at `expectedTarget` (or its
- *     suffix e.g. `cname.gitshow.io`), OR
- *   - At least one A/AAAA record (we don't sniff specific IPs because
- *     Cloudflare's anycast pool changes; the CF for SaaS API does the
- *     authoritative routing-target check).
+ * Two-tier check:
+ *   1. CNAME quorum — if 2/3 resolvers report a CNAME on `name`
+ *      pointing at `expectedTarget`, we're done. Cheap, no HTTPS.
+ *   2. Reachability probe — if no CNAME match (or apex flatten case
+ *      where Cloudflare flattens to A records), HTTPS-fetch
+ *      `https://{name}/.well-known/gitshow-probe`. The probe endpoint
+ *      returns a known signature only our worker can produce. If the
+ *      response matches, DNS IS pointing at us — even if we never see
+ *      a literal CNAME.
+ *
+ * Why the probe matters: the previous version accepted "any A or AAAA
+ * record at the apex" as proof of correct setup. That's wrong — a
+ * customer with stale A records pointing at an old host (Heroku,
+ * Render, an ex-portfolio) would falsely pass the check, then look
+ * confused when SSL never issued. The probe verifies the records
+ * actually resolve to our edge, not just "to some IP."
  */
 export async function resolveCnameQuorum(
   name: string,
@@ -112,26 +117,65 @@ export async function resolveCnameQuorum(
       }
     }
   }
-  // If CNAME match didn't quorum, try A/AAAA (flattened apex case).
-  if (matchedCount < QUORUM) {
-    const [aResponses, aaaaResponses] = await Promise.all([
-      queryAll(name, "A"),
-      queryAll(name, "AAAA"),
-    ]);
-    let flattened = 0;
-    for (let i = 0; i < DOH_RESOLVERS.length; i++) {
-      const a = aResponses[i];
-      const aaaa = aaaaResponses[i];
-      const has =
-        ((a?.Answer ?? []).some((rr) => rr.type === TYPE_A) ||
-          (aaaa?.Answer ?? []).some((rr) => rr.type === TYPE_AAAA));
-      if (has) flattened += 1;
-    }
-    if (flattened >= QUORUM) {
-      return { ok: true, matched: flattened, observed: [...observed, `<flattened-A/AAAA>`] };
-    }
+
+  // Tier 1: literal CNAME quorum — best case, no HTTPS round trip.
+  if (matchedCount >= QUORUM) {
+    return { ok: true, matched: matchedCount, observed };
   }
-  return { ok: matchedCount >= QUORUM, matched: matchedCount, observed };
+
+  // Tier 2: reachability probe. Catches Cloudflare CNAME flattening
+  // AND filters out stale A records pointing at a previous host.
+  const probe = await probeReachability(name);
+  if (probe.ok) {
+    return {
+      ok: true,
+      matched: matchedCount,
+      observed: [...observed, "<probe-ok>"],
+    };
+  }
+
+  return {
+    ok: false,
+    matched: matchedCount,
+    observed: probe.detail
+      ? [...observed, `<probe-fail: ${probe.detail}>`]
+      : observed,
+  };
+}
+
+/**
+ * HTTPS GET on `https://{hostname}/.well-known/gitshow-probe`. Returns
+ * `ok: true` only if the response is 200 + JSON + matches our literal
+ * signature. Any other outcome (404, wrong body, network error,
+ * timeout) → ok: false with a one-word reason for the audit log.
+ */
+async function probeReachability(
+  hostname: string,
+): Promise<{ ok: boolean; detail?: string }> {
+  const url = `https://${hostname}/.well-known/gitshow-probe`;
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      redirect: "manual",
+      signal: AbortSignal.timeout(6000),
+      headers: {
+        // Plain identifier so origin logs show what hit them.
+        "user-agent": "gitshow-domain-verify/1.0",
+      },
+    });
+    if (res.status !== 200) return { ok: false, detail: `http_${res.status}` };
+    const body = (await res.json().catch(() => null)) as
+      | { ok?: boolean; signature?: string }
+      | null;
+    if (!body) return { ok: false, detail: "non_json" };
+    if (body.signature !== "gitshow-probe-v1") {
+      return { ok: false, detail: "wrong_signature" };
+    }
+    return { ok: true };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "unknown";
+    return { ok: false, detail: msg.includes("timeout") ? "timeout" : "network" };
+  }
 }
 
 /**
