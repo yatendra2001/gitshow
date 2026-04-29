@@ -7,9 +7,8 @@
  *   - There's at least one view in the window.
  *
  * Visual: a donut + legend, sitting next to "Top sources" in a 2-col
- * grid. Quieter than the chart-1/chart-2 default palette — we use
- * foreground (custom) vs muted foreground (canonical) so the user's
- * own domain reads as the hero of the split.
+ * grid. Uses the same shadcn `--chart-*` palette as Devices/Browsers
+ * so the dashboard reads as a single visual family.
  */
 
 import Link from "next/link";
@@ -17,11 +16,6 @@ import { ArrowUpRight01Icon } from "@hugeicons/core-free-icons";
 import { Icon } from "./icon";
 import type { AttributionSplit } from "@/lib/analytics";
 import { DonutLegend, SegmentedDonut } from "./analytics-charts";
-
-const DOMAIN_PALETTE = [
-  "oklch(from var(--foreground) l c h / 0.78)",
-  "oklch(from var(--foreground) l c h / 0.18)",
-];
 
 export function DomainAttribution({
   split,
@@ -32,6 +26,9 @@ export function DomainAttribution({
 }) {
   if (!split.total) return null;
   const customPct = split.customSharePct ?? 0;
+  // The user's custom domain is the focal segment, so it goes first
+  // and picks up `--chart-1` (the brand-leaning hue). Canonical sits
+  // on `--chart-2` like the second slice in the Browsers/Devices donuts.
   const data = [
     { key: "custom", label: customHostname, value: split.customViews },
     { key: "canonical", label: "gitshow.io", value: split.canonicalViews },
@@ -43,11 +40,10 @@ export function DomainAttribution({
           data={data}
           height={180}
           variant="donut"
-          centerLabel="VIA YOUR DOMAIN"
+          centerLabel="Via your domain"
           centerValue={`${customPct}%`}
-          colors={DOMAIN_PALETTE}
         />
-        <DonutLegend data={data} colors={DOMAIN_PALETTE} />
+        <DonutLegend data={data} />
       </div>
       <div className="mt-4 flex items-center justify-end">
         <Link
