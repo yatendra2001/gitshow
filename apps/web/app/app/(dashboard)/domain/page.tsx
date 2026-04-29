@@ -46,11 +46,7 @@ export default async function DomainPage() {
             Custom domain
           </h1>
           <p className="mt-2 text-[12.5px] text-muted-foreground text-pretty">
-            Serve your portfolio from a domain you own — apex (
-            <span className="font-mono text-foreground">yatendra.com</span>) or a
-            subdomain (
-            <span className="font-mono text-foreground">portfolio.yatendra.com</span>
-            ). One domain per Pro account.
+            Use a domain you own for your portfolio. We handle the rest.
           </p>
         </div>
         {ctx.profile?.public_slug ? (

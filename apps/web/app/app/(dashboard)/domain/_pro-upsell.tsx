@@ -16,13 +16,12 @@ export function ProUpsell() {
           <Icon icon={Globe02Icon} className="size-6 text-foreground/80" />
         </div>
         <h1 className="text-[24px] sm:text-[28px] font-semibold tracking-tight text-balance">
-          Connect your own domain.
+          Use your own domain.
         </h1>
         <p className="mt-3 max-w-md text-[13.5px] text-muted-foreground text-pretty leading-relaxed">
-          Serve your portfolio from{" "}
-          <span className="font-mono text-foreground">yatendra.com</span> or any
-          subdomain you own. We provision SSL, route at the edge, and keep
-          renewals automatic — included with Pro.
+          Show your portfolio at{" "}
+          <span className="font-mono text-foreground">yatendra.com</span>.
+          We handle the technical bits — included with Pro.
         </p>
         <Link
           href="/pricing"
