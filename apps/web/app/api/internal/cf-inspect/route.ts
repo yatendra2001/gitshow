@@ -15,44 +15,8 @@ import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { requireProApi } from "@/lib/entitlements";
 import { getDomainByUser } from "@/lib/domains/repo";
-import { CNAME_TARGET } from "@/lib/domains/security";
-import { setCustomOriginSni } from "@/lib/domains/cloudflare";
 
 export const dynamic = "force-dynamic";
-
-/**
- * POST: one-time fix for an existing hostname that was created before
- * we started setting custom_origin_sni on create. PATCHes the live CF
- * for SaaS hostname to set custom_origin_sni = cname.gitshow.io, which
- * breaks the SaaS-pipeline-loop that was causing the 522.
- */
-export async function POST() {
-  const gate = await requireProApi();
-  if (!gate.ok) return gate.response;
-  const userId = gate.session.user.id;
-  const { env } = await getCloudflareContext({ async: true });
-
-  const row = await getDomainByUser(env.DB, userId);
-  if (!row?.cf_custom_hostname_id) {
-    return NextResponse.json({ error: "no_cf_id" }, { status: 400 });
-  }
-  try {
-    const updated = await setCustomOriginSni(
-      env,
-      row.cf_custom_hostname_id,
-      CNAME_TARGET,
-    );
-    return NextResponse.json({ ok: true, updated });
-  } catch (err) {
-    return NextResponse.json(
-      {
-        ok: false,
-        error: err instanceof Error ? err.message : String(err),
-      },
-      { status: 500 },
-    );
-  }
-}
 
 export async function GET() {
   const gate = await requireProApi();
