@@ -238,7 +238,7 @@ function EmptyState({
             Add your domain
           </h2>
           <p className="mt-1 text-[12px] text-muted-foreground">
-            We'll handle SSL and routing. Setup takes about 2 minutes.
+            Takes about 2 minutes.
           </p>
         </div>
         <div className="px-5 py-5">
@@ -337,7 +337,7 @@ function EmptyState({
           </AnimatePresence>
 
           <p className="mt-5 text-[11.5px] text-muted-foreground/80">
-            Until set up, your portfolio stays at{" "}
+            Your portfolio is also live at{" "}
             <span className="font-mono text-foreground/70">
               gitshow.io/{publicSlug}
             </span>
@@ -345,8 +345,6 @@ function EmptyState({
           </p>
         </div>
       </Card>
-
-      <ApexNote />
     </div>
   );
 }
@@ -356,8 +354,6 @@ function EmptyState({
 function ProviderChip({
   provider,
   providerLabel,
-  isApex,
-  apexStrategy,
   forceProvider,
   onForceProvider,
 }: {
@@ -386,23 +382,8 @@ function ProviderChip({
             detectionUnknown ? "bg-muted-foreground/60" : "bg-emerald-500",
           )}
         />
-        {detectionUnknown ? "DNS provider not detected" : `Detected: ${providerLabel}`}
+        {detectionUnknown ? "Pick where it's hosted" : `Hosted on ${providerLabel}`}
       </div>
-      {isApex ? (
-        <div className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11.5px] font-medium bg-foreground/[0.04] text-muted-foreground">
-          Apex domain
-          {apexStrategy ? (
-            <span className="text-foreground/70">·</span>
-          ) : null}
-          {apexStrategy === "cname_flatten"
-            ? "CNAME flattening"
-            : apexStrategy === "alias"
-              ? "ALIAS record"
-              : apexStrategy === "www_redirect"
-                ? "www + 301"
-                : null}
-        </div>
-      ) : null}
       {detectionUnknown ? (
         <ProviderPicker forceProvider={forceProvider} onForceProvider={onForceProvider} />
       ) : null}
@@ -452,39 +433,16 @@ function ProviderPicker({
 
 function PreviewSummary({
   preview,
-  cnameTarget,
 }: {
   preview: PreviewResult;
   cnameTarget: string;
 }) {
   if (!preview.setupCard) return null;
   return (
-    <div className="rounded-md border border-border/40 bg-card/40 p-3">
-      <div className="flex items-start justify-between gap-3">
-        <div className="text-[12.5px] leading-relaxed">
-          <span className="font-medium">{preview.setupCard.title}</span>
-          {preview.setupCard.deepLink ? (
-            <a
-              href={preview.setupCard.deepLink}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="ml-2 inline-flex items-center gap-0.5 text-[11.5px] text-muted-foreground hover:text-foreground"
-            >
-              Open
-              <Icon icon={ArrowUpRight01Icon} className="size-2.5" />
-            </a>
-          ) : null}
-        </div>
-        {preview.sourceTier === "ai_generated" ? (
-          <span className="rounded-full px-2 py-0.5 text-[10.5px] font-medium bg-foreground/[0.04] text-muted-foreground">
-            AI-assisted
-          </span>
-        ) : null}
-      </div>
-      <div className="mt-2 text-[11.5px] text-muted-foreground/90">
-        Target value: <span className="font-mono text-foreground">{cnameTarget}</span>
-      </div>
-    </div>
+    <p className="text-[12px] text-muted-foreground leading-relaxed">
+      Click <span className="text-foreground font-medium">Connect</span> and
+      we'll show you exactly where to add one short line in your DNS settings.
+    </p>
   );
 }
 
@@ -581,9 +539,9 @@ function SetupState({
       <Card>
         <div className="px-5 py-4 border-b border-border/40 flex items-center justify-between">
           <div>
-            <h2 className="text-[14px] font-semibold tracking-tight">Provisioning</h2>
+            <h2 className="text-[14px] font-semibold tracking-tight">Setup</h2>
             <p className="mt-0.5 text-[11.5px] text-muted-foreground">
-              We poll every few seconds while you set up DNS.
+              We'll check automatically every few seconds.
             </p>
           </div>
           <button
@@ -627,13 +585,13 @@ function statusBlurb(
   status: DomainState["status"],
   v: VerifyResponse | null,
 ): string {
-  if (status === "failed") return "Setup failed. See below for details.";
-  if (status === "suspended") return "Routing is paused — DNS stopped resolving.";
-  if (status === "active") return "Live and serving.";
-  if (v?.cf?.userVisible === "active") return "Cert active. Routing will go live in seconds.";
-  if (status === "provisioning") return "DNS verified. Issuing your TLS certificate…";
-  if (v?.dns.ok) return "DNS verified. Waiting for the certificate.";
-  return "Waiting for your DNS record. Once added, we verify automatically.";
+  if (status === "failed") return "Something went wrong. We can help.";
+  if (status === "suspended") return "Your domain stopped pointing here. Check your DNS settings.";
+  if (status === "active") return "Live.";
+  if (v?.cf?.userVisible === "active") return "Almost there. Going live in a moment…";
+  if (status === "provisioning") return "Got your domain. Securing it now…";
+  if (v?.dns.ok) return "Got your domain. Securing it now…";
+  return "Waiting for your DNS record. We'll detect it automatically.";
 }
 
 // ─── Timeline ────────────────────────────────────────────────────────
@@ -641,10 +599,10 @@ function statusBlurb(
 type TimelineStage = "dns" | "ssl" | "edge" | "live";
 
 const TIMELINE_STEPS: Array<{ key: TimelineStage; label: string; detail: string }> = [
-  { key: "dns", label: "DNS verified", detail: "Your CNAME is resolving" },
-  { key: "ssl", label: "SSL provisioned", detail: "Let's Encrypt certificate" },
-  { key: "edge", label: "Edge cached", detail: "300+ regions" },
-  { key: "live", label: "Live", detail: "Your portfolio is served" },
+  { key: "dns", label: "Connecting", detail: "Picking up your domain" },
+  { key: "ssl", label: "Securing", detail: "Issuing your certificate" },
+  { key: "edge", label: "Optimizing", detail: "Speeding it up worldwide" },
+  { key: "live", label: "Live", detail: "Your portfolio is online" },
 ];
 
 const STAGE_INDEX: Record<TimelineStage, number> = {
@@ -742,7 +700,10 @@ function SetupInstructions({
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader title="Step 1 · Routing record" subtitle="Add this in your DNS provider." />
+        <CardHeader
+          title="Add this to your DNS"
+          subtitle="One record. Copy and paste."
+        />
         <div className="px-5 py-4">
           {setup ? (
             <InstructionStepsList card={setup} cnameTarget={cnameTarget} />
@@ -754,21 +715,21 @@ function SetupInstructions({
 
       <Card>
         <CardHeader
-          title="Step 2 · Verification record"
-          subtitle="Proves you own the domain. Required before SSL."
+          title="Confirm it's yours"
+          subtitle="One quick check, then we go live."
         />
         <div className="px-5 py-4">
           {verifyState?.cf?.txtName && verifyState?.cf?.txtValue ? (
             <VerificationCard
               host={verifyState.cf.txtName}
               value={verifyState.cf.txtValue}
-              providerLabel={domain.providerLabel ?? "your DNS provider"}
+              providerLabel={domain.providerLabel ?? "your DNS"}
             />
           ) : verify ? (
             <InstructionStepsList card={verify} cnameTarget={cnameTarget} />
           ) : (
             <p className="text-[12px] text-muted-foreground">
-              We'll show the exact TXT value here once DNS routing is detected.
+              We'll show this once your first record lands.
             </p>
           )}
         </div>
@@ -776,21 +737,7 @@ function SetupInstructions({
 
       {preview?.sourceTier === "ai_generated" && preview.citations?.length ? (
         <p className="text-[10.5px] text-muted-foreground/70">
-          Steps generated with AI from{" "}
-          {preview.citations.slice(0, 3).map((c, i) => (
-            <span key={c}>
-              <a
-                href={c}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
-              >
-                source {i + 1}
-              </a>
-              {i < Math.min(preview.citations!.length, 3) - 1 ? ", " : ""}
-            </span>
-          ))}
-          .{" "}
+          Auto-generated for your provider.{" "}
           <FeedbackButtons
             provider={domain.detectedProvider ?? "unknown"}
             kind={setup?.kind ?? "cname_subdomain"}
@@ -839,11 +786,11 @@ function VerificationCard({
   return (
     <div className="space-y-3">
       <p className="text-[12.5px] text-muted-foreground">
-        Add this TXT record on {providerLabel}.
+        Add one more record on {providerLabel}.
       </p>
       <div className="grid gap-2 sm:grid-cols-2">
         <Field label="Type" value="TXT" />
-        <Field label="Host" value={host} copy />
+        <Field label="Name" value={host} copy />
         <div className="sm:col-span-2">
           <Field label="Value" value={value} copy />
         </div>
@@ -928,16 +875,17 @@ function FeedbackButtons({ provider, kind }: { provider: string; kind: string })
     }).catch(() => null);
   };
   if (submitted) {
-    return <span>Thanks for the feedback.</span>;
+    return <span>Thanks for letting us know.</span>;
   }
   return (
     <span className="inline-flex items-center gap-1">
+      Worked for you?{" "}
       <button
         type="button"
         onClick={() => send(true)}
         className="underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
       >
-        Helpful
+        Yes
       </button>
       <span>·</span>
       <button
@@ -945,7 +893,7 @@ function FeedbackButtons({ provider, kind }: { provider: string; kind: string })
         onClick={() => send(false)}
         className="underline decoration-muted-foreground/40 underline-offset-2 hover:text-foreground"
       >
-        Off
+        Not quite
       </button>
     </span>
   );
@@ -976,7 +924,7 @@ function ActiveState({
             {domain.hostname} is live
           </div>
           <div className="text-[11.5px] text-muted-foreground">
-            Activated{" "}
+            Live since{" "}
             {domain.activatedAt
               ? new Date(domain.activatedAt).toLocaleDateString(undefined, {
                   month: "short",
@@ -984,7 +932,6 @@ function ActiveState({
                   year: "numeric",
                 })
               : "just now"}
-            {domain.providerLabel ? ` · DNS on ${domain.providerLabel}` : null}
           </div>
         </div>
         <a
@@ -1025,13 +972,12 @@ function DangerZone({
       <div className="px-5 py-4 border-b border-border/40">
         <h2 className="text-[14px] font-semibold tracking-tight">Disconnect</h2>
         <p className="mt-0.5 text-[11.5px] text-muted-foreground">
-          Stops routing {hostname}. Your DNS record will keep pointing at us
-          until you remove it.
+          Take {hostname} off your portfolio.
         </p>
       </div>
       <div className="px-5 py-4 flex items-center justify-between gap-3">
         <p className="text-[12px] text-muted-foreground">
-          Reconnecting later requires fresh verification (30-day cooldown).
+          You can reconnect anytime.
         </p>
         {confirming ? (
           <div className="flex items-center gap-2">
@@ -1145,37 +1091,17 @@ function StatusPill({ status }: { status: DomainState["status"] }) {
 function labelFor(s: DomainState["status"]): string {
   switch (s) {
     case "pending":
-      return "Pending";
     case "verifying":
-      return "Verifying";
+      return "Setting up";
     case "provisioning":
-      return "Provisioning";
+      return "Securing";
     case "active":
       return "Live";
     case "suspended":
-      return "Suspended";
+      return "Paused";
     case "failed":
-      return "Failed";
+      return "Needs attention";
   }
-}
-
-function ApexNote() {
-  return (
-    <div className="rounded-xl border border-border/40 bg-card/30 px-5 py-4">
-      <h3 className="text-[12.5px] font-semibold tracking-tight">
-        Apex domains
-      </h3>
-      <p className="mt-1 text-[12px] text-muted-foreground leading-relaxed">
-        For root domains like{" "}
-        <span className="font-mono text-foreground">yatendra.com</span>, the path
-        depends on your DNS provider. If your provider supports CNAME flattening
-        (Cloudflare) or ALIAS records (DNSimple, Porkbun, NS1), you can point the
-        apex directly. If not, we'll set up{" "}
-        <span className="font-mono text-foreground">www.yatendra.com</span> + a
-        301-redirect from the apex — works on every registrar.
-      </p>
-    </div>
-  );
 }
 
 function Skeleton() {

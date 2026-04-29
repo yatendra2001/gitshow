@@ -33,10 +33,10 @@ export function DomainAttributionCard({
       <div className="flex items-baseline justify-between gap-3">
         <div>
           <h3 className="text-[13px] font-semibold leading-tight tracking-tight">
-            Custom domain attribution
+            Your domain
           </h3>
           <p className="mt-1 text-[11.5px] text-muted-foreground/80 leading-tight">
-            Where your traffic actually arrives
+            How visitors are finding you
           </p>
         </div>
         <Link
