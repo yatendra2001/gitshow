@@ -61,9 +61,11 @@ export default function TerminalTemplate() {
             <Whoami r={r} handle={handle} />
           </Block>
 
-          <Block command="cat about.md" sectionId="about" onView={setActiveSection}>
-            <About summary={r.person.summary} />
-          </Block>
+          {!hidden.has("about") && (
+            <Block command="cat about.md" sectionId="about" onView={setActiveSection}>
+              <About summary={r.person.summary} />
+            </Block>
+          )}
 
           {!hidden.has("work") && r.work.length > 0 && (
             <Block
@@ -85,7 +87,7 @@ export default function TerminalTemplate() {
             </Block>
           )}
 
-          {r.skills.length > 0 && (
+          {!hidden.has("skills") && r.skills.length > 0 && (
             <Block command="ls skills/" sectionId="skills" onView={setActiveSection}>
               <SkillsGrid skills={r.skills} />
             </Block>
@@ -127,9 +129,11 @@ export default function TerminalTemplate() {
             </Block>
           )}
 
-          <Block command="cat ~/.contacts" sectionId="contact" onView={setActiveSection}>
-            <Contacts email={r.contact.email} socials={socials} />
-          </Block>
+          {!hidden.has("contact") && (
+            <Block command="cat ~/.contacts" sectionId="contact" onView={setActiveSection}>
+              <Contacts email={r.contact.email} socials={socials} />
+            </Block>
+          )}
 
           <div className="mt-10 flex items-center gap-2">
             <Prompt user={handle} cwd="~" />

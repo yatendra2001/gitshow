@@ -29,6 +29,7 @@ import {
   ListEditor,
   MediaUploadField,
   SelectField,
+  TagsField,
   TextareaField,
 } from "./_form";
 import { SkillIconPicker } from "@/components/skill-icon-picker";
@@ -462,20 +463,12 @@ export function ProjectsSectionForm({
             onChange={(v) => onItemChange({ ...item, description: v })}
             rows={4}
           />
-          <TextareaField
-            label="Technologies (comma-separated)"
-            value={item.technologies.join(", ")}
-            onChange={(v) =>
-              onItemChange({
-                ...item,
-                technologies: v
-                  .split(",")
-                  .map((s) => s.trim())
-                  .filter(Boolean),
-              })
-            }
-            rows={2}
-            placeholder="Next.js, TypeScript, Postgres, Stripe"
+          <TagsField
+            label="Technologies"
+            value={item.technologies}
+            onChange={(next) => onItemChange({ ...item, technologies: next })}
+            placeholder="Next.js, TypeScript, Postgres…"
+            hint="Press Enter or comma to add. Backspace to remove the last."
           />
           <LinkListEditor
             label="Links"
@@ -1048,7 +1041,6 @@ export function LayoutSectionForm({
   resume: Resume;
   onPatch: (patch: Partial<Resume>) => void;
 }) {
-  const order = resume.sections.order;
   const hidden = new Set(resume.sections.hidden);
 
   const toggleHidden = (key: SectionKey) => {
@@ -1059,20 +1051,6 @@ export function LayoutSectionForm({
       sections: {
         ...resume.sections,
         hidden: Array.from(next) as typeof resume.sections.hidden,
-      },
-    });
-  };
-
-  const move = (key: SectionKey, dir: -1 | 1) => {
-    const i = order.indexOf(key);
-    const target = i + dir;
-    if (i < 0 || target < 0 || target >= order.length) return;
-    const next = [...order];
-    [next[i], next[target]] = [next[target], next[i]];
-    onPatch({
-      sections: {
-        ...resume.sections,
-        order: next as typeof resume.sections.order,
       },
     });
   };
@@ -1088,21 +1066,18 @@ export function LayoutSectionForm({
   return (
     <div className="flex flex-col gap-4">
       <p className="text-[12px] text-muted-foreground">
-        Reorder or hide whole sections of your portfolio. Hidden sections
-        stay in the draft but don&apos;t render on the live page.
+        Show or hide sections of your portfolio. Hidden sections stay in
+        the draft but don&apos;t render on the live page.
       </p>
       <div className="flex flex-col gap-2">
-        {order.map((key, i) => (
+        {TOGGLABLE_SECTIONS.map((key) => (
           <div
             key={key}
             className="flex items-center justify-between gap-3 rounded-xl border border-border/40 bg-card/40 px-4 py-2"
           >
             <div className="flex items-center gap-3">
-              <span className="font-mono text-[11px] text-muted-foreground w-6">
-                {i + 1}.
-              </span>
               <span className="text-[13px] font-medium capitalize">
-                {SECTION_LABELS[key] ?? key}
+                {SECTION_LABELS[key]}
               </span>
               {hidden.has(key) ? (
                 <span className="text-[10px] uppercase tracking-wide rounded bg-[var(--destructive)]/10 text-[var(--destructive)] px-1.5 py-0.5">
@@ -1110,31 +1085,13 @@ export function LayoutSectionForm({
                 </span>
               ) : null}
             </div>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => move(key, -1)}
-                disabled={i === 0}
-                className="h-7 w-7 rounded border border-border/40 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                ↑
-              </button>
-              <button
-                type="button"
-                onClick={() => move(key, +1)}
-                disabled={i === order.length - 1}
-                className="h-7 w-7 rounded border border-border/40 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
-              >
-                ↓
-              </button>
-              <button
-                type="button"
-                onClick={() => toggleHidden(key)}
-                className="ml-1 rounded border border-border/40 px-2 h-7 text-[11px] text-muted-foreground hover:text-foreground"
-              >
-                {hidden.has(key) ? "Show" : "Hide"}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => toggleHidden(key)}
+              className="rounded border border-border/40 px-2 h-7 text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              {hidden.has(key) ? "Show" : "Hide"}
+            </button>
           </div>
         ))}
       </div>
@@ -1143,7 +1100,7 @@ export function LayoutSectionForm({
         onClick={reset}
         className="self-start text-[11px] text-muted-foreground hover:text-foreground underline underline-offset-2"
       >
-        Reset to default order
+        Reset to default
       </button>
     </div>
   );
@@ -1161,6 +1118,18 @@ const SECTION_LABELS: Record<SectionKey, string> = {
   buildLog: "Build Log",
   contact: "Contact",
 };
+
+const TOGGLABLE_SECTIONS: SectionKey[] = [
+  "about",
+  "work",
+  "education",
+  "skills",
+  "projects",
+  "hackathons",
+  "publications",
+  "buildLog",
+  "contact",
+];
 
 /**
  * Template picker — gallery of every available template variant. The

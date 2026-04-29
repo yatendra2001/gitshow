@@ -68,9 +68,9 @@ export default function GlowTemplate() {
       <main className="relative z-10 mx-auto max-w-[760px] px-5 sm:px-6 pt-20 sm:pt-28 pb-32">
         <Hero r={r} />
 
-        {r.skills.length > 0 && <TechMarquee skills={r.skills} />}
+        {!hidden.has("skills") && r.skills.length > 0 && <TechMarquee skills={r.skills} />}
 
-        {r.work[0] && <CurrentlyBuilding work={r.work[0]} />}
+        {!hidden.has("work") && r.work[0] && <CurrentlyBuilding work={r.work[0]} />}
 
         {!hidden.has("projects") && r.projects.length > 0 && (
           <Section eyebrow="Selected Work" title="Things I've shipped." delay={1}>
@@ -96,9 +96,11 @@ export default function GlowTemplate() {
           </Section>
         )}
 
-        <About summary={r.person.summary} />
+        {!hidden.has("about") && <About summary={r.person.summary} />}
 
-        <Contact email={r.contact.email} socials={socials} name={r.person.name} />
+        {!hidden.has("contact") && (
+          <Contact email={r.contact.email} socials={socials} name={r.person.name} />
+        )}
       </main>
     </div>
   );
