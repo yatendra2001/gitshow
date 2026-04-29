@@ -1,0 +1,37 @@
+name: Custom domains — hourly recheck
+
+# Re-resolves CNAMEs + polls Cloudflare for SaaS for SSL drift on every
+# active custom domain. Idempotent + bounded (100 hostnames/run) — see
+# apps/web/app/api/cron/domains-recheck/route.ts.
+#
+# Why a GitHub Actions cron and not Cloudflare's `triggers.crons`:
+# OpenNext's Next.js worker exports `fetch` only, no `scheduled()`
+# handler. Routing a Cloudflare cron at our HTTP route would need a
+# second worker. GitHub Actions is dirt cheap, observable, and we
+# already use it for `migrate-d1`.
+
+on:
+  schedule:
+    - cron: "17 * * * *" # every hour at :17 to spread load off the top
+  workflow_dispatch:
+
+concurrency:
+  group: cron-domains-recheck
+  cancel-in-progress: false
+
+jobs:
+  recheck:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST to recheck endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          curl -sS --fail-with-body \
+            -X POST \
+            -H "authorization: Bearer ${CRON_SECRET}" \
+            -H "content-type: application/json" \
+            --max-time 60 \
+            https://gitshow.io/api/cron/domains-recheck

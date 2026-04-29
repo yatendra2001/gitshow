@@ -21,11 +21,16 @@ export function TrackView({ handle }: { handle: string }) {
     hitRef.current = true;
     const path = window.location.pathname + window.location.search;
     const referrer = document.referrer || null;
+    // Tell the server which hostname the user actually loaded on so the
+    // dashboard can attribute traffic to a custom domain vs gitshow.io.
+    // The middleware also injects `x-gs-served-hostname`; the body is a
+    // belt-and-braces fallback for cases where the rewrite path drops it.
+    const host = window.location.host;
     void fetch(`/api/views/${encodeURIComponent(handle)}`, {
       method: "POST",
       keepalive: true,
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ path, referrer }),
+      body: JSON.stringify({ path, referrer, host }),
     }).catch(() => {
       // Swallow — best-effort metric.
     });

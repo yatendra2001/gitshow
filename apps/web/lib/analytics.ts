@@ -398,3 +398,108 @@ export async function loadDashboard(
     hasAnyEvents: kpis.viewsAllTime > 0,
   };
 }
+
+// ─── Custom-domain attribution split ──────────────────────────────
+//
+// "How much of my traffic came via my custom domain vs gitshow.io?"
+// Returns the count split for the active window, plus the hostnames
+// observed (so the UI can show a bar with the actual labels).
+
+export interface AttributionSplit {
+  /** Total non-bot views in the window. */
+  total: number;
+  /** Non-bot views served via a custom domain. */
+  customViews: number;
+  /** Non-bot views served via gitshow.io / canonical. */
+  canonicalViews: number;
+  /** % share of custom-domain traffic, 0-100, integer. null if no traffic. */
+  customSharePct: number | null;
+  /** Hostnames seen, sorted by views desc, capped at 5. */
+  hostnames: Array<{ hostname: string; views: number; isCustom: boolean }>;
+}
+
+export const getAttributionSplit = cache(_getAttributionSplit);
+
+async function _getAttributionSplit(
+  db: D1Database,
+  slug: string,
+  days: number,
+): Promise<AttributionSplit> {
+  const windowStart = Date.now() - days * DAY_MS;
+  const rows = await db
+    .prepare(
+      `SELECT
+          COALESCE(NULLIF(served_hostname, ''), 'unknown') AS hostname,
+          is_custom_domain AS is_custom,
+          COUNT(*) AS views
+        FROM view_events
+        WHERE slug = ? AND ts >= ? AND device != 'bot'
+        GROUP BY hostname, is_custom
+        ORDER BY views DESC`,
+    )
+    .bind(slug, windowStart)
+    .all<{ hostname: string; is_custom: number; views: number }>();
+  const list = rows.results ?? [];
+  let total = 0;
+  let custom = 0;
+  let canonical = 0;
+  for (const r of list) {
+    total += r.views;
+    if (r.is_custom === 1) custom += r.views;
+    else canonical += r.views;
+  }
+  const customSharePct = total === 0 ? null : Math.round((custom / total) * 100);
+  return {
+    total,
+    customViews: custom,
+    canonicalViews: canonical,
+    customSharePct,
+    hostnames: list.slice(0, 5).map((r) => ({
+      hostname: r.hostname,
+      views: r.views,
+      isCustom: r.is_custom === 1,
+    })),
+  };
+}
+
+// ─── UTM campaigns ────────────────────────────────────────────────
+//
+// "How did my LinkedIn post perform?" — group by `utm_campaign`
+// (fallback to utm_source when campaign is unset). Top 8.
+
+export interface CampaignRow {
+  campaign: string;
+  source: string | null;
+  medium: string | null;
+  views: number;
+  uniques: number;
+}
+
+export const getTopCampaigns = cache(_getTopCampaigns);
+
+async function _getTopCampaigns(
+  db: D1Database,
+  slug: string,
+  days: number,
+  limit: number,
+): Promise<CampaignRow[]> {
+  const windowStart = Date.now() - days * DAY_MS;
+  const rows = await db
+    .prepare(
+      `SELECT
+          COALESCE(NULLIF(utm_campaign, ''), NULLIF(utm_source, ''), 'untagged') AS campaign,
+          NULLIF(utm_source, '') AS source,
+          NULLIF(utm_medium, '') AS medium,
+          COUNT(*) AS views,
+          COUNT(DISTINCT visitor_hash) AS uniques
+        FROM view_events
+        WHERE slug = ? AND ts >= ? AND device != 'bot'
+          AND (utm_source IS NOT NULL OR utm_campaign IS NOT NULL)
+        GROUP BY campaign, source, medium
+        ORDER BY views DESC
+        LIMIT ?`,
+    )
+    .bind(slug, windowStart, limit)
+    .all<CampaignRow>();
+  return rows.results ?? [];
+}

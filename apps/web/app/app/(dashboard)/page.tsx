@@ -19,6 +19,7 @@ import {
 import { loadDashboardContext } from "./_context";
 import { loadDraftResume } from "@/lib/resume-io";
 import {
+  getAttributionSplit,
   getBrowserBreakdown,
   getDeviceBreakdown,
   getHourlyPattern,
@@ -28,6 +29,7 @@ import {
   getTopReferrers,
   getViewsTimeseries,
 } from "@/lib/analytics";
+import { getDomainByUser } from "@/lib/domains/repo";
 import {
   BrowsersDonut,
   DevicesDonut,
@@ -36,6 +38,7 @@ import {
   RecentActivity,
   SectionCard,
 } from "@/components/dashboard/analytics-cards";
+import { DomainAttributionCard } from "@/components/dashboard/domain-attribution";
 import {
   HourlyTraffic,
   SourcesBarChart,
@@ -99,6 +102,14 @@ export default async function AppHomePage({
     rangeParam && rangeParam in RANGE_DAYS ? rangeParam : "30d";
   const days = RANGE_DAYS[rangeKey];
 
+  // Order matters: a user who just hit Dodo's success URL is in the
+  // window between checkout completing and `subscription.active`
+  // landing via webhook. During that gap `ctx.isPro` is still false,
+  // so the NonProShowcase check below would intercept and hide the
+  // polling screen. CheckoutProcessingState handles its own bail-out
+  // (90s hard-stop with a retry CTA) so a missing webhook can't leave
+  // the customer here forever.
+  if (!ctx.isPro && justCheckedOut) return <CheckoutProcessingState />;
   if (!ctx.isPro) {
     return (
       <NonProShowcase
@@ -108,7 +119,6 @@ export default async function AppHomePage({
       />
     );
   }
-  if (justCheckedOut) return <CheckoutProcessingState />;
 
   const { env } = await getCloudflareContext({ async: true });
   const userId = ctx.userId;
@@ -212,6 +222,13 @@ export default async function AppHomePage({
 
       <Suspense fallback={null}>
         <LiveTickerStream db={db} slug={slug} days={days} />
+      </Suspense>
+
+      {/* Custom domain attribution — only renders if the user has an
+          active custom domain. Streams independently so it doesn't
+          delay anything else. */}
+      <Suspense fallback={null}>
+        <AttributionStream db={db} slug={slug} userId={ctx.userId} days={days} />
       </Suspense>
 
       {/* Hero KPIs */}
@@ -462,6 +479,25 @@ async function RecentStream({ db, slug }: Omit<SectionProps, "days">) {
   return (
     <div className="gs-enter">
       <RecentActivity rows={recent} />
+    </div>
+  );
+}
+
+async function AttributionStream({
+  db,
+  slug,
+  userId,
+  days,
+}: SectionProps & { userId: string }) {
+  const [domain, split] = await Promise.all([
+    getDomainByUser(db, userId),
+    getAttributionSplit(db, slug, days),
+  ]);
+  if (!domain || domain.status !== "active") return null;
+  if (!split.total) return null;
+  return (
+    <div className="mb-3 gs-enter">
+      <DomainAttributionCard split={split} customHostname={domain.hostname} />
     </div>
   );
 }
