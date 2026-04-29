@@ -26,6 +26,7 @@ import {
   BarChart,
   CartesianGrid,
   Cell,
+  Label,
   Pie,
   PieChart,
   ResponsiveContainer,
@@ -371,11 +372,16 @@ export function SegmentedDonut({
     data.map((d, i) => [d.key, { label: d.label, color: pick(i) }]),
   );
   const innerRadius = variant === "filled" ? 0 : "58%";
+  const showCenter = variant === "donut" && Boolean(centerValue);
   return (
-    <div className="relative w-full" style={{ height }}>
+    <div className="w-full" style={{ height }}>
       <ChartContainer config={config} className="aspect-auto h-full w-full">
         <PieChart margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
           <Tooltip
+            // shadcn canonical pattern for pie/donut: disable the cursor
+            // highlight (no-op visually for pies, but matches the
+            // upstream chart-pie-donut example).
+            cursor={false}
             content={
               <ChartTooltipContent
                 hideLabel
@@ -419,21 +425,59 @@ export function SegmentedDonut({
             {data.map((d, i) => (
               <Cell key={d.key} fill={pick(i)} />
             ))}
+            {showCenter ? (
+              <Label
+                // Render the center label as SVG `<text>` (shadcn's
+                // chart-pie-donut-text pattern). A separate absolute-
+                // positioned div would sit in the same z-layer as the
+                // tooltip, causing the center copy and the tooltip box
+                // to bleed through each other when they overlap. As an
+                // SVG primitive, the label sits *under* the tooltip's
+                // bg-popover div, which cleanly covers it on hover.
+                content={({ viewBox }) => {
+                  if (!viewBox || !("cx" in viewBox) || !("cy" in viewBox)) {
+                    return null;
+                  }
+                  const cx = Number(viewBox.cx ?? 0);
+                  const cy = Number(viewBox.cy ?? 0);
+                  return (
+                    <text x={cx} y={cy} textAnchor="middle" dominantBaseline="middle">
+                      {centerLabel ? (
+                        <tspan
+                          x={cx}
+                          y={cy - 9}
+                          className="fill-muted-foreground"
+                          style={{
+                            fontSize: 10,
+                            fontWeight: 500,
+                            letterSpacing: "0.08em",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {centerLabel}
+                        </tspan>
+                      ) : null}
+                      <tspan
+                        x={cx}
+                        y={centerLabel ? cy + 12 : cy}
+                        className="fill-foreground"
+                        style={{
+                          fontSize: 22,
+                          fontWeight: 600,
+                          letterSpacing: "-0.01em",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {centerValue}
+                      </tspan>
+                    </text>
+                  );
+                }}
+              />
+            ) : null}
           </Pie>
         </PieChart>
       </ChartContainer>
-      {variant === "donut" && centerValue ? (
-        <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-          {centerLabel ? (
-            <span className="text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/70">
-              {centerLabel}
-            </span>
-          ) : null}
-          <span className="text-[22px] font-semibold leading-none tabular-nums tracking-tight">
-            {centerValue}
-          </span>
-        </div>
-      ) : null}
     </div>
   );
 }
