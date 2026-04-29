@@ -82,7 +82,9 @@ export async function POST(req: Request) {
           : fullRow.hostname;
 
       const dns = await resolveCnameQuorum(cfHostname, CNAME_TARGET);
-      let cfStatus: { status: string; ssl: string } | null = null;
+      let cfStatus:
+        | { status: string; ssl: string; ownership?: { name?: string; value?: string } | null }
+        | null = null;
       let cfId = fullRow.cf_custom_hostname_id;
 
       // If DNS is set up but we never successfully created the CF for
@@ -102,7 +104,16 @@ export async function POST(req: Request) {
             ownershipMethod: "txt",
           });
           cfId = ch.id;
-          cfStatus = { status: ch.status, ssl: ch.ssl.status };
+          cfStatus = {
+            status: ch.status,
+            ssl: ch.ssl.status,
+            ownership: ch.ownership_verification?.name
+              ? {
+                  name: ch.ownership_verification.name,
+                  value: ch.ownership_verification.value,
+                }
+              : null,
+          };
         } catch (err) {
           if (err instanceof CFForSaasError) {
             // 1414 = duplicate hostname pending cleanup; transient,

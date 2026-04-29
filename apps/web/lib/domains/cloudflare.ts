@@ -290,14 +290,37 @@ export async function deleteCustomHostname(
  * Best-effort SSL/hostname status sync. Used by both the verify endpoint
  * and the daily re-resolution cron. Returns null when CF doesn't know
  * the hostname (deleted, never created, or wrong id).
+ *
+ * Also returns `ownership` info while hostname pre-validation is still
+ * pending — used by the dashboard to show the user the TXT record they
+ * still need to add. Cloudflare keeps the same TXT challenge value
+ * across polls until the hostname goes Active, so we re-fetch on every
+ * verify call rather than relying on whatever was returned at create
+ * time (which gets lost when create happens in the cron path).
  */
 export async function pollHostnameStatus(
   env: CloudflareEnv,
   id: string,
-): Promise<{ status: CFHostnameStatus; ssl: CFSslStatus } | null> {
+): Promise<
+  | {
+      status: CFHostnameStatus;
+      ssl: CFSslStatus;
+      ownership: {
+        name?: string;
+        value?: string;
+      } | null;
+    }
+  | null
+> {
   try {
     const ch = await getCustomHostname(env, id);
-    return { status: ch.status, ssl: ch.ssl.status };
+    const ownership = ch.ownership_verification?.name
+      ? {
+          name: ch.ownership_verification.name,
+          value: ch.ownership_verification.value,
+        }
+      : null;
+    return { status: ch.status, ssl: ch.ssl.status, ownership };
   } catch (err) {
     if (err instanceof CFForSaasError && err.status === 404) return null;
     throw err;
