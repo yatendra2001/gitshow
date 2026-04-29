@@ -204,8 +204,39 @@ function EmptyState({
         }),
       });
       if (!res.ok) {
-        const err = (await res.json().catch(() => null)) as { message?: string } | null;
-        toast.error(err?.message ?? "Couldn't connect domain. Try again.");
+        const err = (await res.json().catch(() => null)) as
+          | { message?: string; error?: string; retryAfter?: number }
+          | null;
+        // 429s carry a retryAfter so we can show a longer toast that
+        // mentions the countdown — the 4-second default toast is too
+        // short to register a "wait 3 minutes" message.
+        const isRateLimit = res.status === 429 || err?.error === "rate_limited";
+        const message =
+          err?.message ?? "Couldn't connect domain. Try again in a moment.";
+        toast.error(message, {
+          duration: isRateLimit ? 8000 : 5000,
+          // For non-trivial errors, give the user a retry button so the
+          // path forward is obvious — clicking it just re-triggers
+          // onConnect after the delay if known.
+          ...(isRateLimit && err?.retryAfter
+            ? {
+                action: {
+                  label: "Retry",
+                  onClick: () => {
+                    setTimeout(
+                      () => {
+                        void onConnect();
+                      },
+                      Math.max(1000, (err.retryAfter ?? 1) * 1000),
+                    );
+                    toast.message(
+                      `We'll retry automatically in ${err.retryAfter}s.`,
+                    );
+                  },
+                },
+              }
+            : {}),
+        });
         return;
       }
       const created = (await res.json()) as DomainState & { hostname: string };
@@ -225,6 +256,14 @@ function EmptyState({
         lastCheckAt: null,
       });
       toast.success("Domain registered. Add the DNS record next.");
+    } catch (err) {
+      // Network error / fetch threw — never leave the user staring at
+      // a quiet button. Always surface SOMETHING.
+      toast.error(
+        err instanceof Error && err.message
+          ? `Connection failed: ${err.message}`
+          : "Couldn't reach our servers. Check your connection and try again.",
+      );
     } finally {
       setSubmitting(false);
     }
