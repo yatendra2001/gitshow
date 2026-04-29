@@ -6,6 +6,8 @@ import {
   type CustomDomainRow,
 } from "@/lib/domains/repo";
 import {
+  CFForSaasError,
+  createCustomHostname,
   pollHostnameStatus,
   userFacingSslStatus,
 } from "@/lib/domains/cloudflare";
@@ -81,14 +83,49 @@ export async function POST(req: Request) {
 
       const dns = await resolveCnameQuorum(cfHostname, CNAME_TARGET);
       let cfStatus: { status: string; ssl: string } | null = null;
-      if (fullRow.cf_custom_hostname_id) {
-        cfStatus = await pollHostnameStatus(env, fullRow.cf_custom_hostname_id);
+      let cfId = fullRow.cf_custom_hostname_id;
+
+      // If DNS is set up but we never successfully created the CF for
+      // SaaS hostname (e.g. previous attempt failed transiently), do
+      // it now. Same logic the verify endpoint runs — the cron is the
+      // safety net so a stuck row recovers without the user clicking
+      // "Check now".
+      if (dns.ok && !cfId) {
+        try {
+          const ch = await createCustomHostname(env, {
+            hostname: cfHostname,
+            customMetadata: {
+              userId: fullRow.user_id,
+              domainId: fullRow.id,
+            },
+            ownershipMethod: "txt",
+          });
+          cfId = ch.id;
+          cfStatus = { status: ch.status, ssl: ch.ssl.status };
+        } catch (err) {
+          if (err instanceof CFForSaasError) {
+            // 1414 = duplicate hostname pending cleanup; transient,
+            // try again next cron run.
+            if (!err.errors.some((e) => e.code === 1414 || e.code === 1419)) {
+              cfStatus = null;
+            }
+          }
+        }
+      } else if (cfId) {
+        cfStatus = await pollHostnameStatus(env, cfId);
       }
 
       let nextStatus = fullRow.status;
       let failureReason = fullRow.failure_reason;
 
       const sslVisible = userFacingSslStatus(cfStatus?.ssl as never);
+
+      // After a successful create, advance verifying → provisioning so
+      // the dashboard shows the right step the next time the user looks.
+      if (cfId && !fullRow.cf_custom_hostname_id && fullRow.status === "verifying") {
+        nextStatus = "provisioning";
+        failureReason = null;
+      }
 
       if (sslVisible === "failed") {
         nextStatus = "failed";
@@ -117,7 +154,9 @@ export async function POST(req: Request) {
         userId: row.user_id,
         next: nextStatus,
         prev: fullRow.status,
+        cfId: cfId ?? null,
         cfSslStatus: cfStatus?.ssl ?? null,
+        cfSslMethod: cfId && !fullRow.cf_ssl_method ? "http" : null,
         failureReason,
         actor: "system",
         eventType:
