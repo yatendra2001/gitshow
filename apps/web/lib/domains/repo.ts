@@ -291,16 +291,27 @@ export async function listActiveForRecheck(
   limit: number,
 ): Promise<Pick<CustomDomainRow, "id" | "user_id" | "hostname" | "cf_custom_hostname_id">[]> {
   const cutoff = Date.now() - staleAfterMs;
+  // Include `pending` and `verifying` so the cron can advance rows that
+  // never made it past the initial verify (e.g. transient CF API
+  // failure). Excluding them meant a stuck row had no way to recover
+  // unless the user re-clicked "Check now".
+  // Stale window: re-check every ~5 minutes for non-active states (we
+  // want to advance them quickly), every 24h for already-active.
+  const fastCutoff = Date.now() - 5 * 60 * 1000;
   const rows = await db
     .prepare(
       `SELECT id, user_id, hostname, cf_custom_hostname_id
          FROM custom_domains
-        WHERE status IN ('active','provisioning','suspended')
-          AND (last_active_check_at IS NULL OR last_active_check_at < ?)
-        ORDER BY COALESCE(last_active_check_at, 0) ASC
+        WHERE
+          (status IN ('active','provisioning','suspended')
+            AND (last_active_check_at IS NULL OR last_active_check_at < ?))
+          OR
+          (status IN ('pending','verifying')
+            AND (last_check_at IS NULL OR last_check_at < ?))
+        ORDER BY COALESCE(last_active_check_at, last_check_at, 0) ASC
         LIMIT ?`,
     )
-    .bind(cutoff, limit)
+    .bind(cutoff, fastCutoff, limit)
     .all<Pick<CustomDomainRow, "id" | "user_id" | "hostname" | "cf_custom_hostname_id">>();
   return rows.results ?? [];
 }

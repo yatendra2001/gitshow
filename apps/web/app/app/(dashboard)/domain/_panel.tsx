@@ -238,7 +238,7 @@ function EmptyState({
             Add your domain
           </h2>
           <p className="mt-1 text-[12px] text-muted-foreground">
-            Takes about 2 minutes.
+            Setup takes 1–5 minutes once you add the DNS record.
           </p>
         </div>
         <div className="px-5 py-5">
@@ -541,7 +541,7 @@ function SetupState({
           <div>
             <h2 className="text-[14px] font-semibold tracking-tight">Setup</h2>
             <p className="mt-0.5 text-[11.5px] text-muted-foreground">
-              We'll check automatically every few seconds.
+              Usually 1–5 minutes. We'll check automatically.
             </p>
           </div>
           <button
