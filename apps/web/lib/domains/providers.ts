@@ -201,10 +201,19 @@ export const PROVIDERS: Record<ProviderId, ProviderInfo> = {
   cloudflare: {
     id: "cloudflare",
     label: "Cloudflare",
-    apexStrategies: ["cname_flatten"],
-    supportsCnameFlatten: true,
+    // CNAME flattening at apex (cname_flatten) routes traffic correctly
+    // BUT Cloudflare for SaaS hostname VALIDATION can't complete on a
+    // Cloudflare-hosted apex — CF refuses TXT/HTTP pre-validation tokens
+    // for Cloudflare-hosted customer domains, and flattening hides the
+    // literal CNAME from CF's lookup. The only way to make apex work
+    // here is Enterprise "Apex Proxying" ($$$). For Free/Pro plans we
+    // route through www + a 301 redirect from the apex — same end-user
+    // experience for typing the bare domain, validation passes because
+    // www CNAMEs aren't flattened.
+    apexStrategies: ["www_redirect"],
+    supportsCnameFlatten: true, // technically supported, just not for SaaS validation
     supportsAlias: false,
-    supportsApexForward: false,
+    supportsApexForward: true, // via Redirect Rules
     helpUrl: "https://dash.cloudflare.com/?to=/:account/:zone/dns/records",
   },
   namecheap: {
@@ -496,6 +505,26 @@ const CURATED: Partial<Record<ProviderId, Partial<Record<InstructionSet["kind"],
         { text: "Name: @ (Cloudflare flattens this to A records automatically.)" },
         { text: `Target: ${c.cnameTarget}`, copyValue: c.cnameTarget },
         { text: "Proxy status: DNS only (grey cloud). Save." },
+      ],
+    }),
+    apex_url_forward: (c) => ({
+      provider: "cloudflare",
+      kind: "apex_url_forward",
+      title: "Route apex to www via a Redirect Rule",
+      deepLink: PROVIDERS.cloudflare.helpUrl,
+      steps: [
+        { text: "Open Cloudflare dashboard → DNS → Records." },
+        {
+          text: "If the root has any existing A, AAAA, or CNAME records, delete them — they'd shadow the redirect rule.",
+        },
+        { text: "Click Add record. Type: CNAME, Name: www." },
+        { text: `Target: ${c.cnameTarget}`, copyValue: c.cnameTarget },
+        { text: "Proxy status: DNS only (grey cloud). Save." },
+        {
+          text: "Then go to Rules → Redirect Rules → Create rule. When hostname equals " +
+            rootDomain(c.hostname) +
+            ", static redirect (301) to https://www." + rootDomain(c.hostname) + " — preserve query string and path.",
+        },
       ],
     }),
     txt_verify: (c) => ({
