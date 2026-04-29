@@ -90,6 +90,7 @@ export async function POST(req: Request) {
       // it now. Same logic the verify endpoint runs — the cron is the
       // safety net so a stuck row recovers without the user clicking
       // "Check now".
+      let cronCfError: string | null = null;
       if (dns.ok && !cfId) {
         try {
           const ch = await createCustomHostname(env, {
@@ -107,9 +108,18 @@ export async function POST(req: Request) {
             // 1414 = duplicate hostname pending cleanup; transient,
             // try again next cron run.
             if (!err.errors.some((e) => e.code === 1414 || e.code === 1419)) {
-              cfStatus = null;
+              cronCfError = `cf_${err.code}: ${err.message}`.slice(0, 240);
+            } else {
+              cronCfError = `cf_${err.code}_transient`;
             }
+          } else {
+            cronCfError = `unknown_error: ${(err as Error).message ?? "no message"}`.slice(0, 240);
           }
+          // Surface so we can see it in `wrangler tail` without a redeploy.
+          console.warn(
+            `[cron-recheck] createCustomHostname failed for ${fullRow.id} (${cfHostname}):`,
+            cronCfError,
+          );
         }
       } else if (cfId) {
         cfStatus = await pollHostnameStatus(env, cfId);
@@ -131,6 +141,9 @@ export async function POST(req: Request) {
         nextStatus = "failed";
         failureReason = `cf_ssl_${cfStatus?.ssl ?? "unknown"}`;
         failed += 1;
+      } else if (cronCfError) {
+        // Persist the latest error so it's visible in D1 + the dashboard.
+        failureReason = cronCfError;
       } else if (!dns.ok && fullRow.status === "active") {
         nextStatus = "suspended";
         failureReason = "cname_resolution_lost";
