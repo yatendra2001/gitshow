@@ -40,7 +40,6 @@ import { resolveCnameQuorum } from "@/lib/domains/verifier";
  * per hour gives plenty of headroom.)
  */
 
-export const runtime = "edge";
 export const dynamic = "force-dynamic";
 
 const STALE_AFTER_MS = 23 * 60 * 60 * 1000; // 23h
