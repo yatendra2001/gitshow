@@ -110,9 +110,13 @@ export async function POST(req: Request) {
     );
   }
 
-  // ─── Tombstoned? Re-claims allowed but require fresh verification. ──
+  // ─── Tombstoned? Re-claims allowed but require fresh verification.
+  // Same-user re-claims bypass the cooldown — the user already proved
+  // ownership and just released it, so the 30-day takeover-protection
+  // window is friction with no security benefit. Other users still
+  // wait it out (subdomain takeover defense). ────────────────────────
   const ts = await isHostnameTombstoned(env.DB, hostname);
-  if (ts.tombstoned) {
+  if (ts.tombstoned && ts.previousUserId !== userId) {
     return NextResponse.json(
       {
         error: "tombstoned",

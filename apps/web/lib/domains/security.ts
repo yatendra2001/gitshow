@@ -216,21 +216,41 @@ export async function recordAudit(db: D1Database, entry: AuditEntry): Promise<vo
 
 // ─── Tombstone helpers ─────────────────────────────────────────────────
 
+/**
+ * Tombstone status for a hostname. Returns the previous owner's user_id
+ * so the caller can decide whether to enforce the cooldown — same-user
+ * re-claims are allowed immediately (no security benefit to blocking
+ * them, just friction).
+ */
 export async function isHostnameTombstoned(
   db: D1Database,
   hostname: string,
-): Promise<{ tombstoned: boolean; cooldownUntil: number | null }> {
+): Promise<{
+  tombstoned: boolean;
+  cooldownUntil: number | null;
+  previousUserId: string | null;
+}> {
   const row = await db
     .prepare(
-      `SELECT cooldown_until FROM released_hostnames WHERE hostname = ?`,
+      `SELECT cooldown_until, previous_user_id FROM released_hostnames WHERE hostname = ?`,
     )
     .bind(hostname)
-    .first<{ cooldown_until: number }>();
-  if (!row) return { tombstoned: false, cooldownUntil: null };
-  if (row.cooldown_until <= Date.now()) {
-    return { tombstoned: false, cooldownUntil: row.cooldown_until };
+    .first<{ cooldown_until: number; previous_user_id: string | null }>();
+  if (!row) {
+    return { tombstoned: false, cooldownUntil: null, previousUserId: null };
   }
-  return { tombstoned: true, cooldownUntil: row.cooldown_until };
+  if (row.cooldown_until <= Date.now()) {
+    return {
+      tombstoned: false,
+      cooldownUntil: row.cooldown_until,
+      previousUserId: row.previous_user_id,
+    };
+  }
+  return {
+    tombstoned: true,
+    cooldownUntil: row.cooldown_until,
+    previousUserId: row.previous_user_id,
+  };
 }
 
 export async function tombstoneHostname(
