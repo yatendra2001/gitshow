@@ -79,24 +79,25 @@ async function queryAll(
 }
 
 /**
- * Confirms a hostname is wired up to land on *our* worker.
+ * "Has the customer set up a record that's pointing at us?" — the
+ * lenient gate used to decide whether we should register the hostname
+ * with Cloudflare for SaaS. Cloudflare itself is the authoritative
+ * judge of whether the records are correct — if they aren't (e.g.
+ * stale A records to a previous host), CF returns
+ * `ssl_status = validation_failed` and we surface that to the user.
  *
- * Two-tier check:
- *   1. CNAME quorum — if 2/3 resolvers report a CNAME on `name`
- *      pointing at `expectedTarget`, we're done. Cheap, no HTTPS.
- *   2. Reachability probe — if no CNAME match (or apex flatten case
- *      where Cloudflare flattens to A records), HTTPS-fetch
- *      `https://{name}/.well-known/gitshow-probe`. The probe endpoint
- *      returns a known signature only our worker can produce. If the
- *      response matches, DNS IS pointing at us — even if we never see
- *      a literal CNAME.
+ * What counts as "set up":
+ *   - CNAME quorum on `name` pointing at `expectedTarget` (subdomain
+ *     case — DoH sees the literal CNAME).
+ *   - At least one A or AAAA record at quorum (apex case — Cloudflare
+ *     flattens the CNAME at the root, so DoH only ever sees A records).
  *
- * Why the probe matters: the previous version accepted "any A or AAAA
- * record at the apex" as proof of correct setup. That's wrong — a
- * customer with stale A records pointing at an old host (Heroku,
- * Render, an ex-portfolio) would falsely pass the check, then look
- * confused when SSL never issued. The probe verifies the records
- * actually resolve to our edge, not just "to some IP."
+ * We don't HTTPS-probe at this stage because the probe can only
+ * succeed AFTER Cloudflare for SaaS has registered the hostname and
+ * issued a cert — which only happens AFTER we register. Chicken and
+ * egg. The caller (`/api/domains/verify`) handles end-to-end
+ * confirmation by polling CF SSL status; the probe is a separate
+ * helper used only as a final sanity check (see `probeReachability`).
  */
 export async function resolveCnameQuorum(
   name: string,
@@ -118,38 +119,52 @@ export async function resolveCnameQuorum(
     }
   }
 
-  // Tier 1: literal CNAME quorum — best case, no HTTPS round trip.
+  // Subdomain / explicit CNAME case — pass immediately on quorum.
   if (matchedCount >= QUORUM) {
     return { ok: true, matched: matchedCount, observed };
   }
 
-  // Tier 2: reachability probe. Catches Cloudflare CNAME flattening
-  // AND filters out stale A records pointing at a previous host.
-  const probe = await probeReachability(name);
-  if (probe.ok) {
+  // Apex flattening: DoH returns A/AAAA, no literal CNAME. If quorum
+  // resolvers see ANY records, count it as set-up evidence. CF will
+  // reject + report validation_failed if they don't actually point
+  // at its edge (e.g. stale Heroku IPs left behind).
+  const [aResponses, aaaaResponses] = await Promise.all([
+    queryAll(name, "A"),
+    queryAll(name, "AAAA"),
+  ]);
+  let withRecords = 0;
+  for (let i = 0; i < DOH_RESOLVERS.length; i++) {
+    const a = aResponses[i];
+    const aaaa = aaaaResponses[i];
+    const has =
+      ((a?.Answer ?? []).some((rr) => rr.type === TYPE_A) ||
+        (aaaa?.Answer ?? []).some((rr) => rr.type === TYPE_AAAA));
+    if (has) withRecords += 1;
+  }
+  if (withRecords >= QUORUM) {
     return {
       ok: true,
-      matched: matchedCount,
-      observed: [...observed, "<probe-ok>"],
+      matched: withRecords,
+      observed: [...observed, "<apex-A/AAAA>"],
     };
   }
 
-  return {
-    ok: false,
-    matched: matchedCount,
-    observed: probe.detail
-      ? [...observed, `<probe-fail: ${probe.detail}>`]
-      : observed,
-  };
+  return { ok: false, matched: matchedCount, observed };
 }
 
 /**
- * HTTPS GET on `https://{hostname}/.well-known/gitshow-probe`. Returns
- * `ok: true` only if the response is 200 + JSON + matches our literal
- * signature. Any other outcome (404, wrong body, network error,
- * timeout) → ok: false with a one-word reason for the audit log.
+ * End-to-end reachability probe. Used as a final confirmation AFTER
+ * Cloudflare for SaaS reports `ssl.status = active`. Returns ok=true
+ * when `https://{hostname}/.well-known/gitshow-probe` responds with
+ * our exact signature — which can only happen if (a) cert is issued,
+ * (b) routing is propagated to the edge, (c) middleware is letting
+ * the path through.
+ *
+ * Treat ok=false as "still propagating, retry next poll" — never as
+ * a hard failure, since CF SSL status is the source of truth and the
+ * probe is just belt-and-suspenders.
  */
-async function probeReachability(
+export async function probeReachability(
   hostname: string,
 ): Promise<{ ok: boolean; detail?: string }> {
   const url = `https://${hostname}/.well-known/gitshow-probe`;
@@ -159,7 +174,6 @@ async function probeReachability(
       redirect: "manual",
       signal: AbortSignal.timeout(6000),
       headers: {
-        // Plain identifier so origin logs show what hit them.
         "user-agent": "gitshow-domain-verify/1.0",
       },
     });
