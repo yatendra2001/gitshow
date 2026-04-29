@@ -223,23 +223,27 @@ export async function createCustomHostname(
     path: "/custom_hostnames",
     body: {
       hostname: input.hostname,
-      // SSL config: keep it MINIMAL on Free/Pro plans. Several
-      // fields here are Enterprise-only and 1459-error the entire
-      // create call:
-      //   - `certificate_authority` (lets_encrypt / google / etc.)
-      //   - `bundle_method` (ubiquitous / optimal / force)
-      //   - `settings.min_tls_version`
-      //   - `settings.ciphers`
-      //   - `wildcard`
+      // Keep the payload MINIMAL on Free/Pro plans. The following
+      // fields all require a paid SSL for SaaS plan and 1xxx-error
+      // the entire create call if sent on free:
+      //   - `certificate_authority` / `bundle_method` / `min_tls_version`
+      //     → cf_1459 "Certificate Authority selection is only available
+      //     on an Enterprise plan."
+      //   - `custom_metadata`
+      //     → cf_1413 "No custom metadata access has been allocated for
+      //     this zone or account."
+      //   - `wildcard`, `settings.ciphers`, `custom_origin_server`
+      //     → 1xxx variants
       // Cloudflare picks sane defaults (DV cert via HTTP DCV, LE or
-      // Google as the issuing CA depending on availability). We only
-      // need to specify `method: "http"` so it uses HTTP DCV through
-      // the customer's CNAME (no DNS access required).
+      // Google as the issuing CA). We only specify `method: "http"`
+      // so DCV runs through the customer's CNAME, no DNS access
+      // needed. We don't need custom_metadata — userId/domainId
+      // mapping lives in our D1 keyed by hostname, which we can
+      // look up at webhook time.
       ssl: {
         method: "http",
         type: "dv",
       },
-      custom_metadata: input.customMetadata,
     },
   });
 }
