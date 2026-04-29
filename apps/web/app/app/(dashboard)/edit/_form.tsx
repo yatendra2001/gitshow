@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -71,6 +71,132 @@ export function TextareaField({
         rows={rows}
         className="rounded-xl border border-border/50 bg-card/30 px-3 py-2 text-[13px] leading-relaxed placeholder:text-muted-foreground/35 focus:outline-none focus:shadow-[var(--shadow-composer-focus)] transition-shadow duration-200 font-mono"
       />
+      {hint ? (
+        <span className="text-[11px] text-muted-foreground">{hint}</span>
+      ) : null}
+    </label>
+  );
+}
+
+/**
+ * Chip/tag input — replaces the broken "comma-separated" textarea
+ * pattern. Each value renders as a removable chip; new values commit
+ * on Enter, Tab, or comma. Backspace on an empty input removes the
+ * last chip. Duplicates and empty strings are rejected.
+ */
+export function TagsField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  hint,
+  max,
+}: {
+  label: string;
+  value: readonly string[];
+  onChange: (next: string[]) => void;
+  placeholder?: string;
+  hint?: string;
+  max?: number;
+}) {
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const commit = (raw: string) => {
+    const tag = raw.trim();
+    if (!tag) return;
+    if (value.includes(tag)) {
+      setDraft("");
+      return;
+    }
+    if (max !== undefined && value.length >= max) return;
+    onChange([...value, tag]);
+    setDraft("");
+  };
+
+  const remove = (i: number) => onChange(value.filter((_, j) => j !== i));
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" || e.key === "," || e.key === "Tab") {
+      if (draft.trim().length === 0) {
+        if (e.key === "Tab") return;
+        e.preventDefault();
+        return;
+      }
+      e.preventDefault();
+      commit(draft);
+      return;
+    }
+    if (e.key === "Backspace" && draft.length === 0 && value.length > 0) {
+      e.preventDefault();
+      remove(value.length - 1);
+    }
+  };
+
+  const onPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData("text");
+    if (!text.includes(",") && !text.includes("\n")) return;
+    e.preventDefault();
+    const parts = text.split(/[,\n]/);
+    const next = [...value];
+    for (const p of parts) {
+      const t = p.trim();
+      if (!t || next.includes(t)) continue;
+      if (max !== undefined && next.length >= max) break;
+      next.push(t);
+    }
+    onChange(next);
+    setDraft("");
+  };
+
+  const atMax = max !== undefined && value.length >= max;
+
+  return (
+    <label className="flex flex-col gap-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[12px] text-foreground font-medium">{label}</span>
+        {max !== undefined ? (
+          <span className="text-[11px] text-muted-foreground">
+            {value.length} / {max}
+          </span>
+        ) : null}
+      </div>
+      <div
+        onClick={() => inputRef.current?.focus()}
+        className="flex flex-wrap items-center gap-1.5 rounded-xl border border-border/50 bg-card/30 px-2 py-1.5 min-h-10 focus-within:shadow-[var(--shadow-composer-focus)] transition-shadow duration-200 cursor-text"
+      >
+        {value.map((tag, i) => (
+          <span
+            key={`${tag}-${i}`}
+            className="inline-flex items-center gap-1 rounded-md border border-border/50 bg-background/60 px-2 py-0.5 text-[12px] text-foreground"
+          >
+            {tag}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                remove(i);
+              }}
+              aria-label={`Remove ${tag}`}
+              className="text-muted-foreground hover:text-[var(--destructive)] transition-colors leading-none"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+        <input
+          ref={inputRef}
+          type="text"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={onKeyDown}
+          onPaste={onPaste}
+          onBlur={() => commit(draft)}
+          placeholder={value.length === 0 ? placeholder : atMax ? "" : "Add…"}
+          disabled={atMax}
+          className="flex-1 min-w-[80px] bg-transparent border-0 outline-none text-[13px] placeholder:text-muted-foreground/35 px-1 py-0.5 disabled:cursor-not-allowed"
+        />
+      </div>
       {hint ? (
         <span className="text-[11px] text-muted-foreground">{hint}</span>
       ) : null}

@@ -26,20 +26,38 @@ import { ArrowUpRight, Github, Linkedin, Mail, Twitter } from "lucide-react";
  * my craft" template.
  */
 
-const NAV: Array<{ id: string; label: string; check: (r: ReturnType<typeof useResume>) => boolean }> = [
-  { id: "about", label: "About", check: () => true },
-  { id: "experience", label: "Experience", check: (r) => r.work.length > 0 },
-  { id: "projects", label: "Projects", check: (r) => r.projects.length > 0 },
-  { id: "writing", label: "Writing", check: (r) => r.publications.length > 0 || r.blog.length > 0 },
-  { id: "more", label: "More", check: (r) => r.hackathons.length > 0 || r.education.length > 0 || r.buildLog.length > 0 },
+type NavItem = {
+  id: string;
+  label: string;
+  check: (r: ReturnType<typeof useResume>, hidden: Set<string>) => boolean;
+};
+
+const NAV: NavItem[] = [
+  { id: "about", label: "About", check: (_r, h) => !h.has("about") },
+  { id: "experience", label: "Experience", check: (r, h) => !h.has("work") && r.work.length > 0 },
+  { id: "projects", label: "Projects", check: (r, h) => !h.has("projects") && r.projects.length > 0 },
+  {
+    id: "writing",
+    label: "Writing",
+    check: (r, h) => (!h.has("publications") && r.publications.length > 0) || r.blog.length > 0,
+  },
+  {
+    id: "more",
+    label: "More",
+    check: (r, h) =>
+      (!h.has("skills") && r.skills.length > 0) ||
+      (!h.has("education") && r.education.length > 0) ||
+      (!h.has("hackathons") && r.hackathons.length > 0) ||
+      (!h.has("buildLog") && r.buildLog.length > 0),
+  },
 ];
 
 export default function SpotlightTemplate() {
   const r = useResume();
   const handle = useHandle();
-  const hidden = new Set(r.sections.hidden);
+  const hidden = new Set<string>(r.sections.hidden);
   const socials = allSocials(r);
-  const visibleNav = NAV.filter((n) => n.check(r) && !hidden.has(n.id as never));
+  const visibleNav = NAV.filter((n) => n.check(r, hidden));
   const [active, setActive] = useState<string>(visibleNav[0]?.id ?? "about");
   const cursorRef = useRef<HTMLDivElement>(null);
 
@@ -97,7 +115,8 @@ export default function SpotlightTemplate() {
           <SidePanel
             r={r}
             handle={handle}
-            socials={socials}
+            socials={hidden.has("contact") ? [] : socials}
+            showContact={!hidden.has("contact")}
             visibleNav={visibleNav}
             active={active}
           />
@@ -137,7 +156,7 @@ export default function SpotlightTemplate() {
                   education={hidden.has("education") ? [] : r.education}
                   hackathons={hidden.has("hackathons") ? [] : r.hackathons}
                   buildLog={hidden.has("buildLog") ? [] : r.buildLog}
-                  skills={r.skills}
+                  skills={hidden.has("skills") ? [] : r.skills}
                 />
               </SectionHost>
             )}
@@ -161,12 +180,14 @@ function SidePanel({
   r,
   handle,
   socials,
+  showContact,
   visibleNav,
   active,
 }: {
   r: ReturnType<typeof useResume>;
   handle: string;
   socials: ReturnType<typeof allSocials>;
+  showContact: boolean;
   visibleNav: typeof NAV;
   active: string;
 }) {
@@ -256,34 +277,36 @@ function SidePanel({
       </div>
 
       {/* Socials at bottom of viewport */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.5, delay: 0.3 }}
-        className="hidden lg:flex items-center gap-5 mt-12 pt-12"
-      >
-        {socials.slice(0, 5).map((s) => (
-          <a
-            key={s.url}
-            href={s.url}
-            target="_blank"
-            rel="noreferrer"
-            aria-label={s.name}
-            className="text-[#8892b0] hover:text-[#64ffda] hover:-translate-y-px transition-all"
-          >
-            <SocialIcon name={s.name} className="size-5" />
-          </a>
-        ))}
-        {r.contact.email && (
-          <a
-            href={`mailto:${r.contact.email}`}
-            aria-label="Email"
-            className="text-[#8892b0] hover:text-[#64ffda] hover:-translate-y-px transition-all"
-          >
-            <Mail className="size-5" />
-          </a>
-        )}
-      </motion.div>
+      {showContact && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.5, delay: 0.3 }}
+          className="hidden lg:flex items-center gap-5 mt-12 pt-12"
+        >
+          {socials.slice(0, 5).map((s) => (
+            <a
+              key={s.url}
+              href={s.url}
+              target="_blank"
+              rel="noreferrer"
+              aria-label={s.name}
+              className="text-[#8892b0] hover:text-[#64ffda] hover:-translate-y-px transition-all"
+            >
+              <SocialIcon name={s.name} className="size-5" />
+            </a>
+          ))}
+          {r.contact.email && (
+            <a
+              href={`mailto:${r.contact.email}`}
+              aria-label="Email"
+              className="text-[#8892b0] hover:text-[#64ffda] hover:-translate-y-px transition-all"
+            >
+              <Mail className="size-5" />
+            </a>
+          )}
+        </motion.div>
+      )}
     </aside>
   );
 }

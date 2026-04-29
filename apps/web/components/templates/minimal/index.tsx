@@ -46,12 +46,14 @@ export default function MinimalTemplate() {
         <Header r={r} handle={handle} />
 
         {/* About */}
-        <Section label="About" delay={1}>
-          <Prose>{r.person.summary}</Prose>
-        </Section>
+        {!hidden.has("about") && (
+          <Section label="About" delay={1}>
+            <Prose>{r.person.summary}</Prose>
+          </Section>
+        )}
 
         {/* Now strip — what they're doing right now */}
-        {r.work[0] && (
+        {!hidden.has("work") && r.work[0] && (
           <Section label="Now" delay={2}>
             <NowLine work={r.work[0]} />
           </Section>
@@ -155,7 +157,7 @@ export default function MinimalTemplate() {
         )}
 
         {/* Skills as a flowing paragraph */}
-        {r.skills.length > 0 && (
+        {!hidden.has("skills") && r.skills.length > 0 && (
           <Section label={`Skills (${r.skills.length})`} delay={6}>
             <p className="leading-[1.85]">
               {r.skills.map((s, i) => (
@@ -237,25 +239,27 @@ export default function MinimalTemplate() {
         )}
 
         {/* Contact — keyed list */}
-        <Section label="Elsewhere" delay={10} last>
-          <div className="space-y-1.5">
-            {r.contact.email && (
-              <ContactRow
-                label="email"
-                value={r.contact.email}
-                href={`mailto:${r.contact.email}`}
-              />
-            )}
-            {socials.map((s) => (
-              <ContactRow
-                key={s.url}
-                label={s.name.toLowerCase()}
-                value={prettyUrl(s.url)}
-                href={s.url}
-              />
-            ))}
-          </div>
-        </Section>
+        {!hidden.has("contact") && (
+          <Section label="Elsewhere" delay={10} last>
+            <div className="space-y-1.5">
+              {r.contact.email && (
+                <ContactRow
+                  label="email"
+                  value={r.contact.email}
+                  href={`mailto:${r.contact.email}`}
+                />
+              )}
+              {socials.map((s) => (
+                <ContactRow
+                  key={s.url}
+                  label={s.name.toLowerCase()}
+                  value={prettyUrl(s.url)}
+                  href={s.url}
+                />
+              ))}
+            </div>
+          </Section>
+        )}
 
         <Footer name={r.person.name} updatedAt={r.meta.updatedAt} />
       </div>

@@ -53,6 +53,13 @@ export default function BentoTemplate() {
   const showHack = !hidden.has("hackathons") && r.hackathons.length > 0;
   const showPubs = !hidden.has("publications") && r.publications.length > 0;
   const showBuild = !hidden.has("buildLog") && r.buildLog.length > 0;
+  const showAbout = !hidden.has("about");
+  const showSkills = !hidden.has("skills") && r.skills.length > 0;
+  const showProjects = !hidden.has("projects") && r.projects.length > 0;
+  const showContact = !hidden.has("contact");
+  const showCurrent = showWork && r.work[0];
+  const featuredProject = showProjects ? featured : undefined;
+  const sideProjectsList = showProjects ? sideProjects : [];
 
   const extras = [
     showHack && { id: "hack" as const },
@@ -99,50 +106,54 @@ export default function BentoTemplate() {
           ))}
 
           {/* Row 3: about (7) + featured project (5) */}
-          {featured ? (
+          {showAbout && featuredProject ? (
             <>
               <Card className="col-span-12 md:col-span-7 row-span-3 p-6" delay={7}>
                 <AboutCard summary={r.person.summary} />
               </Card>
               <Card className="col-span-12 md:col-span-5 row-span-3 p-0 overflow-hidden group" delay={8}>
-                <FeaturedProjectCard project={featured} />
+                <FeaturedProjectCard project={featuredProject} />
               </Card>
             </>
-          ) : (
+          ) : showAbout ? (
             <Card className="col-span-12 row-span-2 p-6" delay={7}>
               <AboutCard summary={r.person.summary} />
             </Card>
-          )}
+          ) : featuredProject ? (
+            <Card className="col-span-12 row-span-3 p-0 overflow-hidden group" delay={8}>
+              <FeaturedProjectCard project={featuredProject} />
+            </Card>
+          ) : null}
 
           {/* Row 4: skills (8) + currently (4) — currently is THE focal "now" card */}
-          {r.skills.length > 0 && r.work[0] ? (
+          {showSkills && showCurrent ? (
             <>
               <Card className="col-span-12 md:col-span-8 row-span-2 p-6" delay={9}>
                 <SkillsCard skills={r.skills} />
               </Card>
               <Card className="col-span-12 md:col-span-4 row-span-2 p-6" delay={10} tone="bright">
-                <CurrentlyCard work={r.work[0]} />
+                <CurrentlyCard work={r.work[0]!} />
               </Card>
             </>
-          ) : r.skills.length > 0 ? (
+          ) : showSkills ? (
             <Card className="col-span-12 row-span-2 p-6" delay={9}>
               <SkillsCard skills={r.skills} />
             </Card>
-          ) : r.work[0] ? (
+          ) : showCurrent ? (
             <Card className="col-span-12 row-span-2 p-6" delay={10} tone="bright">
-              <CurrentlyCard work={r.work[0]} />
+              <CurrentlyCard work={r.work[0]!} />
             </Card>
           ) : null}
 
           {/* Row 5: side projects */}
-          {sideProjects.length > 0 && (() => {
+          {sideProjectsList.length > 0 && (() => {
             const sideSpanClass =
-              sideProjects.length === 1
+              sideProjectsList.length === 1
                 ? "col-span-12"
-                : sideProjects.length === 2
+                : sideProjectsList.length === 2
                   ? "col-span-12 md:col-span-6"
                   : "col-span-12 md:col-span-4";
-            return sideProjects.map((p, i) => (
+            return sideProjectsList.map((p, i) => (
               <Card
                 key={p.id}
                 className={`${sideSpanClass} row-span-2 p-0 overflow-hidden group`}
@@ -195,9 +206,11 @@ export default function BentoTemplate() {
           })}
 
           {/* Final: contact CTA */}
-          <Card className="col-span-12 row-span-2 p-6 sm:p-8" tone="hero" delay={20}>
-            <ContactCard email={r.contact.email} socials={socials} name={r.person.name} />
-          </Card>
+          {showContact && (
+            <Card className="col-span-12 row-span-2 p-6 sm:p-8" tone="hero" delay={20}>
+              <ContactCard email={r.contact.email} socials={socials} name={r.person.name} />
+            </Card>
+          )}
         </div>
       </div>
     </div>
