@@ -21,6 +21,15 @@ import { lookupRoutingByHostname } from "@/lib/domains/repo";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  // Require the middleware-set header. This route was previously under
+  // `_internal` (an underscore-prefix folder), which Next.js excludes
+  // from routing entirely — a public 404 by accident. Now that the
+  // folder is `internal/`, the route IS publicly resolvable, so we
+  // gate explicitly. The middleware sets x-internal-route: 1; nothing
+  // else should.
+  if (req.headers.get("x-internal-route") !== "1") {
+    return NextResponse.json({ slug: null }, { status: 403 });
+  }
   const url = new URL(req.url);
   const host = (url.searchParams.get("h") ?? "").toLowerCase().trim();
   if (!host) return NextResponse.json({ slug: null });

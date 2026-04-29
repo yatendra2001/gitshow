@@ -165,7 +165,7 @@ async function resolveHostToSlug(host: string, origin: string): Promise<string |
   }
   let slug: string | null = null;
   try {
-    const res = await fetch(`${origin}/api/_internal/route-host?h=${encodeURIComponent(host)}`, {
+    const res = await fetch(`${origin}/api/internal/route-host?h=${encodeURIComponent(host)}`, {
       headers: { "x-internal-route": "1" },
       // 1.5s budget — middleware is on the hot path.
       signal: AbortSignal.timeout(1500),
