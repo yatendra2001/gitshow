@@ -182,6 +182,15 @@ export async function POST(req: Request) {
         if (userVisible === "active") nextStatus = "active";
         else if (userVisible === "failed") nextStatus = "failed";
         else nextStatus = dnsOk ? "provisioning" : "verifying";
+        // CF returns the same ownership challenge on every poll until
+        // the hostname goes Active. Surface it to the dashboard so the
+        // user can see the TXT record they still need to add — even if
+        // the create call happened in the cron path (where the txt
+        // wasn't returned to a UI response on first issue).
+        if (status.ownership?.name && status.ownership.value) {
+          cfTxtName = status.ownership.name;
+          cfTxtValue = status.ownership.value;
+        }
       }
     } catch (err) {
       if (err instanceof CFForSaasError) {
