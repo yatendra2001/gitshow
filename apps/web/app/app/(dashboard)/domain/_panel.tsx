@@ -261,10 +261,12 @@ function EmptyState({
                 autoCapitalize="off"
                 autoCorrect="off"
                 className={cn(
-                  "h-10 w-full rounded-md bg-background px-3 text-[14px] sm:text-[13px]",
+                  // Mobile: 16px to prevent iOS zoom (DESIGN.md §6 inputs).
+                  // Desktop: drop to 13px to match the rest of the dashboard.
+                  "h-10 w-full rounded-md bg-background px-3 text-[16px] sm:text-[13px]",
                   "border border-border/60",
                   "placeholder:text-muted-foreground/60",
-                  "transition-[border-color,box-shadow] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)]",
+                  "transition-[border-color,box-shadow] duration-[var(--duration-fast)] ease-[var(--ease-soft)]",
                   "focus-visible:outline-none focus-visible:border-foreground/30 focus-visible:ring-2 focus-visible:ring-ring/30",
                 )}
               />
