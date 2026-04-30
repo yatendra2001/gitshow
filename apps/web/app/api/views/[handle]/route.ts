@@ -2,9 +2,7 @@ import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { isReservedHandle } from "@/lib/profiles";
 import {
-  clientIp,
   geoFromContext,
-  hashVisitor,
   inAppBrowserHost,
   normalizeReferrer,
   parseUserAgent,
@@ -23,11 +21,42 @@ import {
  *      visitor hash, geo (from CF request props), parsed UA, and
  *      referrer host.
  *
+ * Visitor identity: a first-party `gs_v` cookie (random 12-byte hex,
+ * 1-year TTL) — minted on first hit, refreshed on every hit. Cookies
+ * are scoped per host, so a visit to gitshow.io/{handle} and a visit
+ * to the user's custom domain produce different IDs (intentional —
+ * they're separate "channels"). The cookie is httpOnly + sameSite=lax
+ * so it's invisible to page JS and travels only with normal navigation.
+ *
+ * Why not IP+UA hash? The legacy hash collapsed every visitor behind
+ * the same CG-NAT (Jio/Airtel/etc.) into one bucket — a profile with
+ * 100 distinct India visitors would show ~5 uniques. The cookie ID is
+ * per-browser, so it survives IP changes (carrier hand-off, VPN) AND
+ * separates visitors behind shared NAT. Pre-cookie rows keep their
+ * old hashes; queries DISTINCT-count both styles in the same column.
+ *
  * No auth, no dedup at the API layer — uniques are computed at read
  * time via DISTINCT visitor_hash. Bots are tagged but still recorded;
  * the dashboard can filter them out at read time if we want a clean
  * "human views" line.
  */
+
+/**
+ * Read the `gs_v` cookie if present and well-formed, otherwise mint a
+ * fresh random 12-byte (24 hex) ID. Returned as `{ id, isNew }` so the
+ * caller can decide whether the response needs a Set-Cookie header
+ * (always — we refresh expiry on every hit) and so logs / future
+ * abuse-detection can distinguish first-visit traffic.
+ */
+function readOrMintVisitorId(req: Request): { id: string; isNew: boolean } {
+  const cookieHeader = req.headers.get("cookie") ?? "";
+  const m = /(?:^|;\s*)gs_v=([a-f0-9]{24})(?:;|$)/i.exec(cookieHeader);
+  if (m) return { id: m[1]!.toLowerCase(), isNew: false };
+  const buf = new Uint8Array(12);
+  crypto.getRandomValues(buf);
+  const id = Array.from(buf, (b) => b.toString(16).padStart(2, "0")).join("");
+  return { id, isNew: true };
+}
 
 export async function POST(
   req: Request,
@@ -40,6 +69,11 @@ export async function POST(
 
   const { env, cf } = await getCloudflareContext({ async: true });
   const slug = handle.toLowerCase();
+
+  // Visitor identity is decided BEFORE the DB write so we can also
+  // attach the cookie to the response on the catch path — a failed
+  // INSERT shouldn't force the visitor to mint a fresh ID next time.
+  const visitor = readOrMintVisitorId(req);
 
   try {
     // 1) Cheap badge counter — fast path.
@@ -58,9 +92,7 @@ export async function POST(
     const url = new URL(req.url);
     const selfHost = url.host;
 
-    const ip = clientIp(req);
-    const salt = env.AUTH_SECRET ?? "gitshow-fallback-salt";
-    const visitorHash = await hashVisitor(salt, ip, ua);
+    const visitorHash = visitor.id;
 
     const { country, region, city } = geoFromContext(cf, req.headers);
     const { device, browser, os } = parseUserAgent(ua);
@@ -174,10 +206,21 @@ export async function POST(
       )
       .run();
   } catch {
-    // Never 500 a view-tracking request — it's best-effort.
-    return NextResponse.json({ ok: true });
+    // Never 500 a view-tracking request — it's best-effort. Fall
+    // through so the response below still sets the visitor cookie.
   }
-  return NextResponse.json({ ok: true });
+
+  // Always (re)set the cookie. Refreshing on every hit keeps active
+  // visitors tracked indefinitely; idle visitors expire after a year.
+  const res = NextResponse.json({ ok: true });
+  res.cookies.set("gs_v", visitor.id, {
+    maxAge: 60 * 60 * 24 * 365,
+    sameSite: "lax",
+    httpOnly: true,
+    secure: true,
+    path: "/",
+  });
+  return res;
 }
 
 export async function GET(
