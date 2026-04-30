@@ -40,7 +40,7 @@ export function DomainAttribution({
           data={data}
           height={180}
           variant="donut"
-          centerLabel="Via your domain"
+          centerLabel="Your domain"
           centerValue={`${customPct}%`}
         />
         <DonutLegend data={data} />
