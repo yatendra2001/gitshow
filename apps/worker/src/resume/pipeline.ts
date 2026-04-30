@@ -5,8 +5,9 @@
  *   1. github-fetch         — owned repos + PRs + reviews + profile
  *   2. repo-filter          — tier repos (deep / light / metadata)
  *   3. inventory            — clone deep-tier repos for the Repo Judge
- *   4. repo-judge           — Kimi reads README + tree + samples per repo;
- *                             produces Judgment{kind, polish, shouldFeature, …}
+ *   4. repo-judge           — Kimi reads README + tree + chunked source
+ *                             summaries per repo; produces
+ *                             Judgment{kind, polish, shouldFeature, …}
  *   5. fetcher fan-out      — github-facts (sync) + linkedin tier chain +
  *                             personal-site + hn/devto/medium +
  *                             orcid + semantic-scholar + arxiv + stackoverflow

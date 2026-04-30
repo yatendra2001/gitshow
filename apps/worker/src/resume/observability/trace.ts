@@ -252,6 +252,11 @@ export interface JudgeVerdictEvent extends TraceEventBase {
   shouldFeature: boolean;
   reason: string;
   filesRead: number;
+  coverageTier?: string;
+  fullCoverage?: boolean;
+  eligibleFiles?: number;
+  analyzedFiles?: number;
+  sourceChunks?: number;
 }
 
 export interface KgMergerDeterministicEvent extends TraceEventBase {
@@ -553,6 +558,11 @@ export class ScanTrace {
         kind: e.judgeKind,
         should_feature: e.shouldFeature,
         files_read: e.filesRead,
+        coverage_tier: e.coverageTier,
+        full_coverage: e.fullCoverage,
+        eligible_files: e.eligibleFiles,
+        analyzed_files: e.analyzedFiles,
+        source_chunks: e.sourceChunks,
         reason: e.reason,
       },
     });

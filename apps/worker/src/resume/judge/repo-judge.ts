@@ -1,9 +1,9 @@
 /**
  * Repo Judge — replaces regex-based pick-featured.ts.
  *
- * For each repo we judge: Kimi reads README + tree + manifests + a few
- * source files (sampled by repo-sampler.ts) and emits a structured
- * Judgment. The Judgment drives:
+ * For each repo we judge: Kimi reads README + tree + manifests plus
+ * chunk-level summaries from first-party source files, then emits a
+ * structured Judgment. The Judgment drives:
  *   - whether the repo's Project node is featured
  *   - whether it appears in the build log
  *   - the project kind tag the render layer surfaces
@@ -25,7 +25,16 @@ import {
   type ProjectKind,
   type Polish,
 } from "@gitshow/shared/kg";
-import { sampleRepo, formatSample, type RepoSample } from "./repo-sampler.js";
+import {
+  sampleRepo,
+  formatSample,
+  formatChunksForAnalysis,
+  type RepoCorpus,
+  type RepoCorpusAnalysis,
+  type RepoCorpusChunk,
+  type RepoChunkFinding,
+  type RepoFileSummary,
+} from "./repo-sampler.js";
 import type { ScanTrace } from "../observability/trace.js";
 import type { RepoStudy } from "../../repo-study.js";
 
@@ -42,6 +51,22 @@ export const RepoJudgmentSchema = z.object({
   technologies: z.array(z.string().max(40)).max(20).default([]),
 });
 export type RepoJudgment = z.infer<typeof RepoJudgmentSchema>;
+
+const RepoChunkFindingSchema = z.object({
+  chunkId: z.string().min(1).max(40),
+  path: z.string().min(1).max(260),
+  purpose: z.string().min(1).max(220),
+  technologies: z.array(z.string().max(40)).max(12).default([]),
+  domainSignals: z.array(z.string().max(180)).max(8).default([]),
+  implementationSignals: z.array(z.string().max(180)).max(8).default([]),
+  qualitySignals: z.array(z.string().max(180)).max(6).default([]),
+  risks: z.array(z.string().max(180)).max(6).default([]),
+});
+
+const RepoChunkBatchAnalysisSchema = z.object({
+  findings: z.array(RepoChunkFindingSchema).max(12),
+});
+type RepoChunkBatchAnalysis = z.infer<typeof RepoChunkBatchAnalysisSchema>;
 
 export interface RepoJudgeInput {
   session: ScanSession;
@@ -62,18 +87,21 @@ export interface RepoJudgeOutput {
   judgment: RepoJudgment;
   filesRead: number;
   durationMs: number;
+  coverage: RepoCorpus["stats"];
 }
 
-const SYSTEM_PROMPT = `You are a code reader. You read a repository sample
-and produce a structured Judgment about it. You must call submit_judgment
-with the result.
+const SYSTEM_PROMPT = `You are a code reader. You read structured evidence
+from a repository-wide source pass and produce a structured Judgment about it.
+You must call submit_judgment with the result.
 
 What you receive (in tagged blocks):
-  <readme>      first 3KB of README
-  <tree>        depth-2 file tree
-  <manifest>    package.json / Cargo.toml / pyproject.toml / etc.
-  <file>        first 2KB of up to 5 source files
-  <attribution> git-log stats — what fraction of the repo this user authored
+  <readme>         README text, when present
+  <tree>           repository tree, with vendored/build dirs removed
+  <manifest>       package.json / Cargo.toml / pyproject.toml / etc.
+  <repo_coverage>  how many first-party files/chunks were analyzed
+  <repo_analysis>  reduced findings from source chunks across the repo
+  <file_summary>   per-file summaries from chunk-level source analysis
+  <attribution>    git-log stats — what fraction of the repo this user authored
 
 The ONLY test for shouldFeature=true is:
   "Did the user build something real that's worth showing on a portfolio?"
@@ -132,10 +160,26 @@ technologies: extracted from manifests + obvious framework usage (max 10).
 
 Output ONLY by calling submit_judgment.`;
 
+const CHUNK_ANALYZER_PROMPT = `You read raw source chunks from one repository
+and extract compact evidence for a later repository judge.
+
+For every <chunk> you receive, return one finding with the same chunkId and
+path. Be concrete but concise. Prefer implementation facts over generic praise.
+Do not quote long code. If a secret-like value appears, mention only the risk
+category and never reproduce the value.
+
+Fields:
+  purpose: what this chunk/file appears to do
+  technologies: frameworks, languages, libraries, build/runtime tools
+  domainSignals: product/domain behavior visible in the code
+  implementationSignals: architecture, APIs, data flow, algorithms, integrations
+  qualitySignals: tests, error handling, polish, deployment, robustness
+  risks: generated code, template-only code, broken TODOs, suspicious secrets`;
+
 /**
- * Repo-judge is a structural-classification call: read sample files,
- * pick a `kind`, set `polish`, write a one-sentence purpose. It does
- * NOT need long reasoning chains. Bumping from "medium" to "low"
+ * Repo-judge is a structural-classification call: read reduced source
+ * evidence, pick a `kind`, set `polish`, write a one-sentence purpose.
+ * It does NOT need long reasoning chains. Bumping from "medium" to "low"
  * because traces showed Kimi K2.6 streaming reasoning for 30+ minutes
  * on a handful of large codebases (aimuse=1885s, autotext_v4=1063s,
  * memcast-v2=850s) with only ~600 chars of final output. Whether
@@ -181,11 +225,25 @@ const JUDGE_TIMEOUT_MS = 3 * 60_000;
  */
 const JUDGE_MAX_ITERATIONS = 20;
 
+const CHUNK_BATCH_MAX_CHUNKS = 8;
+const CHUNK_BATCH_MAX_CHARS = 90_000;
+const CHUNK_ANALYSIS_CONCURRENCY = 4;
+const CHUNK_ANALYSIS_TIMEOUT_MS = 2 * 60_000;
+const CHUNK_ANALYSIS_MAX_ITERATIONS = 12;
+
 export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput> {
   const { repo, repoPath, study, session, usage, trace, onProgress, emit } = input;
   const t0 = Date.now();
   const sample = await sampleRepo(repoPath);
-  const formatted = formatSample(sample);
+  const analysis = await analyzeRepoCorpus({
+    corpus: sample,
+    repo,
+    session,
+    usage,
+    onProgress,
+    trace,
+  });
+  const formatted = formatSample(sample, analysis);
 
   const attributionBlock = study
     ? [
@@ -239,7 +297,8 @@ export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput>
     judgment = fallbackJudgment(repo, err as Error);
   }
 
-  const filesRead = (sample.readme ? 1 : 0) + sample.files.length + Object.keys(sample.manifests).length;
+  const filesRead =
+    sample.stats.analyzedFiles + (sample.readme ? 1 : 0) + Object.keys(sample.manifests).length;
 
   trace?.judgeVerdict({
     label: `judge:${repo.fullName}`,
@@ -248,6 +307,11 @@ export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput>
     shouldFeature: judgment.shouldFeature,
     reason: judgment.reason,
     filesRead,
+    coverageTier: sample.stats.tier,
+    fullCoverage: sample.stats.fullCoverage,
+    eligibleFiles: sample.stats.eligibleFiles,
+    analyzedFiles: sample.stats.analyzedFiles,
+    sourceChunks: sample.stats.chunkCount,
   });
 
   return {
@@ -255,6 +319,307 @@ export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput>
     judgment,
     filesRead,
     durationMs: Date.now() - t0,
+    coverage: sample.stats,
+  };
+}
+
+async function analyzeRepoCorpus(input: {
+  corpus: RepoCorpus;
+  repo: RepoRef;
+  session: ScanSession;
+  usage: SessionUsage;
+  onProgress?: (text: string) => void;
+  trace?: ScanTrace;
+}): Promise<RepoCorpusAnalysis> {
+  const { corpus, repo, session, usage, onProgress, trace } = input;
+  const batches = buildChunkBatches(corpus.chunks);
+  trace?.note(`repo-corpus:${repo.fullName}`, "source corpus prepared", {
+    tier: corpus.stats.tier,
+    fullCoverage: corpus.stats.fullCoverage,
+    eligibleFiles: corpus.stats.eligibleFiles,
+    analyzedFiles: corpus.stats.analyzedFiles,
+    analyzedBytes: corpus.stats.analyzedBytes,
+    chunks: corpus.stats.chunkCount,
+    batches: batches.length,
+    skippedFiles: corpus.stats.skippedFiles,
+    skippedSensitive: corpus.stats.skippedSensitive,
+  });
+
+  if (batches.length === 0) {
+    return reduceFindings(corpus, [], 0, 0);
+  }
+
+  const limit = pLimit(CHUNK_ANALYSIS_CONCURRENCY);
+  let failedBatches = 0;
+  const results = await Promise.all(
+    batches.map((batch, index) =>
+      limit(async () => {
+        try {
+          return await analyzeChunkBatch({
+            repo,
+            chunks: batch,
+            index,
+            total: batches.length,
+            session,
+            usage,
+            onProgress,
+          });
+        } catch (err) {
+          failedBatches++;
+          trace?.note(`repo-corpus:${repo.fullName}`, "chunk analysis batch failed", {
+            batch: index + 1,
+            chunks: batch.length,
+            error: err instanceof Error ? err.message.slice(0, 300) : String(err).slice(0, 300),
+          });
+          return batch.map(fallbackFinding);
+        }
+      }),
+    ),
+  );
+
+  const findings = results.flat();
+  return reduceFindings(corpus, findings, batches.length, failedBatches);
+}
+
+function buildChunkBatches(chunks: RepoCorpusChunk[]): RepoCorpusChunk[][] {
+  const batches: RepoCorpusChunk[][] = [];
+  let current: RepoCorpusChunk[] = [];
+  let chars = 0;
+  for (const chunk of chunks) {
+    const nextChars = chunk.content.length + 240;
+    if (
+      current.length > 0 &&
+      (current.length >= CHUNK_BATCH_MAX_CHUNKS || chars + nextChars > CHUNK_BATCH_MAX_CHARS)
+    ) {
+      batches.push(current);
+      current = [];
+      chars = 0;
+    }
+    current.push(chunk);
+    chars += nextChars;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
+async function analyzeChunkBatch(input: {
+  repo: RepoRef;
+  chunks: RepoCorpusChunk[];
+  index: number;
+  total: number;
+  session: ScanSession;
+  usage: SessionUsage;
+  onProgress?: (text: string) => void;
+}): Promise<RepoChunkFinding[]> {
+  const { repo, chunks, index, total, session, usage, onProgress } = input;
+  const res = await runAgentWithSubmit<RepoChunkBatchAnalysis>({
+    model: modelForRole("bulk"),
+    systemPrompt: CHUNK_ANALYZER_PROMPT,
+    input: [
+      `<repo>${repo.fullName}</repo>`,
+      `<batch index="${index + 1}" total="${total}" chunks="${chunks.length}">`,
+      formatChunksForAnalysis(chunks),
+      `</batch>`,
+    ].join("\n"),
+    submitToolName: "submit_chunk_findings",
+    submitToolDescription:
+      "Submit compact findings for every source chunk in this batch. Call exactly once.",
+    submitSchema: RepoChunkBatchAnalysisSchema,
+    reasoning: { effort: "low" },
+    timeoutMs: CHUNK_ANALYSIS_TIMEOUT_MS,
+    maxIterations: CHUNK_ANALYSIS_MAX_ITERATIONS,
+    session,
+    usage,
+    onProgress,
+    label: `repo-corpus:${repo.fullName}:${index + 1}/${total}`,
+    // Deliberately omit trace/emit here: raw source chunks are pass-through
+    // inference input and should not be retained in trace artifacts.
+  });
+
+  const chunkById = new Map(chunks.map((chunk) => [chunk.id, chunk]));
+  const findingsById = new Map<string, RepoChunkFinding>();
+  for (const finding of res.result.findings) {
+    const chunk = chunkById.get(finding.chunkId);
+    if (!chunk) continue;
+    findingsById.set(chunk.id, normalizeFinding(finding, chunk));
+  }
+  for (const chunk of chunks) {
+    if (!findingsById.has(chunk.id)) {
+      findingsById.set(chunk.id, fallbackFinding(chunk));
+    }
+  }
+  return [...findingsById.values()];
+}
+
+function normalizeFinding(finding: RepoChunkFinding, chunk: RepoCorpusChunk): RepoChunkFinding {
+  return {
+    chunkId: chunk.id,
+    path: chunk.path,
+    purpose: limitText(finding.purpose, 220),
+    technologies: uniqueStrings(finding.technologies, 12),
+    domainSignals: uniqueStrings(finding.domainSignals, 8).map((s) => limitText(s, 180)),
+    implementationSignals: uniqueStrings(finding.implementationSignals, 8).map((s) =>
+      limitText(s, 180),
+    ),
+    qualitySignals: uniqueStrings(finding.qualitySignals, 6).map((s) => limitText(s, 180)),
+    risks: uniqueStrings(finding.risks, 6).map((s) => limitText(s, 180)),
+  };
+}
+
+function fallbackFinding(chunk: RepoCorpusChunk): RepoChunkFinding {
+  return {
+    chunkId: chunk.id,
+    path: chunk.path,
+    purpose: `Source chunk from ${chunk.path}`,
+    technologies: technologyFromExtension(chunk.extension),
+    domainSignals: [],
+    implementationSignals: [],
+    qualitySignals: [],
+    risks: ["Chunk analysis unavailable"],
+  };
+}
+
+function reduceFindings(
+  corpus: RepoCorpus,
+  findings: RepoChunkFinding[],
+  analyzedBatches: number,
+  failedBatches: number,
+): RepoCorpusAnalysis {
+  const chunksByPath = new Map<string, number>();
+  for (const chunk of corpus.chunks) {
+    chunksByPath.set(chunk.path, (chunksByPath.get(chunk.path) ?? 0) + 1);
+  }
+  const fileByPath = new Map(corpus.files.map((file) => [file.path, file]));
+  const byPath = new Map<string, RepoChunkFinding[]>();
+  for (const finding of findings) {
+    const arr = byPath.get(finding.path) ?? [];
+    arr.push(finding);
+    byPath.set(finding.path, arr);
+  }
+
+  const fileSummaries: RepoFileSummary[] = [];
+  for (const [path, fileFindings] of byPath.entries()) {
+    const file = fileByPath.get(path);
+    const signals = uniqueStrings(
+      fileFindings.flatMap((f) => [
+        ...f.domainSignals,
+        ...f.implementationSignals,
+        ...f.qualitySignals,
+      ]),
+      10,
+    );
+    const purposes = uniqueStrings(fileFindings.map((f) => f.purpose), 3);
+    fileSummaries.push({
+      path,
+      bytes: file?.bytes ?? 0,
+      chunks: chunksByPath.get(path) ?? fileFindings.length,
+      summary: limitText(purposes.join(" / "), 260),
+      technologies: uniqueStrings(fileFindings.flatMap((f) => f.technologies), 12),
+      signals,
+      risks: uniqueStrings(fileFindings.flatMap((f) => f.risks), 6),
+    });
+  }
+  fileSummaries.sort((a, b) => scoreSummary(b) - scoreSummary(a) || a.path.localeCompare(b.path));
+
+  return {
+    findings,
+    fileSummaries,
+    technologies: topFrequent(findings.flatMap((f) => f.technologies), 30),
+    repoSignals: topFrequent(
+      findings.flatMap((f) => [
+        ...f.domainSignals,
+        ...f.implementationSignals,
+        ...f.qualitySignals,
+      ]),
+      60,
+    ),
+    risks: topFrequent(findings.flatMap((f) => f.risks), 30),
+    analyzedBatches,
+    failedBatches,
+  };
+}
+
+function scoreSummary(summary: RepoFileSummary): number {
+  let score = summary.signals.length * 3 + summary.technologies.length + summary.risks.length;
+  const path = summary.path.toLowerCase();
+  if (path.startsWith("src/") || path.includes("/src/")) score += 10;
+  if (path.includes("app") || path.includes("api") || path.includes("service")) score += 6;
+  if (path.includes("test") || path.includes("spec")) score -= 4;
+  return score;
+}
+
+function uniqueStrings(values: string[], limit: number): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(trimmed);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+
+function topFrequent(values: string[], limit: number): string[] {
+  const counts = new Map<string, { value: string; count: number }>();
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    const key = trimmed.toLowerCase();
+    const current = counts.get(key);
+    counts.set(key, { value: current?.value ?? trimmed, count: (current?.count ?? 0) + 1 });
+  }
+  return [...counts.values()]
+    .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value))
+    .slice(0, limit)
+    .map((entry) => entry.value);
+}
+
+function limitText(value: string, max: number): string {
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  return trimmed.length <= max ? trimmed : `${trimmed.slice(0, max - 1)}…`;
+}
+
+function technologyFromExtension(extension: string): string[] {
+  const map: Record<string, string> = {
+    ".ts": "TypeScript",
+    ".tsx": "TypeScript",
+    ".js": "JavaScript",
+    ".jsx": "JavaScript",
+    ".py": "Python",
+    ".go": "Go",
+    ".rs": "Rust",
+    ".rb": "Ruby",
+    ".java": "Java",
+    ".kt": "Kotlin",
+    ".swift": "Swift",
+    ".php": "PHP",
+    ".cs": "C#",
+    ".cpp": "C++",
+    ".c": "C",
+    ".vue": "Vue",
+    ".svelte": "Svelte",
+  };
+  return map[extension] ? [map[extension]] : [];
+}
+
+function emptyCoverage(): RepoCorpus["stats"] {
+  return {
+    tier: "prioritized",
+    eligibleFiles: 0,
+    eligibleBytes: 0,
+    analyzedFiles: 0,
+    analyzedBytes: 0,
+    skippedFiles: 0,
+    skippedBytes: 0,
+    skippedTooLarge: 0,
+    skippedSensitive: 0,
+    skippedUnreadable: 0,
+    chunkCount: 0,
+    fullCoverage: false,
   };
 }
 
@@ -267,13 +632,11 @@ export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput>
  * 16 GB and was sitting at 586 MB / 3.7% utilization at peak, so
  * memory's not the constraint either.
  *
- * 100 is a generous fan-out: for any realistic scan (≤200 deep
- * repos) basically every judge runs in parallel. Combined with
- * JUDGE_TIMEOUT_MS + JUDGE_MAX_ITERATIONS, worst-case wall-clock
- * for the whole stage is ~3 min and worst-case wasted spend is
- * ~6 requests per stuck repo (was 279 before the iteration cap).
+ * Full-repo reading adds bounded chunk-analysis calls inside each
+ * judge. Keep outer fan-out modest so a scan does not multiply into
+ * hundreds of simultaneous OpenRouter requests.
  */
-const JUDGE_CONCURRENCY = 100;
+const JUDGE_CONCURRENCY = 12;
 
 export interface JudgeAllOptions {
   session: ScanSession;
@@ -319,6 +682,7 @@ export async function judgeAllRepos(
             judgment,
             filesRead: 0,
             durationMs: 0,
+            coverage: emptyCoverage(),
           };
           opts.trace?.judgeVerdict({
             label: `judge:${c.repo.fullName}`,
@@ -327,6 +691,11 @@ export async function judgeAllRepos(
             shouldFeature: judgment.shouldFeature,
             reason: judgment.reason,
             filesRead: 0,
+            coverageTier: "prioritized",
+            fullCoverage: false,
+            eligibleFiles: 0,
+            analyzedFiles: 0,
+            sourceChunks: 0,
           });
         }
       }),
