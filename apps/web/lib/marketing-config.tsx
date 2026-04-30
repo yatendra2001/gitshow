@@ -640,19 +640,19 @@ export const siteConfig = {
         {
             title: "Product",
             links: [
-                { id: 1, title: "Features", url: "#features" },
-                { id: 2, title: "Pricing", url: "#pricing" },
-                { id: 3, title: "Custom domains", url: "#" },
-                { id: 4, title: "Changelog", url: "#" },
+                { id: 1, title: "Features", url: "/#features" },
+                { id: 2, title: "Pricing", url: "/pricing" },
+                { id: 3, title: "Custom domains", url: "/#connect" },
+                { id: 4, title: "Changelog", url: "/changelog" },
             ],
         },
         {
             title: "Company",
             links: [
-                { id: 5, title: "About", url: "#" },
+                { id: 5, title: "Demo", url: "/yatendra2001" },
                 { id: 6, title: "Contact", url: "mailto:yatendra@gitshow.io" },
-                { id: 7, title: "Privacy", url: "#" },
-                { id: 8, title: "Terms", url: "#" },
+                { id: 7, title: "Privacy", url: "/privacy" },
+                { id: 8, title: "Terms", url: "/terms" },
             ],
         },
     ],
