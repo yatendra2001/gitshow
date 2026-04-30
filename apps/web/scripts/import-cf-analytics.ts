@@ -71,8 +71,12 @@ function parseArgs(): Args {
   const hostname = get("hostname");
   const slug = get("slug");
   const days = Number.parseInt(get("days") ?? "30", 10);
+  // Prefer a dedicated `CF_ANALYTICS_TOKEN` if set — keeps the
+  // general `CF_API_TOKEN` (used by the worker for other things)
+  // free of additional scopes the importer alone needs.
   const token =
     get("token") ??
+    process.env.CF_ANALYTICS_TOKEN ??
     process.env.CF_API_TOKEN ??
     process.env.CLOUDFLARE_API_TOKEN ??
     "";
