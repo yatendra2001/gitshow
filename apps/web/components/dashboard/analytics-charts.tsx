@@ -531,20 +531,31 @@ const SOURCES_CHART_CONFIG: ChartConfig = {
 /**
  * Custom Y-axis tick that renders a favicon + label. Recharts passes
  * `payload.value` (the host string) and (x, y) for positioning.
+ *
+ * `tickWidth` is the YAxis `width` we picked for this render — we mirror
+ * it here so the foreignObject hugs the actual reserved label area
+ * instead of the old hard-coded 146px (which left a big empty band on
+ * the left of short labels like "Direct"/"LinkedIn").
  */
-function SourceTick(props: {
+function SourceTick({
+  tickWidth,
+  ...props
+}: {
   x?: number;
   y?: number;
   payload?: { value: string };
+  tickWidth: number;
 }) {
   const { x = 0, y = 0, payload } = props;
   const host = payload?.value ?? "";
   if (!host) return null;
   const isSentinel = SENTINEL_HOSTS.has(host);
   const label = prettyReferrer(host);
+  // 8px gap between the label edge and the bar start.
+  const inner = Math.max(40, tickWidth - 8);
   return (
-    <g transform={`translate(${x - 4}, ${y})`}>
-      <foreignObject x={-150} y={-11} width={146} height={22}>
+    <g transform={`translate(${x - 8}, ${y})`}>
+      <foreignObject x={-inner} y={-11} width={inner} height={22}>
         <div className="flex h-full items-center justify-end gap-1.5 text-[11.5px] text-foreground/85">
           <span className="truncate text-right">{label}</span>
           {isSentinel ? (
@@ -585,79 +596,82 @@ export function SourcesBarChart({
       </div>
     );
   }
-  // Per-row height so the chart scales gracefully with row count.
-  const computedHeight = height ?? Math.max(140, rows.length * 32 + 16);
+  // Tight per-row height. The previous floor of 140px left visible
+  // empty space below 1–3-row charts because Recharts spread the bars
+  // out to fill the container. Compute height from the actual data.
+  const computedHeight = height ?? Math.max(rows.length * 44 + 16, 96);
+  // Reserve just enough Y-axis width for the longest label in this
+  // dataset. ~7.5px/char for the 11.5px sans font, plus 24px for the
+  // favicon + gap. Capped so very long hostnames still truncate
+  // gracefully.
+  const longestChars = rows.reduce(
+    (max, r) => Math.max(max, prettyReferrer(r.host).length),
+    0,
+  );
+  const yAxisWidth = Math.min(140, Math.max(64, longestChars * 7.5 + 24));
   return (
-    <ChartContainer
-      config={SOURCES_CHART_CONFIG}
-      className="aspect-auto w-full"
-      style={{ height: computedHeight }}
-    >
-      <BarChart
-        data={rows}
-        layout="vertical"
-        margin={{ top: 4, right: 32, bottom: 4, left: 156 }}
+    // Outer div carries the resolved height. Donuts use the same
+    // pattern — necessary because ChartContainer's base classes
+    // include `aspect-video`, which sometimes wins over an inline
+    // height on the same node and stretches the chart to a 16:9 box.
+    <div className="w-full" style={{ height: computedHeight }}>
+      <ChartContainer
+        config={SOURCES_CHART_CONFIG}
+        className="aspect-auto h-full w-full"
       >
-        <defs>
-          <linearGradient id="fill-sources" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.55} />
-            <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.95} />
-          </linearGradient>
-        </defs>
-        <CartesianGrid horizontal={false} stroke="currentColor" strokeOpacity={0.05} />
-        <XAxis
-          type="number"
-          tickLine={false}
-          axisLine={false}
-          stroke="currentColor"
-          strokeOpacity={0.35}
-          style={{ fontSize: 10 }}
-          allowDecimals={false}
-          tickFormatter={(v) => formatCount(Number(v))}
-        />
-        <YAxis
-          type="category"
-          dataKey="host"
-          tickLine={false}
-          axisLine={false}
-          tick={<SourceTick />}
-          width={150}
-        />
-        <Tooltip
-          cursor={{ fill: "currentColor", fillOpacity: 0.04 }}
-          content={
-            <ChartTooltipContent
-              hideLabel
-              formatter={(value, _name, item) => {
-                const host = String(item.payload?.host ?? "");
-                return (
-                  <div className="flex w-full items-center justify-between gap-4">
-                    <span className="flex items-center gap-1.5">
-                      <span
-                        aria-hidden
-                        className="size-2 rounded-[2px]"
-                        style={{ background: "var(--chart-1)" }}
-                      />
-                      <span className="text-muted-foreground">{prettyReferrer(host)}</span>
-                    </span>
-                    <span className="font-mono font-medium tabular-nums text-foreground">
-                      {Number(value).toLocaleString()}
-                    </span>
-                  </div>
-                );
-              }}
-            />
-          }
-        />
-        <Bar
-          dataKey="views"
-          fill="url(#fill-sources)"
-          radius={[3, 3, 3, 3]}
-          isAnimationActive={true}
-          animationDuration={400}
-          barSize={18}
-        />
-      </BarChart>
-    </ChartContainer>
+        <BarChart
+          accessibilityLayer
+          data={rows}
+          layout="vertical"
+          // shadcn canonical mixed-bar pattern: zero left margin and
+          // let the YAxis own its width. No XAxis (hide), no
+          // CartesianGrid — bars + tooltip carry the values.
+          margin={{ top: 4, right: 16, bottom: 0, left: 0 }}
+        >
+          <YAxis
+            type="category"
+            dataKey="host"
+            tickLine={false}
+            axisLine={false}
+            tick={<SourceTick tickWidth={yAxisWidth} />}
+            width={yAxisWidth}
+          />
+          <XAxis dataKey="views" type="number" hide />
+          <Tooltip
+            cursor={false}
+            content={
+              <ChartTooltipContent
+                hideLabel
+                formatter={(value, _name, item) => {
+                  const host = String(item.payload?.host ?? "");
+                  return (
+                    <div className="flex w-full items-center justify-between gap-4">
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          aria-hidden
+                          className="size-2 rounded-[2px]"
+                          style={{ background: "var(--chart-1)" }}
+                        />
+                        <span className="text-muted-foreground">{prettyReferrer(host)}</span>
+                      </span>
+                      <span className="font-mono font-medium tabular-nums text-foreground">
+                        {Number(value).toLocaleString()}
+                      </span>
+                    </div>
+                  );
+                }}
+              />
+            }
+          />
+          <Bar
+            dataKey="views"
+            fill="var(--chart-1)"
+            radius={4}
+            isAnimationActive={true}
+            animationDuration={400}
+          />
+        </BarChart>
+      </ChartContainer>
+    </div>
   );
 }
