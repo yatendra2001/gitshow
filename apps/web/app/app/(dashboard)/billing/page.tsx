@@ -159,7 +159,7 @@ export default async function BillingPage() {
           <p className="mt-8 text-[12px] text-muted-foreground">
             Cancellations take effect at the end of your current billing
             period. Your public profile stays live forever — we just stop
-            letting you regenerate or edit it.
+            letting you edit it or change templates.
           </p>
         ) : null}
       </section>

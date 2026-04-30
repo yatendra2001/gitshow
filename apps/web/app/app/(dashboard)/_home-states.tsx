@@ -341,11 +341,11 @@ export function CheckoutProcessingState() {
 
 const PRO_FEATURES = [
   "AI-generated portfolio from your GitHub history",
-  "Unlimited regenerations and edits",
+  "Six designer-grade templates",
   "Private + org repos",
-  "Custom domain",
-  "Powerful analytics — see who viewed what",
-  "Resume + PDF export",
+  "Custom domain with SSL & edge caching",
+  "Built-in visitor analytics",
+  "ATS-safe resume + PDF export",
 ] as const;
 
 export function NonProShowcase({
@@ -373,7 +373,7 @@ export function NonProShowcase({
             Your Pro subscription ended. Your public profile{" "}
             <span className="font-mono">gitshow.io/{handle}</span>{" "}
             {hasPublished ? "stays live forever" : "was never published"} —
-            subscribe again to regenerate, edit, or reconnect your domain.
+            subscribe again to edit, swap templates, or reconnect your domain.
           </>
         ) : (
           <>

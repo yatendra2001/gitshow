@@ -21,6 +21,7 @@ type FeatureProps = {
     linePosition?: "left" | "right" | "top" | "bottom";
     lineColor?: string;
     featureItems: FeatureItem[];
+    showCaption?: boolean;
 };
 
 const LINE_POSITION_CLASSES = {
@@ -40,6 +41,7 @@ export const Feature = ({
     linePosition = "left",
     lineColor = "bg-neutral-500 dark:bg-white",
     featureItems,
+    showCaption = false,
 }: FeatureProps) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -98,16 +100,23 @@ export const Feature = ({
 
         if (currentItem.image) {
             return (
-                <motion.img
+                <motion.div
                     key={`image-${currentIndex}-${currentItem.id}`}
-                    src={currentItem.image}
-                    alt={currentItem.title}
-                    initial={{ opacity: 0, scale: 0.95 }}
+                    initial={{ opacity: 0, scale: 0.97 }}
                     animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.95 }}
+                    exit={{ opacity: 0, scale: 0.97 }}
                     transition={MEDIA_TRANSITION}
-                    className="h-full w-full min-h-[400px] rounded-xl border border-border object-cover p-1"
-                />
+                    className="relative w-full overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/40 ring-1 ring-foreground/5"
+                >
+                    <div className="aspect-[2920/1710] w-full">
+                        <img
+                            src={currentItem.image}
+                            alt={currentItem.title}
+                            className="h-full w-full object-cover object-top"
+                        />
+                    </div>
+                    <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-foreground/10 rounded-xl" />
+                </motion.div>
             );
         }
 
@@ -199,8 +208,22 @@ export const Feature = ({
                 ))}
             </div>
 
-            <div className="w-full p-4 relative overflow-hidden">
+            <div className="w-full p-4 md:p-6 relative overflow-hidden">
                 <AnimatePresence mode="wait">{renderMedia()}</AnimatePresence>
+                {showCaption && currentItem?.content ? (
+                    <AnimatePresence mode="wait">
+                        <motion.p
+                            key={`caption-${currentIndex}-${currentItem.id}`}
+                            initial={{ opacity: 0, y: 6 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -6 }}
+                            transition={MEDIA_TRANSITION}
+                            className="mx-auto mt-6 max-w-2xl text-balance text-center text-sm md:text-base text-muted-foreground"
+                        >
+                            {currentItem.content}
+                        </motion.p>
+                    </AnimatePresence>
+                ) : null}
             </div>
         </div>
     );
