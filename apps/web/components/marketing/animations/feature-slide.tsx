@@ -208,7 +208,7 @@ export const Feature = ({
                 ))}
             </div>
 
-            <div className="w-full p-4 md:p-6 relative overflow-hidden">
+            {/* <div className="w-full p-4 md:p-6 relative overflow-hidden">
                 <AnimatePresence mode="wait">{renderMedia()}</AnimatePresence>
                 {showCaption && currentItem?.content ? (
                     <AnimatePresence mode="wait">
@@ -224,7 +224,7 @@ export const Feature = ({
                         </motion.p>
                     </AnimatePresence>
                 ) : null}
-            </div>
+            </div> */}
         </div>
     );
 };

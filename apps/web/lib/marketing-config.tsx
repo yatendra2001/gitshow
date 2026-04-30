@@ -67,7 +67,7 @@ export const siteConfig = {
     },
     nav: {
         links: [
-            { id: 1, name: "Demo", href: "/demo" },
+            { id: 1, name: "Demo", href: "/yatendra2001" },
             { id: 2, name: "Features", href: "#features" },
             { id: 3, name: "Pricing", href: "#pricing" },
             { id: 4, name: "FAQ", href: "#faq" },
@@ -81,7 +81,7 @@ export const siteConfig = {
             "GitShow reads every repo you've ever shipped, writes the prose, and hands you a portfolio site, ATS resume, custom domain, and visitor analytics — already wired together.",
         demo: {
             label: "See a real portfolio",
-            href: "/demo",
+            href: "/yatendra2001",
         },
         cta: {
             primary: {
@@ -340,7 +340,7 @@ export const siteConfig = {
                 "When a recruiter at a target company opens your portfolio, you should know. GitShow ships analytics that surface intent — geography, source, and engagement — without bolting on a third-party script or asking your readers to accept cookies.",
             ctaButton: {
                 text: "See it in action",
-                href: "/demo",
+                href: "/yatendra2001",
             },
             blocks: [
                 {
@@ -623,7 +623,7 @@ export const siteConfig = {
                 id: 9,
                 question: "Can I see a real portfolio before signing up?",
                 answer:
-                    "Yes — gitshow.io/demo is a live portfolio generated from a real GitHub history.",
+                    "Yes — gitshow.io/yatendra2001 is a live portfolio generated from a real GitHub history.",
             },
         ],
     },
