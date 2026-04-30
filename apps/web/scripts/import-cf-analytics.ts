@@ -265,71 +265,20 @@ interface ViewEventRow {
   utm_campaign: string | null;
 }
 
-const COUNTRY_NAME_TO_CODE: Record<string, string> = {
-  "United States": "US",
-  India: "IN",
-  "United Kingdom": "GB",
-  Germany: "DE",
-  Canada: "CA",
-  Australia: "AU",
-  France: "FR",
-  Brazil: "BR",
-  Japan: "JP",
-  China: "CN",
-  Singapore: "SG",
-  Netherlands: "NL",
-  Spain: "ES",
-  Italy: "IT",
-  Mexico: "MX",
-  "South Korea": "KR",
-  Poland: "PL",
-  Russia: "RU",
-  Sweden: "SE",
-  Norway: "NO",
-  Finland: "FI",
-  Denmark: "DK",
-  Ireland: "IE",
-  Switzerland: "CH",
-  Austria: "AT",
-  Belgium: "BE",
-  Portugal: "PT",
-  "New Zealand": "NZ",
-  Indonesia: "ID",
-  Philippines: "PH",
-  Thailand: "TH",
-  Malaysia: "MY",
-  Vietnam: "VN",
-  "Hong Kong": "HK",
-  Taiwan: "TW",
-  "South Africa": "ZA",
-  Israel: "IL",
-  Turkey: "TR",
-  "United Arab Emirates": "AE",
-  "Saudi Arabia": "SA",
-  Argentina: "AR",
-  Chile: "CL",
-  Colombia: "CO",
-  "Czech Republic": "CZ",
-  Hungary: "HU",
-  Romania: "RO",
-  Greece: "GR",
-  Ukraine: "UA",
-  Egypt: "EG",
-  Pakistan: "PK",
-  Bangladesh: "BD",
-  Nigeria: "NG",
-  Kenya: "KE",
-};
-
-function countryCode(name: string): string | null {
-  if (!name || name === "Unknown") return null;
-  if (COUNTRY_NAME_TO_CODE[name]) return COUNTRY_NAME_TO_CODE[name]!;
-  const initials = name
-    .split(/\s+/)
-    .map((w) => w[0]?.toUpperCase() ?? "")
-    .join("")
-    .slice(0, 2);
-  return initials || null;
+/**
+ * Despite the misleading field name, `clientCountryName` from
+ * httpRequestsAdaptiveGroups is already the 2-letter ISO code (US,
+ * IN, GB, etc.) — not a full name. Just normalize and pass through.
+ */
+function countryCode(raw: string): string | null {
+  if (!raw) return null;
+  const trimmed = raw.trim().toUpperCase();
+  if (!trimmed || trimmed === "UNKNOWN" || trimmed === "XX" || trimmed === "T1") {
+    return null;
+  }
+  // Sanity: should be exactly 2 letters; anything weirder we drop.
+  if (!/^[A-Z]{2}$/.test(trimmed)) return null;
+  return trimmed;
 }
 
 function syntheticVisitorHash(
@@ -354,6 +303,28 @@ function spreadWithinHour(hourIso: string, n: number): number[] {
   );
 }
 
+/**
+ * Convert per-hour CF buckets into view_events rows.
+ *
+ * Why one row per visit but a SHARED visitor_hash per (country, day):
+ * gitshow's "unique visitors" KPI does COUNT(DISTINCT visitor_hash)
+ * over the window. CF reports per-hour visits estimates, but doesn't
+ * tell us if the same person revisited across hours. If we minted a
+ * unique synthetic hash per visit, we'd inflate uniques ~10x (which
+ * is exactly what happened in the first import).
+ *
+ * Heuristic: visitors from the same country on the same UTC day share
+ * one synthetic identity. So:
+ *   - Total `views` matches CF's visit total (each row = 1 visit)
+ *   - Unique `visitor_hash` count ≈ unique-visitors-per-day-per-country
+ * The unique count under-counts vs CF's real-world dedup (one person
+ * over 7 days might span multiple days), but it's much closer than
+ * "every visit is a new person" and never worse than the truth.
+ *
+ * Hour-of-day distribution is preserved by stamping each row with a
+ * timestamp inside its bucket's hour, so the dashboard's "Visit
+ * timing" chart still reads correctly.
+ */
 function bucketsToRows(buckets: CfBucket[], args: Args): ViewEventRow[] {
   const rows: ViewEventRow[] = [];
   const isCustom =
@@ -365,16 +336,21 @@ function bucketsToRows(buckets: CfBucket[], args: Args): ViewEventRow[] {
     const visits = bucket.sum.visits || bucket.count || 0;
     if (visits <= 0) continue;
     const country = countryCode(bucket.dimensions.clientCountryName);
+    const dayKey = hourIso.slice(0, 10); // YYYY-MM-DD
+    // SAME hash for every visit from the same country on the same day.
+    // Across hours within that day, all rows share this hash → uniques
+    // dedup correctly.
+    const sharedHash = syntheticVisitorHash(
+      args.hostname,
+      dayKey,
+      country ?? "??",
+      0,
+    );
     const timestamps = spreadWithinHour(hourIso, visits);
     for (let i = 0; i < visits; i++) {
       rows.push({
         slug: args.slug,
-        visitor_hash: syntheticVisitorHash(
-          args.hostname,
-          hourIso,
-          bucket.dimensions.clientCountryName,
-          i,
-        ),
+        visitor_hash: sharedHash,
         referrer_host: null,
         referrer_url: null,
         country,
