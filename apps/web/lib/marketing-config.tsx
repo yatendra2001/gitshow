@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 /**
  * Marketing landing config. Every section on `app/page.tsx` reads from
- * here — edit copy in this file, not in the section components.
+ * here. Edit copy in this file, not in the section components.
  *
  * The landing CTA points at `/signin`. That route auto-redirects
  * signed-in visitors to `/app`, so we don't need auth-awareness on the
@@ -48,8 +48,8 @@ type NavLink = {
 export const siteConfig = {
     name: "GitShow",
     description:
-        "Don't write your portfolio. Compile it. GitShow reads your repos, writes the prose, and ships a portfolio site, ATS resume, custom domain, and visitor analytics.",
-    cta: "Compile my portfolio",
+        "GitShow turns your GitHub history into a portfolio, ATS resume, custom domain, and visitor analytics dashboard.",
+    cta: "Create my portfolio",
     url: process.env.NEXT_PUBLIC_APP_URL || "https://gitshow.io",
     keywords: [
         "engineering portfolio platform",
@@ -76,9 +76,9 @@ export const siteConfig = {
     hero: {
         badgeIcon: <Icons.stackedIcons className="size-4" />,
         badge: "Live in 20 minutes",
-        title: "Don't write your portfolio. Compile it.",
+        title: "AI-generated portfolios from your GitHub.",
         description:
-            "GitShow reads every repo you've ever shipped, writes the prose, and hands you a portfolio site, ATS resume, custom domain, and visitor analytics — already wired together.",
+            "Connect GitHub and GitShow turns your repos, commits, and PRs into a portfolio, resume, and analytics dashboard.",
         demo: {
             label: "See a real portfolio",
             href: "/yatendra2001",
@@ -91,37 +91,37 @@ export const siteConfig = {
         },
     },
     demoSection: {
-        title: "Made for the recruiter on the other side.",
+        title: "See what you get.",
         description:
-            "Switch templates, point your domain, watch the analytics — every screen below is the actual app you'll log into.",
+            "Templates, resume, domains, and analytics live in one dashboard.",
         items: [
             {
                 id: 1,
                 title: "Templates",
                 content:
-                    "Six looks for the same content — Classic, Spotlight, Glow, Bento, Terminal, Minimal. Pick the one that matches the room you're walking into. Swap any time; the writing stays.",
+                    "Choose Classic, Spotlight, Glow, Bento, Terminal, or Minimal. Switch anytime. Your content stays in place.",
                 image: "/marketing/templates.png",
             },
             {
                 id: 2,
-                title: "Custom domain",
-                content:
-                    "Point yourname.com at GitShow. SSL, DNS verification, and edge caching across the Cloudflare network — handled. The URL on your résumé reads like you, not us.",
-                image: "/marketing/domain.png",
-            },
-            {
-                id: 3,
                 title: "Resume + PDF",
                 content:
-                    "Single column, ATS-readable, capped at one page. Edit on the left, the PDF redraws on the right. The same source of truth that powers your site.",
+                "Edit your resume and preview the PDF beside it. It stays synced with your portfolio content.",
                 image: "/marketing/resume.png",
             },
             {
-                id: 4,
+                id: 3,
                 title: "Analytics",
                 content:
-                    "See views, unique visitors, top countries, sources, devices, and visit timing — without bolting another script onto your portfolio. Hashed visitors, no cookies on your readers.",
+                "See views, unique visitors, countries, sources, devices, and visit timing. Visitors are hashed, with no cookies.",
                 image: "/marketing/analytics_1.png",
+            },
+            {
+                id: 4,
+                title: "Custom domain",
+                content:
+                    "Use your own domain. GitShow handles SSL, DNS verification, and Cloudflare edge caching.",
+                image: "/marketing/domain.png",
             },
         ],
     },
@@ -331,13 +331,14 @@ export const siteConfig = {
             icon: <Icons.globe className="size-4 text-muted-foreground" />,
             text: "Know who's reading",
         },
-        title: (<>The hiring loop, <Highlight>not just a vanity counter.</Highlight></>),
+        title: (<>See who is reading <Highlight>your portfolio.</Highlight></>),
+
         description:
-            "Most portfolios are dead pages. GitShow tells you which company is reading, which referrer sent them, and which project got their attention.",
+            "GitShow shows where visits come from, which projects people open, and when interest spikes.",
         sections: {
-            title: "Built for the moments that matter.",
+            title: "Analytics built in.",
             description:
-                "When a recruiter at a target company opens your portfolio, you should know. GitShow ships analytics that surface intent — geography, source, and engagement — without bolting on a third-party script or asking your readers to accept cookies.",
+                "Track visits, countries, sources, devices, browsers, and recent activity from your dashboard. No extra scripts, no cookies for visitors.",
             ctaButton: {
                 text: "See it in action",
                 href: "/yatendra2001",
@@ -346,17 +347,17 @@ export const siteConfig = {
                 {
                     id: 1,
                     icon: <Icons.globe className="size-4 text-muted-foreground" />,
-                    title: "Where they read from",
+                    title: "Location and timing",
                     description:
-                        "Visit timing by hour, top countries with rank, and geographic spread on a real map. Notice the spike from Berlin the day after you posted on a Hacker News thread.",
+                        "See visit timing by hour, top countries, and geographic spread on a map.",
                     image: "/marketing/analytics_2.png",
                 },
                 {
                     id: 2,
                     icon: <Icons.magicStar className="size-4 text-muted-foreground" />,
-                    title: "How they found you",
+                    title: "Sources and activity",
                     description:
-                        "Top referrers, devices, browsers, and a recent-activity stream. Watch a LinkedIn share turn into nine visits from one company in two days — and know to follow up.",
+                        "See top referrers, devices, browsers, and a recent activity stream.",
                     image: "/marketing/analytics_3.png",
                 },
             ],
@@ -367,13 +368,13 @@ export const siteConfig = {
             icon: <Icons.terminal className="size-4 text-muted-foreground" />,
             text: "Written from your work",
         },
-        title: (<>The portfolio reads like <Highlight>you wrote it.</Highlight></>),
+        title: (<>A portfolio written from <Highlight>your work.</Highlight></>),
         description:
-            "Because, in the way that matters, you did. GitShow reads the actual code you've shipped — every repo, every PR, every review — and writes a portfolio that names the trade-offs you made, not just the features you announced.",
+            "GitShow reads your GitHub activity and drafts clear project writeups with links back to the commits, PRs, and reviews behind them.",
         sections: {
-            title: "Sourced. Not summarized.",
+            title: "Proof included.",
             description:
-                "Every paragraph on your portfolio links back to the commit, PR, or review it came from. The line that says you cut p99 latency? Click it — there's the pull request. Recruiters trust what they can verify.",
+                "Portfolio sections can link back to the commit, PR, or review they came from. Recruiters can check the work behind each claim.",
             ctaButton: {
                 text: "Generate yours",
                 href: "/signin",
@@ -382,16 +383,16 @@ export const siteConfig = {
                 {
                     id: 1,
                     icon: <Icons.terminal className="size-4 text-muted-foreground" />,
-                    title: "Reads every repo, not just the public ones",
+                    title: "Use the repos you choose",
                     description:
-                        "Sign in once. GitShow ingests your public work, your private side-projects, and the org repos your employers authorized. The portfolio reflects all of it — not just the parts that happened to be open-source.",
+                        "Include public repos, private projects, and authorized org repos. You decide what appears before you share.",
                 },
                 {
                     id: 2,
                     icon: <Icons.globe className="size-4 text-muted-foreground" />,
-                    title: "Found before you've sent the resume",
+                    title: "Publish at your URL",
                     description:
-                        "Live at gitshow.io/{handle} or your own domain. SEO-indexed and edge-served, so when a recruiter searches your name and stack, your portfolio is the first result — not your forgotten LinkedIn.",
+                        "Share gitshow.io/{handle} or connect your own domain. Pages are SEO-indexed and served from the edge.",
                 },
             ],
         }
@@ -401,23 +402,23 @@ export const siteConfig = {
             icon: <Icons.terminal className="size-4 text-muted-foreground" />,
             text: "How to start",
         },
-        title: (<>Sign in. <Highlight>Coffee. Share.</Highlight></>),
+        title: (<>Connect. <Highlight>Review. Share.</Highlight></>),
         description:
-            "Twenty minutes from a GitHub click to a portfolio you'd actually send to your dream company.",
+            "Start with GitHub, review the draft, then share your link.",
         step1: {
             title: "Sign in with GitHub",
             description:
-                "One click. We ask for read-only access to your public, private, and org repos. Revoke any time from GitHub's settings — your portfolio stays.",
+                "Grant read-only repo access. You can revoke access from GitHub anytime.",
         },
         step2: {
-            title: "Pour a coffee",
+            title: "Review the draft",
             description:
-                "GitShow reads every repo you have access to, scans your commit and PR history, and drafts the prose. Resume and analytics get wired up. About twenty minutes for a typical account.",
+                "GitShow scans your repo data, commits, PRs, and reviews, then drafts your portfolio and resume.",
         },
         step3: {
-            title: "Ship the link",
+            title: "Share your portfolio",
             description:
-                "Live at gitshow.io/{handle}. Pick a template, point your domain, edit any section. The next time someone asks for your portfolio, you paste a URL — that's it.",
+                "Pick a template, connect a domain, edit any section, and share the URL when you're ready.",
         },
     },
     testimonialSection: {
@@ -449,9 +450,9 @@ export const siteConfig = {
             ),
             text: "From real engineers",
         },
-        title: "Loved by people who'd rather ship than write.",
+        title: "Built for engineers who want a clear portfolio.",
         description:
-            "Early users who pointed GitShow at their GitHub and ended up with a portfolio they were proud to share — by lunch.",
+            "Early users connected GitHub and got a portfolio they felt ready to share.",
         testimonials: [
             {
                 id: "1",
@@ -460,9 +461,8 @@ export const siteConfig = {
                 img: "https://randomuser.me/api/portraits/men/91.jpg",
                 description: (
                     <p>
-                        I&apos;d been putting off updating my portfolio for two
-                        years. GitShow had a better first draft than anything
-                        I&apos;d have written.
+                        I had put off updating my portfolio for two years.
+                        GitShow gave me a solid first draft in one session.
                     </p>
                 ),
             },
@@ -473,8 +473,8 @@ export const siteConfig = {
                 img: "https://randomuser.me/api/portraits/women/12.jpg",
                 description: (
                     <p>
-                        The commit links are the whole thing. Recruiters see
-                        the exact PR that proves I shipped what I said I shipped.
+                        The commit links are the whole thing. Recruiters can
+                        open the PR behind each project.
                     </p>
                 ),
             },
@@ -485,9 +485,8 @@ export const siteConfig = {
                 img: "https://randomuser.me/api/portraits/men/45.jpg",
                 description: (
                     <p>
-                        Tried writing my portfolio from scratch three times,
-                        gave up every time. GitShow&apos;s draft was 80% there
-                        and I just tuned the tone.
+                        GitShow gave me a draft I could edit right away. That
+                        made the whole thing easier to finish.
                     </p>
                 ),
             },
@@ -498,9 +497,8 @@ export const siteConfig = {
                 img: "https://randomuser.me/api/portraits/women/83.jpg",
                 description: (
                     <p>
-                        GitShow surfaced a project from three years ago that
-                        I&apos;d forgotten. It&apos;s the most impressive thing
-                        on my portfolio now.
+                        GitShow brought back an older project I should have
+                        been showing all along.
                     </p>
                 ),
             },
@@ -511,8 +509,8 @@ export const siteConfig = {
                 img: "https://randomuser.me/api/portraits/women/5.jpg",
                 description: (
                     <p>
-                        When candidates send me GitShow links, I spend half as
-                        long evaluating them and come away more confident.
+                        When candidates send me GitShow links, I understand
+                        their work faster and with more confidence.
                     </p>
                 ),
             },
@@ -523,8 +521,8 @@ export const siteConfig = {
                 img: "https://randomuser.me/api/portraits/men/18.jpg",
                 description: (
                     <p>
-                        GitShow reads commit metadata — never the source code.
-                        That was the dealbreaker for me, and they got it right.
+                        I liked that the portfolio links back to real commit
+                        history. It made the result feel honest.
                     </p>
                 ),
             },
@@ -533,9 +531,9 @@ export const siteConfig = {
     pricing: {
         title: "Pricing.",
         description:
-            "One plan, every feature. Monthly or annual — annual saves 30%. Try the live demo at gitshow.io/demo first; we don't run a free tier.",
+            "One plan with every feature. Choose monthly or annual. Try the live demo first.",
         features: [
-            "AI-generated portfolio from your full GitHub history",
+            "Portfolio from your full GitHub history",
             "Six templates, instant swap",
             "Public, private, and org repos",
             "Custom domain with managed SSL",
@@ -575,13 +573,13 @@ export const siteConfig = {
                 id: 1,
                 question: "What does GitShow do, exactly?",
                 answer:
-                    "Sign in with GitHub. GitShow reads your repos — README, manifests, source samples, commit history, PRs, reviews — and writes a portfolio site in plain English. It also generates an ATS-safe PDF resume, ships analytics, and lets you point your own domain at the result. About twenty minutes end to end.",
+                    "Sign in with GitHub. GitShow reads your repos, commits, PRs, and reviews, then drafts a portfolio site in plain English. It also creates an ATS-safe PDF resume, adds analytics, and supports custom domains. About twenty minutes end to end.",
             },
             {
                 id: 2,
                 question: "Does it read my source code?",
                 answer:
-                    "It samples it. Per repo, GitShow reads the README, manifests (package.json, Cargo.toml, etc.), and the first 2 KB of up to five source files — enough to understand what you built and how. That sample is what lets the prose name the actual trade-off you made instead of paraphrasing your PR title. Samples are passed through for inference, not stored long-term, never sold, never trained on.",
+                    "Yes, in small samples. For each repo, GitShow reads the README, manifests such as package.json or Cargo.toml, and the first 2 KB of up to five source files. Samples are used for inference and are not stored long term.",
             },
             {
                 id: 3,
@@ -593,7 +591,7 @@ export const siteConfig = {
                 id: 4,
                 question: "Can I edit what gets written?",
                 answer:
-                    "Every section. Rewrite paragraphs, reorder projects, hide work you want kept private, swap templates between Classic, Spotlight, Glow, Bento, Terminal, and Minimal. Updates apply instantly — there's no rebuild queue.",
+                    "Yes. Rewrite paragraphs, reorder projects, hide private work, and switch templates anytime. Updates apply instantly.",
             },
             {
                 id: 5,
@@ -605,7 +603,7 @@ export const siteConfig = {
                 id: 6,
                 question: "What kind of analytics do I get?",
                 answer:
-                    "A built-in dashboard: views, unique visitors, top countries, devices, browsers, traffic sources, visit timing, and recent activity. Privacy-first — visitors are hashed with a salted, non-reversible scheme, no cookies on your readers, no third-party scripts, no GDPR popup.",
+                    "Views, unique visitors, top countries, devices, browsers, traffic sources, visit timing, and recent activity. Visitors are hashed with a salted, non-reversible scheme. There are no reader cookies or third-party scripts.",
             },
             {
                 id: 7,
@@ -617,26 +615,26 @@ export const siteConfig = {
                 id: 8,
                 question: "How much does it cost?",
                 answer:
-                    "$10/month billed monthly, or $7/month billed annually ($84/year — 30% off). Cancel any time; your published portfolio stays live forever.",
+                    "$10/month billed monthly, or $7/month billed annually. Annual billing is $84/year. Cancel any time; your published portfolio stays live forever.",
             },
             {
                 id: 9,
                 question: "Can I see a real portfolio before signing up?",
                 answer:
-                    "Yes — gitshow.io/yatendra2001 is a live portfolio generated from a real GitHub history.",
+                    "Yes: gitshow.io/yatendra2001 is a live portfolio generated from a real GitHub history.",
             },
         ],
     },
     ctaSection: {
         id: "cta",
-        title: "Compile your portfolio.",
+        title: "Create your portfolio.",
         backgroundImage: "/agent-cta-background.png",
         button: {
             text: "Sign in with GitHub",
             href: "/signin",
         },
         subtext:
-            "Twenty minutes from sign-in to a portfolio you'd actually send to your dream company.",
+            "Connect GitHub, review the draft, and share your link.",
     },
     footerLinks: [
         {

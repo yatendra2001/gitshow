@@ -9,7 +9,7 @@ export function DemoSection() {
 
     return (
         <section id="demo" className="w-full relative">
-            <SectionHeader>
+            {/* <SectionHeader>
                 <div className="flex flex-col items-center justify-center">
                     <HeaderBadge
                         icon={<Icons.stackedIcons className="size-4 text-muted-foreground" />}
@@ -24,7 +24,7 @@ export function DemoSection() {
                         </p>
                     </div>
                 </div>
-            </SectionHeader>
+            </SectionHeader> */}
             <Feature
                 collapseDelay={5000}
                 linePosition="bottom"
