@@ -5,13 +5,23 @@ import { Icons } from "@/components/marketing/icons";
 import { siteConfig } from "@/lib/marketing-config";
 import { SectionHeader } from "@/components/marketing/section-header";
 import { HeaderBadge } from "@/components/marketing/header-badge";
-import { TerminalBrowserPreviewBlock } from "@/components/marketing/animations/sections/terminal-browser-preview";
-import { CodeReviewBlock } from "@/components/marketing/animations/sections/code-review-block";
 import { CornerPlus } from "@/components/marketing/ui/corner-plus";
 
 const workflowConfig = siteConfig.workflowSection;
 
+/**
+ * "Replaces your stack" — analytics depth + bundle value.
+ *
+ * Right column shows two real product screenshots (analytics_2 +
+ * analytics_3) instead of fabricated UI. Left column carries the
+ * positioning + CTA. We chose actual platform PNGs over animated
+ * mockups because the user explicitly called out that fake UIs
+ * don't match the design language and confuse readers.
+ */
+
 export function WorkflowSection() {
+    const blocks = workflowConfig.sections.blocks;
+
     return (
         <section id="workflow" className="w-full relative">
             <SectionHeader>
@@ -27,9 +37,9 @@ export function WorkflowSection() {
                     </div>
                 </div>
             </SectionHeader>
+
             <div className="mx-auto">
                 <div className="grid grid-cols-1 md:grid-cols-6">
-                    {/* Left Column - Sticky Description */}
                     <div className="col-span-1 md:col-span-2 p-8 md:p-10 lg:p-14 md:sticky md:top-20 md:self-start flex flex-col gap-7">
                         <h3 className="text-3xl lg:text-4xl font-medium tracking-tighter text-left text-balance">
                             {workflowConfig.sections.title}
@@ -45,38 +55,40 @@ export function WorkflowSection() {
                         </Button>
                     </div>
 
-                    {/* Right Column - Animated Blocks */}
                     <div className="col-span-1 md:col-span-4 w-full border-t md:border-t-0 md:border-l border-border relative">
                         <CornerPlus position="all" className="text-muted-foreground/50" />
                         <div className="w-full divide-y divide-border">
-                            <div className="relative">
-                                <TerminalBrowserPreviewBlock />
-                                <div className="max-w-xl text-left items-start p-6">
-                                    <p className="text-sm text-muted-foreground flex items-center gap-3 justify-start">
-                                        {workflowConfig.sections.blocks[0].icon}
-                                        {workflowConfig.sections.blocks[0].title}
-                                    </p>
-                                    <p className="text-base text-foreground leading-relaxed mt-2">
-                                        {workflowConfig.sections.blocks[0].description}
-                                    </p>
+                            {blocks.map((block, idx) => (
+                                <div key={block.id} className="relative">
+                                    {idx > 0 ? (
+                                        <>
+                                            <CornerPlus position="top-left" className="text-muted-foreground/50" />
+                                            <CornerPlus position="top-right" className="text-muted-foreground/50" />
+                                        </>
+                                    ) : null}
+                                    <div className="px-6 pt-8 md:pt-10">
+                                        <div className="overflow-hidden rounded-xl border border-border bg-card shadow-2xl shadow-black/40 ring-1 ring-foreground/5">
+                                            <div className="aspect-[2920/1710] w-full">
+                                                <img
+                                                    src={block.image}
+                                                    alt={block.title}
+                                                    loading="lazy"
+                                                    className="h-full w-full object-cover object-top"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div className="max-w-xl text-left items-start p-6">
+                                        <p className="text-sm text-muted-foreground flex items-center gap-3 justify-start">
+                                            {block.icon}
+                                            {block.title}
+                                        </p>
+                                        <p className="text-base text-foreground leading-relaxed mt-2">
+                                            {block.description}
+                                        </p>
+                                    </div>
                                 </div>
-                            </div>
-
-                            {/* Code Review Block */}
-                            <div className="relative">
-                                <CornerPlus position="top-left" className="text-muted-foreground/50" />
-                                <CornerPlus position="top-right" className="text-muted-foreground/50" />
-                                <CodeReviewBlock />
-                                <div className="max-w-xl text-left items-start p-6">
-                                    <p className="text-sm text-muted-foreground flex items-center gap-3 justify-start">
-                                        {workflowConfig.sections.blocks[1].icon}
-                                        {workflowConfig.sections.blocks[1].title}
-                                    </p>
-                                    <p className="text-base text-foreground leading-relaxed mt-2">
-                                        {workflowConfig.sections.blocks[1].description}
-                                    </p>
-                                </div>
-                            </div>
+                            ))}
                         </div>
                     </div>
                 </div>

@@ -25,12 +25,12 @@ export const dynamic = "force-dynamic";
 
 const FEATURES = [
   "AI-generated portfolio from your GitHub",
-  "Unlimited regenerations and edits",
-  "Private + org repos",
-  "Connect a custom domain",
-  "Powerful analytics — see who viewed what",
-  "Resume + PDF export",
-  "Priority generation queue",
+  "Six designer-grade templates",
+  "Private + org repo support",
+  "Custom domain with SSL & edge caching",
+  "Built-in visitor analytics",
+  "ATS-safe resume + PDF export",
+  "Edit any section, anytime",
   "Email support",
 ];
 

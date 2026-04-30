@@ -1,10 +1,4 @@
 import { Icons } from "@/components/marketing/icons";
-import {
-    PortfolioAnalyticsMockup,
-    PortfolioProfileMockup,
-    PortfolioProjectMockup,
-    PortfolioSkillsMockup,
-} from "@/components/marketing/demo-mockups";
 import { cn } from "@/lib/utils";
 
 /**
@@ -54,16 +48,17 @@ type NavLink = {
 export const siteConfig = {
     name: "GitShow",
     description:
-        "An engineering portfolio, generated from your GitHub. Every claim links to the commit that earned it.",
-    cta: "Generate your profile",
+        "Don't write your portfolio. Compile it. GitShow reads your repos, writes the prose, and ships a portfolio site, ATS resume, custom domain, and visitor analytics.",
+    cta: "Compile my portfolio",
     url: process.env.NEXT_PUBLIC_APP_URL || "https://gitshow.io",
     keywords: [
-        "engineering portfolio",
+        "engineering portfolio platform",
         "developer portfolio",
         "GitHub portfolio",
+        "ATS resume builder",
+        "portfolio analytics",
+        "custom domain portfolio",
         "AI portfolio generator",
-        "resume from git history",
-        "commits to portfolio",
     ],
     links: {
         email: "yatendra@gitshow.io",
@@ -80,10 +75,10 @@ export const siteConfig = {
     },
     hero: {
         badgeIcon: <Icons.stackedIcons className="size-4" />,
-        badge: "From $7/mo. Generated in 20 minutes.",
-        title: "Generate portfolio site from your GitHub.",
+        badge: "Live in 20 minutes",
+        title: "Don't write your portfolio. Compile it.",
         description:
-            "Sign in with GitHub. GitShow reads your commits, pull requests, reviews and writes your portfolio.",
+            "GitShow reads every repo you've ever shipped, writes the prose, and hands you a portfolio site, ATS resume, custom domain, and visitor analytics — already wired together.",
         demo: {
             label: "See a real portfolio",
             href: "/demo",
@@ -96,37 +91,37 @@ export const siteConfig = {
         },
     },
     demoSection: {
-        title: "This is what you'll get.",
+        title: "Made for the recruiter on the other side.",
         description:
-            "A real portfolio page at gitshow.io/{handle}. Every section is editable, and every claim links to the commit behind it.",
+            "Switch templates, point your domain, watch the analytics — every screen below is the actual app you'll log into.",
         items: [
             {
                 id: 1,
-                title: "Profile",
+                title: "Templates",
                 content:
-                    "Your hero — name, intro, and the bio GitShow drafts from your commits. Edit the words; the proof underneath stays sourced.",
-                mockup: <PortfolioProfileMockup />,
+                    "Six looks for the same content — Classic, Spotlight, Glow, Bento, Terminal, Minimal. Pick the one that matches the room you're walking into. Swap any time; the writing stays.",
+                image: "/marketing/templates.png",
             },
             {
                 id: 2,
-                title: "Projects",
+                title: "Custom domain",
                 content:
-                    "Each project written from your real commits and PRs — with links back to the exact pull request that proves the claim.",
-                mockup: <PortfolioProjectMockup />,
+                    "Point yourname.com at GitShow. SSL, DNS verification, and edge caching across the Cloudflare network — handled. The URL on your résumé reads like you, not us.",
+                image: "/marketing/domain.png",
             },
             {
                 id: 3,
-                title: "Skills & Work",
+                title: "Resume + PDF",
                 content:
-                    "Skills sourced from what you actually ship. Roles below, expandable, with the impact lines under each.",
-                mockup: <PortfolioSkillsMockup />,
+                    "Single column, ATS-readable, capped at one page. Edit on the left, the PDF redraws on the right. The same source of truth that powers your site.",
+                image: "/marketing/resume.png",
             },
             {
                 id: 4,
-                title: "Build Log",
+                title: "Analytics",
                 content:
-                    "A timeline of weekend projects, talks, and side experiments — pulled from the repos you starred and shipped after hours.",
-                mockup: <PortfolioAnalyticsMockup />,
+                    "See views, unique visitors, top countries, sources, devices, and visit timing — without bolting another script onto your portfolio. Hashed visitors, no cookies on your readers.",
+                image: "/marketing/analytics_1.png",
             },
         ],
     },
@@ -333,75 +328,52 @@ export const siteConfig = {
     },
     workflowSection: {
         badge: {
-            icon: <Icons.terminal className="size-4 text-muted-foreground" />,
-            text: "How it works",
+            icon: <Icons.globe className="size-4 text-muted-foreground" />,
+            text: "Know who's reading",
         },
-        title: (<>Point your GitHub. <Highlight>Get a portfolio.</Highlight></>),
+        title: (<>The hiring loop, <Highlight>not just a vanity counter.</Highlight></>),
         description:
-            "Sign in, wait 20 minutes, share the link. No resume template to fill in.",
+            "Most portfolios are dead pages. GitShow tells you which company is reading, which referrer sent them, and which project got their attention.",
         sections: {
-            title: "Your GitHub history is already the work.",
+            title: "Built for the moments that matter.",
             description:
-                "GitShow just reads it, organizes it, and writes it up in plain English.",
+                "When a recruiter at a target company opens your portfolio, you should know. GitShow ships analytics that surface intent — geography, source, and engagement — without bolting on a third-party script or asking your readers to accept cookies.",
             ctaButton: {
-                text: "See how",
-                href: "#connect",
+                text: "See it in action",
+                href: "/demo",
             },
             blocks: [
                 {
                     id: 1,
-                    icon: <Icons.terminal className="size-4 text-muted-foreground" />,
-                    title: "Sign in with GitHub",
+                    icon: <Icons.globe className="size-4 text-muted-foreground" />,
+                    title: "Where they read from",
                     description:
-                        "GitShow reads commit messages, PR descriptions, reviews, and code stats across every repo. Your source code stays on GitHub.",
+                        "Visit timing by hour, top countries with rank, and geographic spread on a real map. Notice the spike from Berlin the day after you posted on a Hacker News thread.",
+                    image: "/marketing/analytics_2.png",
                 },
                 {
                     id: 2,
-                    icon: <Icons.shock className="size-4 text-muted-foreground" />,
-                    title: "Review the draft",
+                    icon: <Icons.magicStar className="size-4 text-muted-foreground" />,
+                    title: "How they found you",
                     description:
-                        "Every project, skill, and impact claim links to the commit it came from. Edit any section, reorder projects, hide what you want kept private.",
+                        "Top referrers, devices, browsers, and a recent-activity stream. Watch a LinkedIn share turn into nine visits from one company in two days — and know to follow up.",
+                    image: "/marketing/analytics_3.png",
                 },
             ],
         }
     },
-    workflowConnectSection: {
-        title: "More than a generated page.",
-        description:
-            "Connect your own domain. Pull in your writing. Make the portfolio feel like yours.",
-        ctaButton: {
-            text: "See how",
-            href: "#",
-        },
-        blocks: [
-            {
-                id: 1,
-                icon: <Icons.magicClick className="size-4 text-muted-foreground" />,
-                title: "Connect a custom domain",
-                description:
-                    "Point any domain at GitShow. We handle SSL, DNS, and caching so your portfolio loads instantly anywhere.",
-            },
-            {
-                id: 2,
-                icon: <Icons.magicStar className="size-4 text-muted-foreground" />,
-                title: "Pull in your writing",
-                description:
-                    "Paste a blog URL — dev.to, Medium, your own site. GitShow fetches every post, extracts prose and code, and adds a Writing section to your portfolio with syntax highlighting intact.",
-            },
-        ],
-    },
     featureSection: {
         badge: {
-            icon: <Icons.globe className="size-4 text-muted-foreground" />,
-            text: "Proof, not prose",
+            icon: <Icons.terminal className="size-4 text-muted-foreground" />,
+            text: "Written from your work",
         },
-        title: (<>Every claim links to a <Highlight>real commit</Highlight>.</>),
+        title: (<>The portfolio reads like <Highlight>you wrote it.</Highlight></>),
         description:
-            "So recruiters can click any line on your portfolio and see the pull request that proves it.",
+            "Because, in the way that matters, you did. GitShow reads the actual code you've shipped — every repo, every PR, every review — and writes a portfolio that names the trade-offs you made, not just the features you announced.",
         sections: {
-            title: "Built for engineers who ship.",
+            title: "Sourced. Not summarized.",
             description:
-                "If your GitHub history is good, GitShow writes a good portfolio. The hard work is already done.",
+                "Every paragraph on your portfolio links back to the commit, PR, or review it came from. The line that says you cut p99 latency? Click it — there's the pull request. Recruiters trust what they can verify.",
             ctaButton: {
                 text: "Generate yours",
                 href: "/signin",
@@ -409,17 +381,17 @@ export const siteConfig = {
             blocks: [
                 {
                     id: 1,
-                    icon: <Icons.puzzle className="size-4 text-muted-foreground" />,
-                    title: "Public, private, and org repos",
+                    icon: <Icons.terminal className="size-4 text-muted-foreground" />,
+                    title: "Reads every repo, not just the public ones",
                     description:
-                        "Sign in once. GitShow reads every repo you have access to — your public work, your private side-projects, and the org repos your companies gave you permission to see.",
+                        "Sign in once. GitShow ingests your public work, your private side-projects, and the org repos your employers authorized. The portfolio reflects all of it — not just the parts that happened to be open-source.",
                 },
                 {
                     id: 2,
                     icon: <Icons.globe className="size-4 text-muted-foreground" />,
-                    title: "Found by recruiters",
+                    title: "Found before you've sent the resume",
                     description:
-                        "Every portfolio is SEO-indexed and fast. Your name plus your stack gets you found before you've sent a resume.",
+                        "Live at gitshow.io/{handle} or your own domain. SEO-indexed and edge-served, so when a recruiter searches your name and stack, your portfolio is the first result — not your forgotten LinkedIn.",
                 },
             ],
         }
@@ -427,25 +399,25 @@ export const siteConfig = {
     connectSection: {
         badge: {
             icon: <Icons.terminal className="size-4 text-muted-foreground" />,
-            text: "Getting started",
+            text: "How to start",
         },
-        title: (<>Sign in. <Highlight>Generate.Share.</Highlight></>),
+        title: (<>Sign in. <Highlight>Coffee. Share.</Highlight></>),
         description:
-            "Three steps. No resume template. No blank page.",
+            "Twenty minutes from a GitHub click to a portfolio you'd actually send to your dream company.",
         step1: {
             title: "Sign in with GitHub",
             description:
-                "One click. Minimal OAuth scopes. Revoke anytime from GitHub's settings.",
+                "One click. We ask for read-only access to your public, private, and org repos. Revoke any time from GitHub's settings — your portfolio stays.",
         },
         step2: {
-            title: "Wait about 20 minutes",
+            title: "Pour a coffee",
             description:
-                "GitShow reads every repo, commit, PR, and review — then writes the first draft of your portfolio.",
+                "GitShow reads every repo you have access to, scans your commit and PR history, and drafts the prose. Resume and analytics get wired up. About twenty minutes for a typical account.",
         },
         step3: {
-            title: "Share the link",
+            title: "Ship the link",
             description:
-                "Your portfolio is live at gitshow.io/{handle}. Edit any section, or connect your own domain when you're ready.",
+                "Live at gitshow.io/{handle}. Pick a template, point your domain, edit any section. The next time someone asks for your portfolio, you paste a URL — that's it.",
         },
     },
     testimonialSection: {
@@ -477,9 +449,9 @@ export const siteConfig = {
             ),
             text: "From real engineers",
         },
-        title: "Written by your commits, not by you.",
+        title: "Loved by people who'd rather ship than write.",
         description:
-            "Early users who generated portfolios from their GitHub history. Quotes are placeholders — swap them when you have real ones.",
+            "Early users who pointed GitShow at their GitHub and ended up with a portfolio they were proud to share — by lunch.",
         testimonials: [
             {
                 id: "1",
@@ -559,17 +531,17 @@ export const siteConfig = {
         ],
     },
     pricing: {
-        title: "One plan. Two ways to pay.",
+        title: "Pricing.",
         description:
-            "$10 a month, or $7 a month billed annually. Same features either way — the annual option just saves you 30%.",
+            "One plan, every feature. Monthly or annual — annual saves 30%. Try the live demo at gitshow.io/demo first; we don't run a free tier.",
         features: [
-            "AI-generated portfolio from your GitHub",
-            "Unlimited regenerations and edits",
-            "Private + org repos",
-            "Connect a custom domain",
-            "Powerful analytics — see who viewed what",
-            "Resume + PDF export",
-            "Priority generation queue",
+            "AI-generated portfolio from your full GitHub history",
+            "Six templates, instant swap",
+            "Public, private, and org repos",
+            "Custom domain with managed SSL",
+            "First-party analytics, no third-party scripts",
+            "ATS-safe single-page PDF resume",
+            "Edit any section, anytime",
             "Email support",
         ],
         pricingItems: [
@@ -601,58 +573,70 @@ export const siteConfig = {
         faQitems: [
             {
                 id: 1,
-                question: "What does GitShow do?",
+                question: "What does GitShow do, exactly?",
                 answer:
-                    "It reads your GitHub history and writes your engineering portfolio. Every project, skill, and impact claim links to the commit or PR that earned it.",
+                    "Sign in with GitHub. GitShow reads your repos — README, manifests, source samples, commit history, PRs, reviews — and writes a portfolio site in plain English. It also generates an ATS-safe PDF resume, ships analytics, and lets you point your own domain at the result. About twenty minutes end to end.",
             },
             {
                 id: 2,
                 question: "Does it read my source code?",
                 answer:
-                    "No. Only commit metadata — commit messages, file paths, line counts, PR descriptions, review comments. This works on public repos, private repos, and the org repos your companies gave you access to. We never read, store, or transmit source code.",
+                    "It samples it. Per repo, GitShow reads the README, manifests (package.json, Cargo.toml, etc.), and the first 2 KB of up to five source files — enough to understand what you built and how. That sample is what lets the prose name the actual trade-off you made instead of paraphrasing your PR title. Samples are passed through for inference, not stored long-term, never sold, never trained on.",
             },
             {
                 id: 3,
-                question: "What do you store?",
+                question: "How long does it take?",
                 answer:
-                    "Your portfolio and the metadata used to write it. No source code. Delete your account and everything tied to it goes with it.",
+                    "About twenty minutes for a typical account. Large histories (1000+ repos, decade-long timelines) can take up to an hour. We email you when it's ready.",
             },
             {
                 id: 4,
                 question: "Can I edit what gets written?",
                 answer:
-                    "Yes. Every section is editable. Reorder projects, rewrite paragraphs, hide work you want kept private.",
+                    "Every section. Rewrite paragraphs, reorder projects, hide work you want kept private, swap templates between Classic, Spotlight, Glow, Bento, Terminal, and Minimal. Updates apply instantly — there's no rebuild queue.",
             },
             {
                 id: 5,
-                question: "How long does it take?",
+                question: "Can I use my own domain?",
                 answer:
-                    "About 20 minutes for most accounts. Larger histories can take up to an hour. We email you when it's ready.",
+                    "Yes. Add a CNAME pointing yourname.com at GitShow. SSL is provisioned automatically, DNS verification runs through a .well-known probe, and your portfolio gets served from a global edge network. Included on every plan.",
             },
             {
                 id: 6,
-                question: "How much does it cost?",
+                question: "What kind of analytics do I get?",
                 answer:
-                    "$10/month billed monthly, or $7/month billed annually ($84/year — a 30% discount). One plan, every feature included. Cancel anytime.",
+                    "A built-in dashboard: views, unique visitors, top countries, devices, browsers, traffic sources, visit timing, and recent activity. Privacy-first — visitors are hashed with a salted, non-reversible scheme, no cookies on your readers, no third-party scripts, no GDPR popup.",
             },
             {
                 id: 7,
+                question: "What do you store?",
+                answer:
+                    "Your portfolio, the structured analysis used to write it, and your visitor analytics. Source code samples are passed through for inference and not retained. Delete your account and everything tied to it goes with it.",
+            },
+            {
+                id: 8,
+                question: "How much does it cost?",
+                answer:
+                    "$10/month billed monthly, or $7/month billed annually ($84/year — 30% off). Cancel any time; your published portfolio stays live forever.",
+            },
+            {
+                id: 9,
                 question: "Can I see a real portfolio before signing up?",
                 answer:
-                    "Yes — visit gitshow.io/demo for a live portfolio generated from a real GitHub history. Same template every subscriber gets.",
+                    "Yes — gitshow.io/demo is a live portfolio generated from a real GitHub history.",
             },
         ],
     },
     ctaSection: {
         id: "cta",
-        title: "Generate your portfolio today.",
+        title: "Compile your portfolio.",
         backgroundImage: "/agent-cta-background.png",
         button: {
             text: "Sign in with GitHub",
             href: "/signin",
         },
         subtext:
-            "Takes about 20 minutes. Starts at $7/month billed annually.",
+            "Twenty minutes from sign-in to a portfolio you'd actually send to your dream company.",
     },
     footerLinks: [
         {

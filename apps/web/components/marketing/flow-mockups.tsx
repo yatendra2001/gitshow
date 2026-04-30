@@ -29,9 +29,8 @@ const GITHUB_PATH =
 export function SignInFlowMockup() {
     return (
         <div className="relative w-full max-w-sm">
-            <div className="absolute -inset-4 -z-10 rounded-3xl bg-gradient-to-b from-primary/[0.12] via-transparent to-transparent blur-2xl" />
-            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-lg shadow-black/5">
-                <div className="flex items-center gap-2 border-b border-border bg-muted/40 px-4 py-2.5">
+            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xl shadow-black/10">
+                <div className="flex items-center gap-2 border-b border-border bg-muted/50 px-4 py-2.5">
                     <span className="size-2 rounded-full bg-red-500/80" />
                     <span className="size-2 rounded-full bg-yellow-500/80" />
                     <span className="size-2 rounded-full bg-green-500/80" />
@@ -50,7 +49,7 @@ export function SignInFlowMockup() {
                         <div className="flex flex-1 items-center gap-2 text-muted-foreground">
                             <span className="text-[11px] tracking-wide">authorize</span>
                             <Connector />
-                            <span className="text-[11px] font-medium text-foreground">GitShow</span>
+                            <span className="text-[11px] font-medium text-primary">GitShow</span>
                         </div>
                     </div>
 
@@ -59,36 +58,45 @@ export function SignInFlowMockup() {
                             GitShow wants to access your account
                         </p>
                         <p className="mt-1 text-xs text-muted-foreground">
-                            We only read commit metadata. Source code stays on GitHub.
+                            Read-only. Revoke any time from GitHub settings.
                         </p>
                     </div>
 
                     <ul className="space-y-1.5 rounded-lg border border-border bg-muted/30 p-3 text-[11px]">
-                        <ScopeRow icon={Eye} label="read:user" detail="Your name, avatar, profile" />
-                        <ScopeRow icon={Mail} label="user:email" detail="So we can show your contact" />
-                        <ScopeRow icon={ShieldCheck} label="repo" detail="Read public · private · org repos" />
+                        <ScopeRow
+                            icon={Eye}
+                            label="read:user"
+                            detail="Your name, avatar, profile"
+                            tone="sky"
+                        />
+                        <ScopeRow
+                            icon={Mail}
+                            label="user:email"
+                            detail="So we can show your contact"
+                            tone="emerald"
+                        />
+                        <ScopeRow
+                            icon={ShieldCheck}
+                            label="repo"
+                            detail="Sample source · read PRs · public + private"
+                            tone="amber"
+                        />
+                        <ScopeRow
+                            icon={Globe}
+                            label="read:org"
+                            detail="Read the org repos you authorized"
+                            tone="violet"
+                        />
                     </ul>
 
                     <button
                         type="button"
-                        className="group relative flex w-full items-center justify-center gap-2 overflow-hidden rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-background shadow-sm"
+                        className="flex w-full items-center justify-center gap-2 rounded-lg bg-foreground px-4 py-2.5 text-sm font-medium text-background shadow-sm transition-transform hover:scale-[1.01] active:scale-[0.99]"
                     >
                         <svg viewBox="0 0 24 24" className="size-4" fill="currentColor">
                             <path d={GITHUB_PATH} />
                         </svg>
                         <span>Continue with GitHub</span>
-                        <motion.span
-                            aria-hidden
-                            initial={{ x: "-150%" }}
-                            animate={{ x: "350%" }}
-                            transition={{
-                                duration: 2.2,
-                                repeat: Infinity,
-                                repeatDelay: 1.4,
-                                ease: "easeInOut",
-                            }}
-                            className="pointer-events-none absolute inset-y-0 -left-1/3 w-1/3 -skew-x-12 bg-gradient-to-r from-transparent via-white/20 to-transparent"
-                        />
                     </button>
 
                     <p className="text-center text-[10px] text-muted-foreground">
@@ -101,24 +109,54 @@ export function SignInFlowMockup() {
     );
 }
 
+type ScopeTone = "sky" | "emerald" | "amber" | "violet";
+
+const SCOPE_TONES: Record<ScopeTone, { icon: string; chip: string }> = {
+    sky: {
+        icon: "text-sky-500",
+        chip: "bg-sky-500/12 text-sky-600 dark:text-sky-300",
+    },
+    emerald: {
+        icon: "text-emerald-500",
+        chip: "bg-emerald-500/12 text-emerald-600 dark:text-emerald-300",
+    },
+    amber: {
+        icon: "text-amber-500",
+        chip: "bg-amber-500/14 text-amber-600 dark:text-amber-300",
+    },
+    violet: {
+        icon: "text-violet-500",
+        chip: "bg-violet-500/12 text-violet-600 dark:text-violet-300",
+    },
+};
+
 function ScopeRow({
     icon: Icon,
     label,
     detail,
+    tone = "sky",
 }: {
     icon: React.ComponentType<{ className?: string }>;
     label: string;
     detail: string;
+    tone?: ScopeTone;
 }) {
+    const t = SCOPE_TONES[tone];
     return (
         <li className="flex items-center gap-2.5">
-            <Icon className="size-3 shrink-0 text-muted-foreground" />
-            <span className="font-mono text-[10px] font-medium text-foreground">
+            <Icon className={cn("size-3 shrink-0", t.icon)} />
+            <span
+                className={cn(
+                    "rounded-md px-1.5 py-0.5 font-mono text-[10px] font-medium",
+                    t.chip,
+                )}
+            >
                 {label}
             </span>
-            <span className="text-muted-foreground">·</span>
-            <span className="truncate text-[10px] text-muted-foreground">{detail}</span>
-            <CheckCircle2 className="ml-auto size-3 shrink-0 text-primary" />
+            <span className="truncate text-[10px] text-muted-foreground">
+                {detail}
+            </span>
+            <CheckCircle2 className="ml-auto size-3 shrink-0 text-emerald-500" />
         </li>
     );
 }
@@ -141,12 +179,20 @@ const PIPELINE_TASKS: Array<{
     count: string;
     timing: string;
     state: "done" | "active" | "pending";
+    accent: "sky" | "emerald" | "amber" | "violet";
 }> = [
-        { label: "Indexed repositories", count: "23", timing: "0.8s", state: "done" },
-        { label: "Read commits", count: "4,812", timing: "1m 14s", state: "done" },
-        { label: "Extracted PRs & reviews", count: "1,204", timing: "42s", state: "done" },
-        { label: "Writing portfolio…", count: "72%", timing: "live", state: "active" },
+        { label: "Cloned repositories", count: "23", timing: "0.8s", state: "done", accent: "sky" },
+        { label: "Sampled source files", count: "164", timing: "3m 42s", state: "done", accent: "amber" },
+        { label: "Indexed PRs & reviews", count: "1,204", timing: "42s", state: "done", accent: "violet" },
+        { label: "Writing your portfolio…", count: "72%", timing: "live", state: "active", accent: "emerald" },
     ];
+
+const PIPELINE_ACCENTS: Record<"sky" | "emerald" | "amber" | "violet", string> = {
+    sky: "bg-sky-500",
+    emerald: "bg-emerald-500",
+    amber: "bg-amber-500",
+    violet: "bg-violet-500",
+};
 
 export function PipelineFlowMockup() {
     const ref = useRef<HTMLDivElement>(null);
@@ -166,16 +212,15 @@ export function PipelineFlowMockup() {
 
     return (
         <div ref={ref} className="relative w-full max-w-md">
-            <div className="absolute -inset-4 -z-10 rounded-3xl bg-gradient-to-b from-primary/[0.10] via-transparent to-transparent blur-2xl" />
-            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-lg shadow-black/5">
-                <div className="flex items-center justify-between border-b border-border bg-muted/40 px-4 py-3">
+            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xl shadow-black/10">
+                <div className="flex items-center justify-between border-b border-border bg-muted/50 px-4 py-3">
                     <div className="flex items-center gap-2">
-                        <Loader2 className="size-3.5 animate-spin text-primary" />
+                        <Loader2 className="size-3.5 animate-spin text-sky-500" />
                         <span className="font-mono text-[10px] text-muted-foreground">
                             github.com/yatendra
                         </span>
                     </div>
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                    <span className="rounded-full bg-emerald-500/12 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-300">
                         12 min remaining
                     </span>
                 </div>
@@ -184,7 +229,7 @@ export function PipelineFlowMockup() {
                     <ul className="space-y-3">
                         {PIPELINE_TASKS.map((t) => (
                             <li key={t.label} className="flex items-center gap-3 text-sm">
-                                <PipelineMarker state={t.state} />
+                                <PipelineMarker state={t.state} accent={t.accent} />
                                 <div className="min-w-0 flex-1">
                                     <p
                                         className={cn(
@@ -204,11 +249,11 @@ export function PipelineFlowMockup() {
                                     className={cn(
                                         "min-w-12 text-right font-mono text-[11px]",
                                         t.state === "active"
-                                            ? "text-primary"
+                                            ? "text-emerald-600 dark:text-emerald-300"
                                             : "text-muted-foreground",
                                     )}
                                 >
-                                    {t.label.startsWith("Writing") ? `${progress}%` : t.count}
+                                    {t.state === "active" ? `${progress}%` : t.count}
                                 </span>
                             </li>
                         ))}
@@ -217,21 +262,17 @@ export function PipelineFlowMockup() {
                     <div className="space-y-1.5">
                         <div className="flex items-center justify-between text-[10px] text-muted-foreground">
                             <span className="font-mono uppercase tracking-wider">
-                                Synthesis
+                                Drafting prose
                             </span>
-                            <span className="font-mono">{progress}%</span>
+                            <span className="font-mono text-emerald-600 dark:text-emerald-300">
+                                {progress}%
+                            </span>
                         </div>
                         <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-muted">
                             <motion.div
                                 animate={{ width: `${progress}%` }}
                                 transition={{ duration: 0.5, ease: "easeOut" }}
-                                className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-foreground/70 via-foreground to-foreground/70"
-                            />
-                            <motion.span
-                                aria-hidden
-                                animate={{ x: ["-30%", "200%"] }}
-                                transition={{ duration: 1.6, repeat: Infinity, ease: "linear" }}
-                                className="absolute inset-y-0 w-1/4 bg-gradient-to-r from-transparent via-white/40 to-transparent"
+                                className="absolute inset-y-0 left-0 rounded-full bg-emerald-500"
                             />
                         </div>
                     </div>
@@ -241,15 +282,36 @@ export function PipelineFlowMockup() {
     );
 }
 
-function PipelineMarker({ state }: { state: "done" | "active" | "pending" }) {
+function PipelineMarker({
+    state,
+    accent,
+}: {
+    state: "done" | "active" | "pending";
+    accent: "sky" | "emerald" | "amber" | "violet";
+}) {
     if (state === "done") {
-        return <CheckCircle2 className="size-4 shrink-0 text-primary" />;
+        return (
+            <CheckCircle2
+                className={cn(
+                    "size-4 shrink-0",
+                    accent === "sky" && "text-sky-500",
+                    accent === "emerald" && "text-emerald-500",
+                    accent === "amber" && "text-amber-500",
+                    accent === "violet" && "text-violet-500",
+                )}
+            />
+        );
     }
     if (state === "active") {
         return (
             <span className="relative flex size-4 shrink-0 items-center justify-center">
-                <span className="absolute inline-flex size-3.5 animate-ping rounded-full bg-primary/40" />
-                <span className="relative inline-flex size-2 rounded-full bg-primary" />
+                <span
+                    className={cn(
+                        "absolute inline-flex size-3.5 animate-ping rounded-full opacity-60",
+                        PIPELINE_ACCENTS[accent].replace("bg-", "bg-").concat("/40"),
+                    )}
+                />
+                <span className={cn("relative inline-flex size-2 rounded-full", PIPELINE_ACCENTS[accent])} />
             </span>
         );
     }
@@ -259,14 +321,13 @@ function PipelineMarker({ state }: { state: "done" | "active" | "pending" }) {
 export function PublishFlowMockup() {
     return (
         <div className="relative w-full max-w-md">
-            <div className="absolute -inset-4 -z-10 rounded-3xl bg-gradient-to-b from-emerald-500/[0.10] via-transparent to-transparent blur-2xl" />
-            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-lg shadow-black/5">
+            <div className="overflow-hidden rounded-xl border border-border bg-card shadow-xl shadow-black/10">
                 <div className="flex items-center gap-2 border-b border-border bg-muted/60 px-4 py-2.5">
                     <span className="size-2 rounded-full bg-red-500/80" />
                     <span className="size-2 rounded-full bg-yellow-500/80" />
                     <span className="size-2 rounded-full bg-green-500/80" />
                     <div className="ml-3 flex flex-1 items-center gap-1 rounded-md border border-border bg-background px-2.5 py-1 font-mono text-[11px] text-muted-foreground">
-                        <Globe className="size-3 text-primary" />
+                        <Globe className="size-3 text-sky-500" />
                         <span className="text-foreground">gitshow.io/yatendra</span>
                         <motion.span
                             animate={{ opacity: [0.7, 1, 0.7] }}
@@ -281,38 +342,47 @@ export function PublishFlowMockup() {
 
                 <div className="space-y-4 p-5">
                     <div className="flex items-start gap-3">
-                        <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-sky-400 to-violet-500 text-base font-semibold text-white shadow-md">
+                        <div className="flex size-12 shrink-0 items-center justify-center rounded-full bg-sky-500 text-base font-semibold text-white shadow-sm ring-2 ring-sky-500/20">
                             Y
                         </div>
                         <div className="min-w-0 flex-1">
                             <p className="text-[10px] font-mono uppercase tracking-wider text-muted-foreground">
-                                Engineer · 8 yrs · 4,812 commits
+                                Engineer · sourced from GitHub
                             </p>
                             <h4 className="mt-1 text-lg font-semibold leading-tight tracking-tight">
                                 Yatendra Kumar
                             </h4>
                             <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                                Backend engineer. Ships distributed systems at scale.
+                                Backend engineer. Distributed systems, payments, edge.
                             </p>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-border bg-border">
-                        <MiniStat value="412" label="visits / wk" />
-                        <MiniStat value="180ms" label="TTFB" highlight />
-                        <MiniStat value="#1" label="on Google" />
-                    </div>
+                    <ul className="space-y-1.5 rounded-lg border border-border bg-muted/30 p-3 text-[11px]">
+                        <li className="flex items-center gap-2">
+                            <span className="size-1.5 rounded-full bg-amber-500" />
+                            <span className="text-muted-foreground">Every claim links to a real commit</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                            <span className="size-1.5 rounded-full bg-violet-500" />
+                            <span className="text-muted-foreground">Six templates, swap any time</span>
+                        </li>
+                        <li className="flex items-center gap-2">
+                            <span className="size-1.5 rounded-full bg-emerald-500" />
+                            <span className="text-muted-foreground">SEO-indexed and edge-served</span>
+                        </li>
+                    </ul>
 
                     <div className="flex items-center gap-2">
                         <button
                             type="button"
                             className="inline-flex items-center gap-1 rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background"
                         >
-                            Share
+                            Copy link
                             <ArrowUpRight className="size-3" />
                         </button>
                         <p className="text-[11px] text-muted-foreground">
-                            Indexed by Google · 14 recruiters this week
+                            yourname.com or gitshow.io/{"{handle}"}
                         </p>
                     </div>
                 </div>
@@ -321,28 +391,3 @@ export function PublishFlowMockup() {
     );
 }
 
-function MiniStat({
-    value,
-    label,
-    highlight,
-}: {
-    value: string;
-    label: string;
-    highlight?: boolean;
-}) {
-    return (
-        <div className="bg-card px-3 py-2">
-            <p
-                className={cn(
-                    "font-mono text-sm font-semibold tabular-nums tracking-tight",
-                    highlight && "text-emerald-600 dark:text-emerald-400",
-                )}
-            >
-                {value}
-            </p>
-            <p className="text-[9px] uppercase tracking-wider text-muted-foreground">
-                {label}
-            </p>
-        </div>
-    );
-}

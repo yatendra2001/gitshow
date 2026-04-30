@@ -8,8 +8,6 @@ import { Footer } from "@/components/marketing/section/footer";
 import { HeroSection } from "@/components/marketing/section/hero-section";
 import { Navbar } from "@/components/marketing/section/navbar";
 import { PricingSection } from "@/components/marketing/section/pricing-section";
-import { TestimonialSection } from "@/components/marketing/section/testimonial-section";
-import { WorkflowConnectSection } from "@/components/marketing/section/workflow-connect-section";
 import { WorkflowSection } from "@/components/marketing/section/workflow-section";
 
 /**
@@ -31,10 +29,9 @@ export default function Home() {
         <HeroSection />
         <DemoSection />
         <WorkflowSection />
-        <WorkflowConnectSection />
         <FeatureSection />
         <ConnectSection />
-        <TestimonialSection />
+        {/* <TestimonialSection /> */}
         <PricingSection />
         <FAQSection />
         <CTASection />
