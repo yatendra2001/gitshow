@@ -481,7 +481,11 @@ async function SourcesAndDomainStream({
   }
 
   return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-2 gs-enter">
+    // `items-start` so neither card stretches to match the other's
+    // height — Top sources is intrinsically shorter for a few rows
+    // and was inheriting the donut card's height, leaving a big
+    // empty band below the bars.
+    <div className="grid grid-cols-1 items-start gap-3 lg:grid-cols-2 gs-enter">
       <SectionCard title="Top sources" subtitle="Where visitors came from">
         <SourcesBarChart rows={referrers} />
       </SectionCard>
