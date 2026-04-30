@@ -80,7 +80,7 @@ export const siteConfig = {
     },
     hero: {
         badgeIcon: <Icons.stackedIcons className="size-4" />,
-        badge: "From $12/mo. Generated in 20 minutes.",
+        badge: "From $7/mo. Generated in 20 minutes.",
         title: "Generate portfolio site from your GitHub.",
         description:
             "Sign in with GitHub. GitShow reads your commits, pull requests, reviews and writes your portfolio.",
@@ -561,7 +561,7 @@ export const siteConfig = {
     pricing: {
         title: "One plan. Two ways to pay.",
         description:
-            "$20 a month, or $12 a month billed annually. Same features either way — the annual option just saves you 40%.",
+            "$10 a month, or $7 a month billed annually. Same features either way — the annual option just saves you 30%.",
         features: [
             "AI-generated portfolio from your GitHub",
             "Unlimited regenerations and edits",
@@ -577,7 +577,7 @@ export const siteConfig = {
                 name: "Pro",
                 cadence: "Monthly",
                 href: "/pricing",
-                price: "$20",
+                price: "$10",
                 period: "month",
                 note: "Billed monthly. Cancel anytime.",
                 buttonText: "Start monthly",
@@ -587,9 +587,9 @@ export const siteConfig = {
                 name: "Pro",
                 cadence: "Annual",
                 href: "/pricing",
-                price: "$12",
+                price: "$7",
                 period: "month",
-                note: "Billed $144 once a year. Save 40%.",
+                note: "Billed $84 once a year. Save 30%.",
                 buttonText: "Start annual",
                 isPopular: true,
             },
@@ -633,7 +633,7 @@ export const siteConfig = {
                 id: 6,
                 question: "How much does it cost?",
                 answer:
-                    "$20/month billed monthly, or $12/month billed annually ($144/year — a 40% discount). One plan, every feature included. Cancel anytime.",
+                    "$10/month billed monthly, or $7/month billed annually ($84/year — a 30% discount). One plan, every feature included. Cancel anytime.",
             },
             {
                 id: 7,
@@ -652,7 +652,7 @@ export const siteConfig = {
             href: "/signin",
         },
         subtext:
-            "Takes about 20 minutes. Starts at $12/month billed annually.",
+            "Takes about 20 minutes. Starts at $7/month billed annually.",
     },
     footerLinks: [
         {

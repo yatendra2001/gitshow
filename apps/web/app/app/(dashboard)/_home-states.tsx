@@ -378,7 +378,7 @@ export function NonProShowcase({
         ) : (
           <>
             GitShow needs an active subscription to build, edit, or refresh
-            a portfolio. $20/month, or $12/month billed annually.
+            a portfolio. $10/month, or $7/month billed annually.
           </>
         )}
       </p>
