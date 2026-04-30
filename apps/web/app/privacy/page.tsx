@@ -28,9 +28,13 @@ export default function PrivacyPage() {
         <ul>
           <li>
             <strong>Your public GitHub account</strong> — repositories,
-            commits you authored, README files, pinned projects. If you
-            connect private repos or orgs via the OAuth flow, we only
-            read repositories you explicitly grant access to.
+            commits you authored, README files, manifests, first-party
+            source files, pinned projects. Source is analyzed in chunks:
+            small and medium repositories are read end to end, while very
+            large repositories are read in prioritized batches with
+            coverage tracking. If you connect private repos or orgs via
+            the OAuth flow, we only read repositories you explicitly grant
+            access to.
           </li>
           <li>
             <strong>Your LinkedIn profile URL</strong>, if you provide
@@ -53,8 +57,10 @@ export default function PrivacyPage() {
         <h2>Where we store it</h2>
         <ul>
           <li>
-            <strong>Cloudflare R2</strong> — scan snapshots, extracted
-            text, images used in your portfolio, knowledge-graph JSON.
+            <strong>Cloudflare R2</strong> — scan snapshots, structured
+            analysis, images used in your portfolio, knowledge-graph JSON.
+            Raw repository source chunks are pass-through inference input,
+            not portfolio content we keep.
           </li>
           <li>
             <strong>Cloudflare D1</strong> — scan metadata, your

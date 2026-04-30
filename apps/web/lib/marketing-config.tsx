@@ -579,7 +579,7 @@ export const siteConfig = {
                 id: 2,
                 question: "Does it read my source code?",
                 answer:
-                    "Yes, in small samples. For each repo, GitShow reads the README, manifests such as package.json or Cargo.toml, and the first 2 KB of up to five source files. Samples are used for inference and are not stored long term.",
+                    "Yes. For each repo, GitShow reads the README, manifests such as package.json or Cargo.toml, and first-party source files in chunks. Small and medium repos are read end to end; very large repos are analyzed in prioritized batches with coverage tracking. Raw source chunks are passed through for inference and are not stored long term.",
             },
             {
                 id: 3,
@@ -609,7 +609,7 @@ export const siteConfig = {
                 id: 7,
                 question: "What do you store?",
                 answer:
-                    "Your portfolio, the structured analysis used to write it, and your visitor analytics. Source code samples are passed through for inference and not retained. Delete your account and everything tied to it goes with it.",
+                    "Your portfolio, the structured analysis used to write it, coverage metadata from the scan, and your visitor analytics. Raw source chunks are passed through for inference and not retained as portfolio content. Delete your account and everything tied to it goes with it.",
             },
             {
                 id: 8,
