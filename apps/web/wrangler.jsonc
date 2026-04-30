@@ -49,7 +49,7 @@
     "DEMO_HANDLE": "yatendra2001",
     // Flip to "live_mode" when you're done with test_mode verification.
     // The Better Auth Dodo plugin reads this from the env at runtime.
-    "DODO_PAYMENTS_ENVIRONMENT": "test_mode"
+    "DODO_PAYMENTS_ENVIRONMENT": "live_mode"
   },
   // DODO_PAYMENTS_API_KEY + DODO_PAYMENTS_WEBHOOK_SECRET ship via
   // `wrangler secret put` — never commit them.

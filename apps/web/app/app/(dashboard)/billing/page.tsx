@@ -142,7 +142,7 @@ export default async function BillingPage() {
         ) : (
           <div className="rounded-2xl border border-border/40 bg-card/30 p-6">
             <p className="text-[14px] leading-relaxed text-muted-foreground mb-5">
-              GitShow runs on a single Pro plan — $20/month, or $12/month
+              GitShow runs on a single Pro plan — $10/month, or $7/month
               billed annually. Pick a cadence and you&apos;ll be able to run
               your first scan within minutes.
             </p>

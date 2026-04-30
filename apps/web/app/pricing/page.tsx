@@ -7,7 +7,7 @@ import { PlanButton } from "./_plan-button";
 
 /**
  * /pricing — the paywall. Single plan (Pro), two cadences (monthly
- * and yearly at 40% off). Everyone hits this page:
+ * and yearly at 30% off). Everyone hits this page:
  *
  *   - Landing-page CTAs point here.
  *   - First-time signed-in users who don't have Pro yet get funneled
@@ -49,7 +49,7 @@ export default async function PricingPage() {
       ? "Manage in billing"
       : mode === "signin"
         ? "Sign in & subscribe"
-        : "Start annual — save 40%";
+        : "Start annual — save 30%";
 
   const secondaryLabel =
     mode === "manage"
@@ -90,8 +90,8 @@ export default async function PricingPage() {
             One plan. Two ways to pay.
           </h1>
           <p className="text-[14px] leading-relaxed text-muted-foreground">
-            $20 a month, or $12 a month billed annually — same features
-            either way. The annual option just saves you 40%.
+            $10 a month, or $7 a month billed annually — same features
+            either way. The annual option just saves you 30%.
             {pro ? (
               <>
                 {" "}
@@ -105,13 +105,13 @@ export default async function PricingPage() {
 
         <div className="grid gap-4 md:grid-cols-2">
           {/* Yearly first — it's the recommended option so it owns the
-              eye line. The 40% off tag does most of the selling. */}
+              eye line. The 30% off tag does most of the selling. */}
           <PlanCard
             name="Pro"
             cadence="Annual"
-            price="$12"
+            price="$7"
             period="month"
-            note="Billed $144 once a year. Save 40%."
+            note="Billed $84 once a year. Save 30%."
             highlight
           >
             <PlanButton
@@ -125,7 +125,7 @@ export default async function PricingPage() {
           <PlanCard
             name="Pro"
             cadence="Monthly"
-            price="$20"
+            price="$10"
             period="month"
             note="Billed monthly. Cancel anytime."
           >
@@ -194,7 +194,7 @@ function PlanCard({
         </div>
         {highlight && (
           <span className="rounded-full border border-[var(--primary)]/30 bg-[var(--primary)]/10 px-2.5 py-0.5 text-[11px] font-medium text-[var(--primary)]">
-            Save 40%
+            Save 30%
           </span>
         )}
       </div>

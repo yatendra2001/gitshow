@@ -61,8 +61,8 @@ webhook at `/api/auth/dodopayments/webhooks`.
 ### One-time dashboard setup
 
 1. **Products** — Dashboard → Products → Create Product:
-   - `Pro Monthly` — subscription, $20/mo
-   - `Pro Yearly` — subscription, $144/yr (40% discount vs. $240)
+   - `Pro Monthly` — subscription, $10/mo
+   - `Pro Yearly` — subscription, $84/yr (30% discount vs. $120)
    - Copy each `prod_xxx` id into `.dev.vars`.
 2. **API key** — Dashboard → Developer → API → create a **test-mode**
    key (`sk_test_…`). Paste into `DODO_PAYMENTS_API_KEY`.

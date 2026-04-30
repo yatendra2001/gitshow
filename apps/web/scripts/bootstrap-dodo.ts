@@ -6,7 +6,7 @@
  *   bun scripts/bootstrap-dodo.ts --live         # live_mode
  *
  * Reads DODO_PAYMENTS_API_KEY from .dev.vars (or process.env). Creates
- * two subscription products (Pro Monthly $20/mo, Pro Yearly $144/yr)
+ * two subscription products (Pro Monthly $10/mo, Pro Yearly $84/yr)
  * and one webhook endpoint pointing at the public worker URL, then
  * fetches the webhook signing secret and writes all four resulting
  * values back into .dev.vars.
@@ -146,8 +146,8 @@ async function main() {
   });
 
   console.log("Products:");
-  const monthlyId = await findOrCreateProduct(client, MONTHLY_NAME, 2000, "Month");
-  const yearlyId = await findOrCreateProduct(client, YEARLY_NAME, 14400, "Year");
+  const monthlyId = await findOrCreateProduct(client, MONTHLY_NAME, 1000, "Month");
+  const yearlyId = await findOrCreateProduct(client, YEARLY_NAME, 8400, "Year");
 
   console.log("\nWebhook:");
   const webhookId = await findOrCreateWebhook(client, WEBHOOK_URL);
