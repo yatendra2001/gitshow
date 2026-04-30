@@ -610,14 +610,27 @@ export function SourcesBarChart({
   );
   const yAxisWidth = Math.min(140, Math.max(64, longestChars * 7.5 + 24));
   return (
-    // Outer div carries the resolved height. Donuts use the same
-    // pattern — necessary because ChartContainer's base classes
-    // include `aspect-video`, which sometimes wins over an inline
-    // height on the same node and stretches the chart to a 16:9 box.
-    <div className="w-full" style={{ height: computedHeight }}>
+    // The outer div carries the resolved height *and* clips any
+    // overflow. Two reasons it has to be both:
+    //
+    //  1. ChartContainer's base classes ship `aspect-video` (16/9).
+    //     With Tailwind utility-class source-order, our `aspect-auto`
+    //     override loses to `aspect-video`, so the inner chart wants
+    //     to be 16/9 of its width — way taller than `computedHeight`
+    //     for a 1–3-row chart. We force `aspectRatio: auto` inline
+    //     (highest specificity) and pin overflow to keep the SVG
+    //     inside the height we asked for.
+    //  2. `contain: size layout` tells the browser the box's children
+    //     can't grow the box, which is what bar-chart row bands do
+    //     when given a too-tall container.
+    <div
+      className="w-full overflow-hidden"
+      style={{ height: computedHeight, contain: "size layout" }}
+    >
       <ChartContainer
         config={SOURCES_CHART_CONFIG}
-        className="aspect-auto h-full w-full"
+        className="h-full w-full"
+        style={{ aspectRatio: "auto" }}
       >
         <BarChart
           accessibilityLayer
@@ -628,6 +641,14 @@ export function SourcesBarChart({
           // CartesianGrid — bars + tooltip carry the values.
           margin={{ top: 4, right: 16, bottom: 0, left: 0 }}
         >
+          <defs>
+            {/* Horizontal gradient — the user's "premium" feel.
+             *  Reads as one bar lit from the right. */}
+            <linearGradient id="fill-sources" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.62} />
+              <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0.95} />
+            </linearGradient>
+          </defs>
           <YAxis
             type="category"
             dataKey="host"
@@ -665,8 +686,11 @@ export function SourcesBarChart({
           />
           <Bar
             dataKey="views"
-            fill="var(--chart-1)"
+            fill="url(#fill-sources)"
             radius={4}
+            // Cap the bar thickness so each row stays comfortable
+            // even when the container is generous.
+            maxBarSize={26}
             isAnimationActive={true}
             animationDuration={400}
           />
