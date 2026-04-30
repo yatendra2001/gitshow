@@ -159,11 +159,11 @@ query ImportZoneAnalytics(
   }
 }`;
 
-async function fetchCfBuckets(args: Args): Promise<CfBucket[]> {
-  const until = new Date();
-  until.setUTCMinutes(0, 0, 0);
-  const since = new Date(until.getTime() - args.days * 24 * 60 * 60 * 1000);
-
+async function fetchOneDay(
+  args: Args,
+  since: Date,
+  until: Date,
+): Promise<CfBucket[]> {
   const res = await fetch("https://api.cloudflare.com/client/v4/graphql", {
     method: "POST",
     headers: {
@@ -191,8 +191,52 @@ async function fetchCfBuckets(args: Args): Promise<CfBucket[]> {
       `GraphQL errors:\n${json.errors.map((e) => `  - ${e.message}`).join("\n")}`,
     );
   }
-  const buckets = json.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups;
-  return buckets ?? [];
+  return json.data?.viewer?.zones?.[0]?.httpRequestsAdaptiveGroups ?? [];
+}
+
+/**
+ * Free CF for SaaS plans cap each httpRequestsAdaptiveGroups query to a
+ * 1-day time window (the API rejects wider ranges with a clear error).
+ * To cover N days, we issue N separate 1-day queries and concatenate
+ * the buckets. Older days that exceed the plan's data retention will
+ * simply return empty arrays — we keep going so the caller can see
+ * exactly how far back the data really goes.
+ *
+ * Lightly throttled (200ms between requests) to stay friendly with
+ * Cloudflare's rate limits even when --days=30.
+ */
+async function fetchCfBuckets(args: Args): Promise<CfBucket[]> {
+  const until = new Date();
+  until.setUTCMinutes(0, 0, 0);
+
+  const all: CfBucket[] = [];
+  const dayMs = 24 * 60 * 60 * 1000;
+  for (let dayBack = 1; dayBack <= args.days; dayBack++) {
+    const dayUntil = new Date(until.getTime() - (dayBack - 1) * dayMs);
+    const daySince = new Date(dayUntil.getTime() - dayMs);
+    try {
+      const buckets = await fetchOneDay(args, daySince, dayUntil);
+      if (buckets.length > 0) {
+        process.stderr.write(
+          `  ${daySince.toISOString().slice(0, 10)}: ${buckets.length} buckets\n`,
+        );
+        all.push(...buckets);
+      } else {
+        process.stderr.write(
+          `  ${daySince.toISOString().slice(0, 10)}: empty\n`,
+        );
+      }
+    } catch (err) {
+      // Older days may exceed retention; surface the error but keep
+      // going so we still get whatever IS available.
+      process.stderr.write(
+        `  ${daySince.toISOString().slice(0, 10)}: ${(err as Error).message.slice(0, 100)}\n`,
+      );
+    }
+    // Friendly pacing.
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  return all;
 }
 
 // ─── Bucket → view_events rows ─────────────────────────────────────────
