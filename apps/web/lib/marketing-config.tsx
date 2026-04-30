@@ -76,9 +76,9 @@ export const siteConfig = {
     hero: {
         badgeIcon: <Icons.stackedIcons className="size-4" />,
         badge: "Live in 20 minutes",
-        title: "AI-generated portfolios from your GitHub.",
+        title: "Let AI build your portfolio.",
         description:
-            "Connect GitHub and GitShow turns your repos, commits, and PRs into a portfolio, resume, and analytics dashboard.",
+            "GitShow reads your github history and creates a portfolio site, ats resume, and custom domain setup for you.",
         demo: {
             label: "See a real portfolio",
             href: "/yatendra2001",
