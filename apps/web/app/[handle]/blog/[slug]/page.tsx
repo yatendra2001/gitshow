@@ -5,8 +5,8 @@ import { useParams, notFound } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { useData } from "@/components/data-provider";
-import { CodeBlock } from "@/components/mdx/code-block";
+import { useData, useUrlPrefix } from "@/components/data-provider";
+import { markdownComponents } from "@/components/mdx/markdown-components";
 import { formatHumanDate as formatDate } from "@/lib/format-date";
 
 /**
@@ -14,12 +14,17 @@ import { formatHumanDate as formatDate } from "@/lib/format-date";
  *
  * The post body is markdown imported verbatim from the original source
  * (Medium / dev.to / Hashnode / Substack / personal site). We render it
- * with `react-markdown` + `remark-gfm`, delegating code blocks to the
- * template's `CodeBlock` component so syntax highlighting matches the
- * rest of the portfolio aesthetic.
+ * with `react-markdown` + `remark-gfm`, delegating element styling to
+ * `markdownComponents` so the rendered prose matches the reference
+ * portfolio's MDX surface (gradient `<hr>`, bordered tables, inline
+ * code chips, syntax-highlighted `<pre>` via shiki).
  *
  * A prominent "originally posted on {platform}" link points back to the
  * canonical source so SEO + attribution stay correct.
+ *
+ * URL construction: every internal link uses `urlPrefix` from the
+ * DataProvider so a request on a custom domain produces handle-less
+ * navigation paths.
  */
 
 // `formatDate` is imported from `@/lib/format-date` at the top —
@@ -28,8 +33,8 @@ import { formatHumanDate as formatDate } from "@/lib/format-date";
 
 export default function BlogPost() {
   const DATA = useData();
+  const urlPrefix = useUrlPrefix();
   const params = useParams<{ handle: string; slug: string }>();
-  const handle = params?.handle ?? "";
   const slug = params?.slug ?? "";
 
   const sorted = [...DATA.blog].sort((a, b) =>
@@ -48,7 +53,7 @@ export default function BlogPost() {
     <section id="blog-post">
       <div className="flex justify-start gap-4 items-center">
         <Link
-          href={`/${handle}/blog`}
+          href={`${urlPrefix}/blog`}
           className="text-sm text-muted-foreground hover:text-foreground transition-colors border border-border rounded-lg px-2 py-1 inline-flex items-center gap-1 mb-6 group"
           aria-label="Back to Blog"
         >
@@ -61,35 +66,59 @@ export default function BlogPost() {
         <h1 className="title font-semibold text-3xl md:text-4xl tracking-tighter leading-tight">
           {post.title}
         </h1>
-        <p className="text-sm text-muted-foreground">
-          {formatDate(post.publishedAt)}
+        {post.summary && (
+          <p className="text-base text-muted-foreground/90 leading-relaxed">
+            {post.summary}
+          </p>
+        )}
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+          <span className="font-mono tabular-nums">
+            {formatDate(post.publishedAt)}
+          </span>
           {post.sourceUrl && post.sourcePlatform ? (
             <>
-              {" · originally on "}
+              <span aria-hidden className="text-border">
+                ·
+              </span>
               <a
                 href={post.sourceUrl}
                 rel="canonical nofollow noopener"
                 target="_blank"
-                className="underline underline-offset-4 hover:text-foreground transition-colors"
+                className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 hover:text-foreground hover:border-foreground/20 transition-colors"
               >
-                {post.sourcePlatform}
+                Originally on {post.sourcePlatform}
+                <ChevronRight className="size-3" aria-hidden />
               </a>
             </>
           ) : post.sourceUrl ? (
             <>
-              {" · "}
+              <span aria-hidden className="text-border">
+                ·
+              </span>
               <a
                 href={post.sourceUrl}
                 rel="canonical nofollow noopener"
                 target="_blank"
                 className="underline underline-offset-4 hover:text-foreground transition-colors"
               >
-                original
+                Original source
               </a>
             </>
           ) : null}
-        </p>
+        </div>
       </div>
+
+      {post.image && (
+        <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-muted/30">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={post.image}
+            alt={post.title}
+            loading="eager"
+            className="w-full h-auto object-cover"
+          />
+        </div>
+      )}
 
       <div className="my-6 flex w-full items-center">
         <div
@@ -106,9 +135,7 @@ export default function BlogPost() {
       <article className="prose max-w-full text-pretty font-sans leading-relaxed text-muted-foreground dark:prose-invert">
         <Markdown
           remarkPlugins={[remarkGfm]}
-          components={{
-            pre: (props) => <CodeBlock {...props} />,
-          }}
+          components={markdownComponents}
         >
           {post.body}
         </Markdown>
@@ -118,7 +145,7 @@ export default function BlogPost() {
         <div className="flex flex-col sm:flex-row justify-between gap-4">
           {previousPost ? (
             <Link
-              href={`/${handle}/blog/${previousPost.slug}`}
+              href={`${urlPrefix}/blog/${previousPost.slug}`}
               className="group flex-1 flex flex-col gap-1 p-4 rounded-lg border border-border hover:bg-accent/50 transition-colors"
             >
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -134,7 +161,7 @@ export default function BlogPost() {
           )}
           {nextPost ? (
             <Link
-              href={`/${handle}/blog/${nextPost.slug}`}
+              href={`${urlPrefix}/blog/${nextPost.slug}`}
               className="group flex-1 flex flex-col gap-1 p-4 rounded-lg border border-border hover:bg-accent/50 transition-colors text-right"
             >
               <span className="flex items-center justify-end gap-1 text-xs text-muted-foreground">

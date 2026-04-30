@@ -102,8 +102,20 @@ export async function middleware(request: NextRequest) {
     // unchanged but gets rewritten under the slug subtree.
     const target = path === "/" ? `/${slug}` : `/${slug}${path}`;
     const rewriteUrl = new URL(target + url.search, url);
-    const res = NextResponse.rewrite(rewriteUrl);
-    // Pass the served hostname downstream so view tracking can store it.
+    // Forward "we're on a custom domain" hints as REQUEST headers so
+    // the rewritten server component (`/[handle]/layout.tsx`) can read
+    // them via `headers()` and tell its tree to render handle-less
+    // links (`/blog` instead of `/{handle}/blog`). Setting these on
+    // the response only would expose them to the browser, not the
+    // inner Next.js render — we need both.
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-gs-served-hostname", host);
+    requestHeaders.set("x-gs-custom-domain", "1");
+    const res = NextResponse.rewrite(rewriteUrl, {
+      request: { headers: requestHeaders },
+    });
+    // Also expose to the response so existing client surfaces / API
+    // routes that read response headers (legacy code path) keep working.
     res.headers.set("x-gs-served-hostname", host);
     res.headers.set("x-gs-custom-domain", "1");
 

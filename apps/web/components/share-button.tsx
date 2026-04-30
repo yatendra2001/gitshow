@@ -34,7 +34,16 @@ export function ShareButton({
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setUrl(window.location.origin + `/${handle}`);
+    // On the canonical site we share `/{handle}`. On a custom domain
+    // (e.g. yatendrakumar.com) the origin IS the portfolio root, so
+    // prepending `/{handle}` would produce a 404. Detect by checking
+    // whether the current pathname already opens with `/{handle}` —
+    // if it doesn't, we're on a custom domain.
+    const handleSegment = `/${handle.toLowerCase()}`;
+    const path = window.location.pathname.toLowerCase();
+    const onCanonical =
+      path === handleSegment || path.startsWith(`${handleSegment}/`);
+    setUrl(onCanonical ? window.location.origin + handleSegment : window.location.origin);
   }, [handle]);
 
   // Click-outside + Escape — useful for the touch-device toggle path
@@ -133,8 +142,8 @@ export function ShareButton({
             <span className="truncate">
               {copied ? "Link copied" : "Copy link"}
             </span>
-            <span className="ml-auto font-mono text-[10px] text-muted-foreground truncate max-w-24">
-              /{handle}
+            <span className="ml-auto font-mono text-[10px] text-muted-foreground truncate max-w-32">
+              {url ? new URL(url).host + new URL(url).pathname.replace(/\/$/, "") : `/${handle}`}
             </span>
           </button>
           <a

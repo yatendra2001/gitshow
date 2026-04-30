@@ -128,19 +128,21 @@ function humanizeBuildLogDates(raw: string): string {
  * paths (`/#projects`, `/#work`, etc.) to mirror the reference
  * portfolio's prose style. In our app those paths resolve to the
  * site root, not the user's page — rewrite them to
- * `/{handle}/#anchor` at transform time so in-page jumps land
- * correctly.
+ * `{urlPrefix}/#anchor` at transform time so in-page jumps land
+ * correctly. On a custom domain `urlPrefix` is empty, so `/#projects`
+ * passes through unchanged (which is what we want — the root IS the
+ * portfolio there).
  *
  * Matches both markdown (`](/#foo)`) and raw HTML (`href="/#foo"`)
  * just in case. External URLs and mailto: links pass through
  * untouched because the pattern only matches `/` followed by `#`.
  */
-function rewriteInternalLinks(summary: string, handle: string): string {
-  if (!handle) return summary;
+function rewriteInternalLinks(summary: string, urlPrefix: string): string {
+  if (!urlPrefix) return summary;
   return summary.replace(
     /(\]\(|href=["'])\/#([A-Za-z0-9_-]+)/g,
     (_match, prefix: string, anchor: string) =>
-      `${prefix}/${handle}/#${anchor}`,
+      `${prefix}${urlPrefix}/#${anchor}`,
   );
 }
 
@@ -226,11 +228,15 @@ export interface TemplateData {
  * Convert a `Resume` to the template's `DATA` shape.
  *
  * @param resume - Persisted Resume blob (from R2)
- * @param handle - Route handle, used for the dock's `Home`/`Blog` links
+ * @param handle - Route handle. Used as a stable identity (NOT for URLs).
+ * @param urlPrefix - Path prefix for navbar links. `/{handle}` on the
+ *   canonical site, `""` when serving on a custom domain. Defaults to
+ *   `/{handle}` for backward compatibility with previewing surfaces.
  */
 export function resumeToTemplateData(
   resume: Resume,
   handle: string,
+  urlPrefix: string = `/${handle}`,
 ): TemplateData {
   const socials = resume.contact.socials;
   const socialMap: TemplateData["contact"]["social"] = {};
@@ -260,7 +266,7 @@ export function resumeToTemplateData(
     url: resume.person.url ?? `https://gitshow.io/${handle}`,
     location: resume.person.location ?? "",
     description: resume.person.description,
-    summary: rewriteInternalLinks(resume.person.summary, handle),
+    summary: rewriteInternalLinks(resume.person.summary, urlPrefix),
     avatarUrl: resume.person.avatarUrl ?? "",
     skills: resume.skills.map((s) => ({
       name: s.name,
@@ -269,9 +275,15 @@ export function resumeToTemplateData(
       usageCount: s.usageCount,
     })),
     navbar: [
-      { href: `/${handle}`, icon: HomeIcon, label: "Home" },
+      { href: urlPrefix || "/", icon: HomeIcon, label: "Home" },
       ...(hasBlog
-        ? [{ href: `/${handle}/blog`, icon: NotebookIcon, label: "Blog" }]
+        ? [
+            {
+              href: `${urlPrefix}/blog`,
+              icon: NotebookIcon,
+              label: "Blog",
+            },
+          ]
         : []),
     ],
     contact: {

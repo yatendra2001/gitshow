@@ -4,7 +4,7 @@
 import Markdown from "react-markdown";
 import { motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { useResume, useHandle } from "@/components/data-provider";
+import { useResume, useHandle, useUrlPrefix } from "@/components/data-provider";
 import { allSocials } from "@gitshow/shared/resume";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LogoOrInitials } from "@/components/logo-or-initials";
@@ -55,6 +55,7 @@ const NAV: NavItem[] = [
 export default function SpotlightTemplate() {
   const r = useResume();
   const handle = useHandle();
+  const urlPrefix = useUrlPrefix();
   const hidden = new Set<string>(r.sections.hidden);
   const socials = allSocials(r);
   const visibleNav = NAV.filter((n) => n.check(r, hidden));
@@ -115,6 +116,7 @@ export default function SpotlightTemplate() {
           <SidePanel
             r={r}
             handle={handle}
+            homeHref={urlPrefix || "/"}
             socials={hidden.has("contact") ? [] : socials}
             showContact={!hidden.has("contact")}
             visibleNav={visibleNav}
@@ -179,6 +181,7 @@ export default function SpotlightTemplate() {
 function SidePanel({
   r,
   handle,
+  homeHref,
   socials,
   showContact,
   visibleNav,
@@ -186,6 +189,8 @@ function SidePanel({
 }: {
   r: ReturnType<typeof useResume>;
   handle: string;
+  /** Resolved home href — `/{handle}` on canonical, `/` on custom domain. */
+  homeHref: string;
   socials: ReturnType<typeof allSocials>;
   showContact: boolean;
   visibleNav: typeof NAV;
@@ -208,7 +213,7 @@ function SidePanel({
               </AvatarFallback>
             </Avatar>
             <a
-              href={`/${handle}`}
+              href={homeHref}
               className="text-[12px] font-mono text-[#8892b0] hover:text-[#64ffda] transition-colors"
             >
               @{handle}

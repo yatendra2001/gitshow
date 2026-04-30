@@ -4,7 +4,7 @@
 import Markdown from "react-markdown";
 import { motion, useScroll, useTransform } from "motion/react";
 import { useEffect, useRef, useState } from "react";
-import { useResume, useHandle } from "@/components/data-provider";
+import { useResume, useHandle, useUrlPrefix } from "@/components/data-provider";
 import { allSocials } from "@gitshow/shared/resume";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LogoOrInitials } from "@/components/logo-or-initials";
@@ -34,6 +34,7 @@ const GRAD = {
 export default function GlowTemplate() {
   const r = useResume();
   const handle = useHandle();
+  const urlPrefix = useUrlPrefix();
   const hidden = new Set(r.sections.hidden);
   const socials = allSocials(r);
 
@@ -63,7 +64,7 @@ export default function GlowTemplate() {
         }}
       />
 
-      <Header handle={handle} socials={socials} />
+      <Header handle={handle} homeHref={urlPrefix || "/"} socials={socials} />
 
       <main className="relative z-10 mx-auto max-w-[760px] px-5 sm:px-6 pt-20 sm:pt-28 pb-32">
         <Hero r={r} />
@@ -110,9 +111,12 @@ export default function GlowTemplate() {
 
 function Header({
   handle,
+  homeHref,
   socials,
 }: {
   handle: string;
+  /** Resolved home href — `/{handle}` on canonical, `/` on custom domain. */
+  homeHref: string;
   socials: ReturnType<typeof allSocials>;
 }) {
   const [scrolled, setScrolled] = useState(false);
@@ -135,7 +139,7 @@ function Header({
     >
       <div className="mx-auto max-w-[760px] px-5 sm:px-6 h-14 flex items-center justify-between">
         <a
-          href={`/${handle}`}
+          href={homeHref}
           className="text-[13px] font-mono text-neutral-300 hover:text-white transition-colors inline-flex items-center gap-2"
         >
           <span

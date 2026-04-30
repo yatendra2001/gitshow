@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { DataProvider } from "@/components/data-provider";
 import { TrackView } from "@/components/track-view";
@@ -31,8 +32,21 @@ export default async function PortfolioLayout({
   const resume = await loadPublishedResume(env.BUCKET, handle);
   if (!resume) notFound();
 
+  // Custom-domain awareness — middleware forwards `x-gs-custom-domain`
+  // as a request header when the request landed on a customer's own
+  // hostname (e.g. yatendrakumar.com). When set, every internal link
+  // in this subtree should render handle-less (`/blog` not `/{handle}/blog`)
+  // so navigation stays on the custom domain instead of leaking the
+  // canonical slug into the URL bar.
+  const headerStore = await headers();
+  const isCustomDomain = headerStore.get("x-gs-custom-domain") === "1";
+
   return (
-    <DataProvider resume={resume} handle={handle}>
+    <DataProvider
+      resume={resume}
+      handle={handle}
+      isCustomDomain={isCustomDomain}
+    >
       <TrackView handle={handle} />
       <ShareButton handle={handle} name={resume.person.name} />
       {children}
