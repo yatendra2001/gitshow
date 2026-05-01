@@ -12,24 +12,22 @@ import { formatHumanDate as formatDate } from "@/lib/format-date";
 /**
  * `/{handle}/blog/{slug}` — individual post renderer.
  *
- * The post body is markdown imported verbatim from the original source
- * (Medium / dev.to / Hashnode / Substack / personal site). We render it
- * with `react-markdown` + `remark-gfm`, delegating element styling to
- * `markdownComponents` so the rendered prose matches the reference
- * portfolio's MDX surface (gradient `<hr>`, bordered tables, inline
- * code chips, syntax-highlighted `<pre>` via shiki).
+ * Mirrors the reference template's `app/blog/[slug]/page.tsx` one-to-one
+ * in structure. The post body is markdown imported verbatim from the
+ * original source (Medium / dev.to / Hashnode / Substack / personal site),
+ * rendered with `react-markdown` + `remark-gfm` and styled via
+ * `markdownComponents` to match the reference portfolio's MDX surface
+ * (gradient `<hr>`, bordered tables, inline code chips, syntax-highlighted
+ * `<pre>` via shiki).
  *
- * A prominent "originally posted on {platform}" link points back to the
- * canonical source so SEO + attribution stay correct.
+ * Source attribution lives inline next to the date as a plain link back
+ * to the canonical URL, keeping the header visually quiet (the reference
+ * template has nothing else there) while preserving SEO + provenance.
  *
  * URL construction: every internal link uses `urlPrefix` from the
  * DataProvider so a request on a custom domain produces handle-less
  * navigation paths.
  */
-
-// `formatDate` is imported from `@/lib/format-date` at the top —
-// we share one humanisation rule across blog index, blog post, and
-// publications surfaces.
 
 export default function BlogPost() {
   const DATA = useData();
@@ -66,16 +64,9 @@ export default function BlogPost() {
         <h1 className="title font-semibold text-3xl md:text-4xl tracking-tighter leading-tight">
           {post.title}
         </h1>
-        {post.summary && (
-          <p className="text-base text-muted-foreground/90 leading-relaxed">
-            {post.summary}
-          </p>
-        )}
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-          <span className="font-mono tabular-nums">
-            {formatDate(post.publishedAt)}
-          </span>
-          {post.sourceUrl && post.sourcePlatform ? (
+        <p className="text-sm text-muted-foreground inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span>{formatDate(post.publishedAt)}</span>
+          {post.sourceUrl && (
             <>
               <span aria-hidden className="text-border">
                 ·
@@ -84,41 +75,16 @@ export default function BlogPost() {
                 href={post.sourceUrl}
                 rel="canonical nofollow noopener"
                 target="_blank"
-                className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 hover:text-foreground hover:border-foreground/20 transition-colors"
+                className="hover:text-foreground transition-colors underline-offset-4 hover:underline"
               >
-                Originally on {post.sourcePlatform}
-                <ChevronRight className="size-3" aria-hidden />
+                {post.sourcePlatform
+                  ? `Originally on ${post.sourcePlatform}`
+                  : "Original source"}
               </a>
             </>
-          ) : post.sourceUrl ? (
-            <>
-              <span aria-hidden className="text-border">
-                ·
-              </span>
-              <a
-                href={post.sourceUrl}
-                rel="canonical nofollow noopener"
-                target="_blank"
-                className="underline underline-offset-4 hover:text-foreground transition-colors"
-              >
-                Original source
-              </a>
-            </>
-          ) : null}
-        </div>
+          )}
+        </p>
       </div>
-
-      {post.image && (
-        <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-muted/30">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={post.image}
-            alt={post.title}
-            loading="eager"
-            className="w-full h-auto object-cover"
-          />
-        </div>
-      )}
 
       <div className="my-6 flex w-full items-center">
         <div
@@ -133,10 +99,7 @@ export default function BlogPost() {
       </div>
 
       <article className="prose max-w-full text-pretty font-sans leading-relaxed text-muted-foreground dark:prose-invert">
-        <Markdown
-          remarkPlugins={[remarkGfm]}
-          components={markdownComponents}
-        >
+        <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
           {post.body}
         </Markdown>
       </article>
