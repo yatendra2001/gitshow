@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Check, AlertTriangle, Circle } from "lucide-react";
 import { LogoMark } from "@/components/logo";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
-import { DotMatrix } from "@/components/ui/dot-matrix";
+import { DotmSquare3 } from "@/components/ui/dotm-square-3";
 import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Tool, type ToolStatus } from "@/components/ai-elements/tool";
 import {
@@ -633,7 +633,7 @@ function PhaseRow({
           )}
         />
       ) : null}
-      <PhaseDot status={node.status} seed={node.id} />
+      <PhaseDot status={node.status} />
       <div className="flex-1 min-w-0 pb-1">
         <PhaseHeader node={node} now={now} />
         {node.errorMessage ? (
@@ -711,7 +711,6 @@ function AgentRunBlock({
               : undefined
           }
           label={friendly}
-          seed={`${run.agent}:${lastReasoning.reasoningId}`}
         />
       ) : null}
       {visibleTools.length > 0 ? (
@@ -725,7 +724,6 @@ function AgentRunBlock({
               input={t.inputPreview}
               output={t.outputPreview}
               error={t.errorMessage}
-              seed={t.toolId}
             />
           ))}
         </div>
@@ -785,14 +783,11 @@ function PhaseHeader({ node, now }: { node: PhaseNode; now: number }) {
   );
 }
 
-function PhaseDot({ status, seed }: { status: NodeStatus; seed: string }) {
+function PhaseDot({ status }: { status: NodeStatus }) {
   if (status === "running") {
-    // Each phase rolls a different agent-pool pattern keyed off its id,
-    // so a long live timeline reads as varied "AI is working" indicators
-    // instead of the same dot pulsing 14 times in a row.
     return (
       <span className="flex size-[22px] shrink-0 items-center justify-center text-foreground">
-        <DotMatrix variant="agent" seed={seed} size={20} ariaLabel="In progress" />
+        <DotmSquare3 size={20} dotSize={3} ariaLabel="In progress" />
       </span>
     );
   }
@@ -823,7 +818,7 @@ function PhaseDot({ status, seed }: { status: NodeStatus; seed: string }) {
 function SubPhaseRow({ node }: { node: PhaseNode }) {
   return (
     <li className="gs-enter flex items-baseline gap-2.5 pl-1">
-      <SubDot status={node.status} seed={node.id} />
+      <SubDot status={node.status} />
       <span
         className={cn(
           "text-[12.5px] leading-snug",
@@ -855,14 +850,11 @@ function SubPhaseRow({ node }: { node: PhaseNode }) {
   );
 }
 
-function SubDot({ status, seed }: { status: NodeStatus; seed: string }) {
+function SubDot({ status }: { status: NodeStatus }) {
   if (status === "running") {
-    // Smaller register than PhaseDot — children sit under a parent that
-    // already carries the "agent" pattern, so we draw from the quieter
-    // `subtle` pool to avoid two competing motions stacked together.
     return (
       <span className="flex size-3.5 shrink-0 items-center justify-center text-foreground">
-        <DotMatrix variant="subtle" seed={seed} size={14} ariaLabel="In progress" />
+        <DotmSquare3 size={14} dotSize={2} ariaLabel="In progress" />
       </span>
     );
   }

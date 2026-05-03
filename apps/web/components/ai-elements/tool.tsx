@@ -4,7 +4,7 @@ import * as React from "react";
 import { ChevronDown, Check, AlertTriangle, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
-import { DotMatrix } from "@/components/ui/dot-matrix";
+import { DotmSquare3 } from "@/components/ui/dotm-square-3";
 
 /**
  * Tool — per-invocation row showing one tool call.
@@ -34,8 +34,6 @@ export interface ToolProps extends React.HTMLAttributes<HTMLDivElement> {
   /** Friendly purpose line, shown next to the tool name when present. */
   subtitle?: string;
   defaultOpen?: boolean;
-  /** Stable identifier used to pick a varied loader pattern. */
-  seed?: string;
 }
 
 export function Tool({
@@ -46,7 +44,6 @@ export function Tool({
   error,
   subtitle,
   defaultOpen = false,
-  seed,
   className,
   ...props
 }: ToolProps) {
@@ -74,7 +71,7 @@ export function Tool({
           !hasBody && "cursor-default",
         )}
       >
-        <StatusGlyph status={status} seed={seed ?? name} />
+        <StatusGlyph status={status} />
         <span className="flex-1 min-w-0 flex flex-col">
           <span className="flex items-center gap-2 truncate text-[12.5px] font-medium tracking-tight">
             {running ? (
@@ -152,16 +149,12 @@ export function Tool({
  * is a faint dot. All sized to ~10px so they sit politely next to
  * the body text.
  */
-function StatusGlyph({ status, seed }: { status: ToolStatus; seed: string }) {
+function StatusGlyph({ status }: { status: ToolStatus }) {
   if (status === "running") {
-    // Tool-pool patterns (Stream, Compile, Cipher, Bar, Boot) read as
-    // "structured work happening" — a register apart from the agent
-    // patterns on the parent phase row, so the two don't visually merge.
     return (
-      <DotMatrix
-        variant="tool"
-        seed={seed}
+      <DotmSquare3
         size={18}
+        dotSize={2}
         ariaLabel="Running"
         className="text-foreground"
       />
