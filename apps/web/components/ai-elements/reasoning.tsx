@@ -4,7 +4,7 @@ import * as React from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
-import { DotmSquare3 } from "@/components/ui/dotm-square-3";
+import { DotmSquare15 } from "@/components/ui/dotm-square-15";
 
 /**
  * Reasoning — the "Thought for Xs" collapsible. Streams text in while
@@ -89,9 +89,10 @@ export function Reasoning({
         className="flex w-full items-center gap-2.5 py-1.5 text-left group"
       >
         {streaming ? (
-          <DotmSquare3
+          <DotmSquare15
             size={18}
             dotSize={2}
+            speed={0.6}
             ariaLabel="Thinking"
             className="text-foreground"
           />
