@@ -4,7 +4,7 @@ import * as React from "react";
 import { ChevronDown, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
-import { DotMatrix } from "@/components/ui/dot-matrix";
+import { DotmSquare3 } from "@/components/ui/dotm-square-3";
 
 /**
  * Reasoning — the "Thought for Xs" collapsible. Streams text in while
@@ -32,8 +32,6 @@ export interface ReasoningProps extends React.HTMLAttributes<HTMLDivElement> {
   label?: string;
   /** Stay open after streaming ends (useful for debugging). Default false. */
   keepOpenAfterDone?: boolean;
-  /** Stable identifier used to pick a varied loader pattern. */
-  seed?: string;
 }
 
 export function Reasoning({
@@ -42,7 +40,6 @@ export function Reasoning({
   elapsedMs,
   label = "Thinking",
   keepOpenAfterDone = false,
-  seed,
   className,
   ...props
 }: ReasoningProps) {
@@ -92,14 +89,9 @@ export function Reasoning({
         className="flex w-full items-center gap-2.5 py-1.5 text-left group"
       >
         {streaming ? (
-          // 5×5 dot-matrix from the `thinking` pool. Seeded by `seed` (or
-          // the label) so every Reasoning block on screen tends to show a
-          // distinct pattern — Thinking, Stream, Cipher, Listening — and
-          // the timeline doesn't read as one repeated loader.
-          <DotMatrix
-            variant="thinking"
-            seed={seed ?? label}
+          <DotmSquare3
             size={18}
+            dotSize={2}
             ariaLabel="Thinking"
             className="text-foreground"
           />
