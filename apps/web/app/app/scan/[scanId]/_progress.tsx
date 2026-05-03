@@ -7,6 +7,7 @@ import { Check, AlertTriangle, Circle } from "lucide-react";
 import { LogoMark } from "@/components/logo";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
 import { DotmSquare3 } from "@/components/ui/dotm-square-3";
+import { DotmSquare13 } from "@/components/ui/dotm-square-13";
 import { Reasoning } from "@/components/ai-elements/reasoning";
 import { Tool, type ToolStatus } from "@/components/ai-elements/tool";
 import {
@@ -787,7 +788,7 @@ function PhaseDot({ status }: { status: NodeStatus }) {
   if (status === "running") {
     return (
       <span className="flex size-[22px] shrink-0 items-center justify-center text-foreground">
-        <DotmSquare3 size={20} dotSize={3} ariaLabel="In progress" />
+        <DotmSquare3 size={20} dotSize={3} speed={0.6} ariaLabel="In progress" />
       </span>
     );
   }
@@ -854,7 +855,7 @@ function SubDot({ status }: { status: NodeStatus }) {
   if (status === "running") {
     return (
       <span className="flex size-3.5 shrink-0 items-center justify-center text-foreground">
-        <DotmSquare3 size={14} dotSize={2} ariaLabel="In progress" />
+        <DotmSquare13 size={14} dotSize={2} speed={0.7} ariaLabel="In progress" />
       </span>
     );
   }

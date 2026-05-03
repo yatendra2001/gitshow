@@ -4,7 +4,7 @@ import * as React from "react";
 import { ChevronDown, Check, AlertTriangle, Lock } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ShimmeringText } from "@/components/ui/shimmering-text";
-import { DotmSquare3 } from "@/components/ui/dotm-square-3";
+import { DotmSquare18 } from "@/components/ui/dotm-square-18";
 
 /**
  * Tool — per-invocation row showing one tool call.
@@ -152,9 +152,10 @@ export function Tool({
 function StatusGlyph({ status }: { status: ToolStatus }) {
   if (status === "running") {
     return (
-      <DotmSquare3
+      <DotmSquare18
         size={18}
         dotSize={2}
+        speed={0.65}
         ariaLabel="Running"
         className="text-foreground"
       />
