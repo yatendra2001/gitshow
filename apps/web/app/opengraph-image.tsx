@@ -10,9 +10,14 @@ import { ImageResponse } from "next/og";
  * Why a real 1200×630 card and not the apple-touch-icon: WhatsApp
  * (and Slack/Discord/Twitter) render square favicons as a giant
  * block. A 1.91:1 card scales down to a tidy preview row instead.
+ *
+ * No `runtime = "edge"` — OpenNext bundles every route for the
+ * Cloudflare Worker runtime. Declaring `edge` forces Next to emit a
+ * separate edge-runtime build that OpenNext can't serve, so the route
+ * 500s in production. The default (Node-style) emit runs fine on
+ * Workers via OpenNext.
  */
 
-export const runtime = "edge";
 export const alt = "GitShow — portfolios from your git history";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";

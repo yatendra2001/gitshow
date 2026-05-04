@@ -13,9 +13,13 @@ import { isReservedHandle } from "@/lib/profiles";
  * below, avatar on the right, subtle "gitshow.io" lockup bottom-left.
  * Grayscale — matches the template's pure-neutral aesthetic and
  * doesn't fight any accent color the user picks.
+ *
+ * No `runtime = "edge"` — OpenNext bundles every route for the
+ * Cloudflare Worker runtime. Declaring `edge` forces Next to emit a
+ * separate edge-runtime build that OpenNext can't serve, so the route
+ * 500s in production.
  */
 
-export const runtime = "edge";
 export const alt = "gitshow portfolio";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
