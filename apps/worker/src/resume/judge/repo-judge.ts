@@ -148,10 +148,18 @@ Choosing polish:
   - broken:   broken builds, crashing on boot, half-migrated
   - not-code: docs / spec / artifact-only repository
 
-purpose: one honest sentence, e.g.
-  "Open-source video-first podcast hosting platform with Web RTC + Whisper."
-  "A toy implementation of Raft used for a distributed-systems class."
-  "Auto-generated mirror of private repo — no real source code."
+purpose: ONE short, honest sentence. Aim for 8-15 words. Plain English,
+no marketing-speak, no "robust" / "blazing-fast" / "elegant solution".
+Lead with what the thing IS, then the most distinctive technical hook
+if it fits.
+
+  "Generates portfolio sites and ATS resumes from GitHub history."
+  "Open-source video-first podcast hosting platform; WebRTC + Whisper."
+  "AI tutor that teaches concepts visually using Manim animations."
+  "CLI assistant using screen + audio context for summaries and actions."
+  "Cross-platform AI chat assistant with PDF and image Q&A."
+  "Toy implementation of Raft for a distributed-systems class."
+  "Auto-generated mirror of a private repo. No real source code."
 
 reason: one or two sentences explaining your shouldFeature decision,
 quoting the specific README/code signal you used.

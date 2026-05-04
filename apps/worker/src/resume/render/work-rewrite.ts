@@ -37,36 +37,54 @@ const RewriteSchema = z.object({
     .array(
       z.object({
         id: z.string().min(1),
-        description: z.string().min(20).max(600),
+        description: z.string().min(15).max(280),
       }),
     )
     .max(50),
 });
 
-const SYSTEM_PROMPT = `You are rewriting the work-experience descriptions on a developer's
-portfolio. The input is a list of entries, each with an id, company,
-title, and original description (typically scraped verbatim from
-LinkedIn — bullet points, third-person verbs, dense metrics).
+const SYSTEM_PROMPT = `You rewrite work-experience descriptions on a developer's portfolio.
+Input is a list of entries (id, company, title, original description —
+usually a LinkedIn bullet-list dump in stale third-person verbs).
 
-For each entry, write a 2-3 sentence description in clean first-person
-prose. Rules:
+Output for each: ONE short sentence per role. Two sentences MAXIMUM,
+and only if there is a real metric worth keeping that doesn't fit in one.
 
-- 2-3 sentences. Never a bullet list.
-- First-person voice. "I shipped X." / "We launched Y." NOT "Shipped X." or "• Shipped X".
-- Keep concrete metrics + outcomes (the 331%, the 45→3 sec, the 1.5k users) — those are the strongest signals on a portfolio.
-- Drop filler: corporate-speak, hedge words, repeated job titles, "responsible for".
-- Stay strictly faithful to the original. Don't invent companies, dates, products, or metrics that aren't in the input.
-- Don't repeat the title or company name in the description (those are rendered separately above).
-- No closing call-to-action. No "feel free to reach out".
-- No em-dashes (use commas or periods).
+The vibe is terse and concrete. Each role should sound a bit different
+— don't make every entry start the same way.
 
-If the original is already a clean 1-3 sentence paragraph in first
-person, you may return it nearly verbatim — only smooth out obvious
-awkwardness.
+Examples (variety on purpose):
+
+  "Building a video-first podcast hosting platform."
+  "Created a hands-on platform to learn Flutter for free."
+  "Built FlutterGPT, an open-source copilot for Flutter developers."
+  "Shipped MVP features across web and mobile using Firebase."
+  "Built a Node.js + MongoDB POC that the team later adopted."
+  "Cut data retrieval time from 45s to 3s on the search path."
+  "Led migration off Heroku, reducing infra spend ~40%."
+  "Improved onboarding and CI/CD efficiency across two repos."
+
+Rules:
+
+- 1 sentence (2 only if there's a real number worth keeping).
+- Action-verb start: "Building...", "Built...", "Shipped...", "Led...",
+  "Created...", "Cut...". Present tense for current role, past tense
+  for past roles.
+- Plain English. No corporate-speak ("responsible for", "key contributor",
+  "spearheaded"), no hedge words, no repeated job titles.
+- KEEP concrete numbers when present (331%, 45s→3s, 1.5k users, 10k+ stars).
+  DROP vague claims ("improved efficiency", "boosted engagement", "optimized performance").
+- Don't repeat the title or company (those are rendered separately above).
+- No first-person filler ("I had the opportunity to...", "I was lucky enough to...").
+- No em-dashes — use commas or periods.
+- Stay strictly faithful to the original. Don't invent companies, dates,
+  products, users, or metrics not in the input.
+
+If the original is already a clean 1-sentence description, return it
+nearly verbatim — only fix obvious awkwardness.
 
 Output: call submit_rewrites once with rewrites: [{id, description}].
-Include EVERY entry from the input, in the same order. Do not skip
-any id.`;
+Include EVERY entry from the input, in the same order. Do not skip any id.`;
 
 export interface WorkRewriteInput {
   kg: KnowledgeGraph;

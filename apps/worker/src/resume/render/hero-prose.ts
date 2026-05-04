@@ -24,19 +24,21 @@ export const HeroProseSchema = z.object({
   description: z
     .string()
     .min(8)
-    .max(220)
+    .max(160)
     .describe(
-      "One-line bio shown under the hero heading. 12-30 words. Specific, behavioral. " +
-        "Avoid generic filler — describe what makes THIS developer distinctive.",
+      "One short line shown under the hero heading. 6-18 words. " +
+        "Lead with the strongest signal (current role, breakout project, OSS contribution). " +
+        "Plain English. No 'passionate', 'results-driven', or LinkedIn-speak.",
     ),
   summary: z
     .string()
-    .min(40)
-    .max(2000)
+    .min(20)
+    .max(360)
     .describe(
-      "About-section markdown paragraph, 3-6 sentences. MUST embed at least 2 in-portfolio " +
-        "cross-section links using these hrefs: (/#education) (/#work) (/#projects) (/#hackathons) (/#skills) (/#publications). " +
-        "Stay factual: do NOT invent companies, dates, products, or metrics not present in the input facts.",
+      "About paragraph, 1-3 SHORT sentences of markdown. Default to terse. " +
+        "Match the voice the person uses in their own bio. Inline links to other " +
+        "sections (/#projects, /#work, etc.) are OK if natural, never required. " +
+        "Stay factual: do NOT invent companies, dates, products, or metrics not in the input facts.",
     ),
 });
 export type HeroProse = z.infer<typeof HeroProseSchema>;
@@ -58,23 +60,50 @@ export interface HeroProseInput {
   emit?: AgentEventEmit;
 }
 
-const SYSTEM_PROMPT = `You write the identity block for an engineering portfolio. You produce exactly two pieces:
+const SYSTEM_PROMPT = `You write the identity block on a developer's portfolio. Two pieces.
 
-1. "description" — one line, 12-30 words. Specific and behavioral. Tell a reader at a glance who this person is. Avoid filler like "passionate full-stack developer". Lead with the strongest signal in the input.
+The portfolio voice is TERSE, PLAIN, and PERSONAL. Each profile should sound like a different person — not a template. Match the voice the person uses in their own bio / external signal report. If they're playful, be playful. If they're dry, be dry. Default to short.
 
-2. "summary" — an About paragraph, 3-6 sentences of markdown. Rules:
-   - MUST embed at least 2 cross-section markdown links using exactly these hrefs: (/#education), (/#work), (/#projects), (/#hackathons), (/#skills), (/#publications). The linked phrase should be natural English ("I [studied at MIT](/#education)"), never the bare path.
-   - Stay factual to the input. Do NOT invent years, companies, product names, users, or metrics that aren't in the input facts.
-   - Read like a person talking, not a LinkedIn bio. Contractions OK. No corporate-speak.
-   - No closing call-to-action. No "feel free to reach out."
-   - Don't repeat the description inside the summary.
-   - No em-dash punchlines.
+Hard bans across both fields: "passionate", "results-driven", "love building", "journey", "I had the opportunity", "feel free to reach out", em-dash punchlines, closing CTAs.
 
-Weighting:
-  - A high-band WORKED_AT at a recognised company is strong signal.
-  - A merged contribution to a widely-used OSS repo (10k+ stars: facebook/react, rust-lang/rust, vercel/next.js, kubernetes/kubernetes, etc.) is often the single most interesting line — name the repo.
-  - A featured Project tagged "shipped" outranks an "experiment" of the same shape.
-  - WON edges (hackathons / awards) are great hooks if present.
+1. "description" — ONE short line. 6-18 words. Lead with the strongest signal: current role + what they're building, OR a breakout project, OR a notable OSS contribution. Examples (variety on purpose):
+
+   "Founding engineer at Flightcast, building a video-first podcast platform."
+   "Distributed-systems engineer at Stripe. Rust and Go."
+   "Open-source maintainer (10k+ stars on tldraw); ex-Vercel."
+   "PhD candidate at MIT; lower bounds for streaming algorithms."
+   "Student at Waterloo. Ships side projects in TypeScript."
+
+2. "summary" — About section. 1-3 SHORT sentences of markdown. Each sentence stands alone. Default to terse. Examples (variety on purpose):
+
+   Founder voice:
+     "I build and ship AI-powered products. Started coding at 15 (Turbo C++), never stopped."
+
+   IC voice:
+     "I write Rust at Stripe. Mostly distributed systems and weird performance bugs."
+
+   Researcher voice:
+     "PhD candidate working on lower bounds for streaming algorithms. Previously at Google Brain."
+
+   OSS / student voice:
+     "I build small things. Shipped my first app at 15, been compounding since."
+
+   Pivoter:
+     "Designer turned engineer. Now building AI tools full-time after eight years at Figma."
+
+Rules for "summary":
+  - 1-3 sentences. Hard cap. NEVER a paragraph.
+  - Concrete hook (a project, a stack, a year, a place, a number). No abstract claims.
+  - First or third person — match how the person's own bio reads.
+  - Inline links to other sections (/#projects, /#work, /#hackathons, /#skills, /#publications, /#education) are FINE if they fall naturally into the prose, but never force them.
+  - Don't repeat the description inside the summary.
+  - Stay strictly factual. No invented years, companies, products, users, or metrics.
+
+Weighting (what to lead with):
+  - A high-band WORKED_AT at a recognised company is strong signal — name the company.
+  - A merged contribution to a 10k+ star OSS repo (react, rust, next.js, kubernetes, etc.) is often the single most interesting line — name the repo.
+  - A featured Project tagged "shipped" outranks an "experiment".
+  - WON edges (hackathons / awards) are great hooks.
 
 Call submit_hero_prose exactly once.`;
 
