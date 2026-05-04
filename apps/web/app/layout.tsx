@@ -27,13 +27,23 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL ?? "https://gitshow.io",
+  ),
   title: "GitShow — portfolios from your git history",
   description:
     "GitShow turns a developer's public git history into a polished, editable portfolio.",
   openGraph: {
     title: "GitShow",
     description: "Portfolios from your git history.",
+    url: "/",
+    siteName: "GitShow",
     type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "GitShow",
+    description: "Portfolios from your git history.",
   },
   icons: {
     // Browsers pick by media query: light-mode tabs get icon-light,
