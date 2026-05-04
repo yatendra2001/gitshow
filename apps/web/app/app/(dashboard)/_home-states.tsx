@@ -118,8 +118,9 @@ export function EmptyState({ handle }: { handle: string }) {
 
       <StartFirstScanButton handle={handle} />
       <p className="mt-3 text-[11.5px] text-muted-foreground/80">
-        Takes ~3–6 minutes. You&apos;ll review a draft before anything goes
-        public.
+        Takes ~3–6 minutes. We publish to{" "}
+        <span className="font-mono">gitshow.io/{handle || "{handle}"}</span> the
+        moment it&apos;s ready — edit anytime.
       </p>
     </section>
   );
@@ -172,7 +173,7 @@ export function ScanningState({ scan }: { scan: ScanSlim }) {
           <>Getting set up. The first update usually arrives within a minute.</>
         )}
         <br />
-        You can close this tab — we&apos;ll email you when it&apos;s ready.
+        You can close this tab — we&apos;ll email you when it&apos;s live.
       </p>
       <div className="flex flex-wrap gap-2">
         <Link
@@ -187,7 +188,14 @@ export function ScanningState({ scan }: { scan: ScanSlim }) {
   );
 }
 
-// ─── Draft awaiting publish ──────────────────────────────────────
+// ─── Draft fallback ──────────────────────────────────────────────
+//
+// New default flow: the worker auto-publishes draft.json → published.json
+// at the end of every successful scan, so this state is normally skipped
+// (the dashboard drops straight into the live/analytics view via the
+// Published path). It only renders when auto-publish itself failed —
+// the manual Publish button below acts as a recovery handle. Pre-existing
+// unpublished drafts from before the auto-publish change also land here.
 
 export function DraftState({
   handle,
@@ -205,23 +213,24 @@ export function DraftState({
     );
   return (
     <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16 gs-enter">
-      <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
-        Draft ready
+      <div className="text-[12px] uppercase tracking-wide text-amber-600 dark:text-amber-400 mb-2">
+        Not live yet
       </div>
       <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
-        Your portfolio is ready to review
+        Your portfolio finished, but we couldn&apos;t push it live
       </h1>
       <p className="text-[14px] leading-relaxed text-muted-foreground mb-6">
-        The scan for @{handle} finished. Preview it, and publish when it looks
-        right — <span className="font-mono">gitshow.io/{handle}</span> goes
-        live the moment you do.
+        The scan for @{handle} succeeded. Hit Publish to retry — your URL{" "}
+        <span className="font-mono">gitshow.io/{handle}</span> goes live the
+        moment it succeeds.
       </p>
       <div className="flex flex-wrap gap-2 mb-6">
+        <PublishDraftButton />
         <Link
           href="/app/preview"
-          className="inline-flex items-center min-h-11 rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium select-none shadow-[inset_0_1px_0_rgb(255_255_255_/_0.10),0_1px_2px_-1px_oklch(0_0_0_/_0.20)] transition-[background-color,box-shadow,transform,opacity] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.14),0_2px_8px_-3px_oklch(0_0_0_/_0.24)] active:scale-[0.97] active:duration-[80ms] outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          className="inline-flex items-center min-h-11 rounded-xl border border-border/60 bg-card/30 px-4 py-2 text-[13px] font-medium select-none transition-[background-color,border-color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:bg-card/50 hover:border-foreground/25 active:scale-[0.97] active:duration-[80ms] outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
-          Preview draft →
+          Preview draft
         </Link>
         <Link
           href="/app/edit"
@@ -229,7 +238,6 @@ export function DraftState({
         >
           Edit
         </Link>
-        <PublishDraftButton />
       </div>
       {access && (access.accessState || access.dataSources) ? (
         <div className="mt-4 border-t border-border/30 pt-5 flex flex-col gap-3">

@@ -24,6 +24,7 @@ import { randomUUID } from "node:crypto";
 import { runResumePipeline } from "../src/resume/pipeline.js";
 import { createD1Phases } from "../src/resume/phases.js";
 import { createPipelineEmit } from "../src/resume/event-emit.js";
+import { copyDraftToPublished } from "../src/resume/persist.js";
 import { SessionUsage } from "../src/session.js";
 import { D1Client } from "../src/cloud/d1.js";
 import { DOPublishClient } from "@gitshow/shared/cloud/do-client";
@@ -228,18 +229,55 @@ async function main() {
       hiring_score: null,
     });
 
+    // Auto-publish: copy draft.json → published.json and upsert the
+    // user_profiles pointer so gitshow.io/{handle} goes live the moment
+    // the scan finishes. No manual Publish click needed. If anything
+    // here fails, the dashboard's DraftState fallback exposes the
+    // legacy manual button as a recovery path — we log and continue
+    // so the rest of the post-scan work (notification, email) still
+    // runs against the in-progress profile.
+    let autoPublished = false;
+    try {
+      const userId = await d1.getUserIdForScan(scanId);
+      const { publishedKey } = await copyDraftToPublished({
+        handle,
+        log: (text) => {
+          if (!process.env.GITSHOW_QUIET) process.stderr.write(text);
+        },
+      });
+      if (userId) {
+        await d1.upsertUserProfile({
+          user_id: userId,
+          handle,
+          scan_id: scanId,
+          card_r2_key: publishedKey,
+        });
+      }
+      autoPublished = true;
+      scanLog.info({ publishedKey, userId }, "auto-publish.ok");
+    } catch (err) {
+      scanLog.error({ err }, "auto-publish.failed");
+    }
+
     try {
       const userId = await d1.getUserIdForScan(scanId);
       if (userId) {
-        const profileUrl = `${PUBLIC_APP_URL}/app`;
+        const publicUrl = `${PUBLIC_APP_URL}/${handle.toLowerCase()}`;
+        const dashboardUrl = `${PUBLIC_APP_URL}/app`;
+        const notifTitle = autoPublished
+          ? `You're live at gitshow.io/${handle}`
+          : `Your gitshow portfolio is ready`;
+        const notifBody = autoPublished
+          ? `@${handle} — your portfolio is live. Edit anytime.`
+          : `@${handle} — draft ready to review and publish`;
         await d1.createNotification({
           id: `ntf_${randomUUID()}`,
           user_id: userId,
           kind: "scan-complete",
           scan_id: scanId,
-          title: `Your gitshow portfolio is ready`,
-          body: `@${handle} — draft ready to review and publish`,
-          action_url: profileUrl,
+          title: notifTitle,
+          body: notifBody,
+          action_url: autoPublished ? publicUrl : dashboardUrl,
         });
 
         if (email) {
@@ -247,7 +285,8 @@ async function main() {
           if (contact?.email) {
             const tpl = await renderScanComplete({
               handle,
-              profileUrl,
+              profileUrl: autoPublished ? publicUrl : dashboardUrl,
+              autoPublished,
             });
             const r = await email.send({
               to: contact.email,

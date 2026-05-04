@@ -172,6 +172,14 @@ export class ResendSender {
 export interface ScanCompleteTemplate {
   handle: string;
   profileUrl: string;
+  /**
+   * Whether the worker successfully auto-published draft → published.
+   * When true (the new default), the email celebrates "you're live"
+   * and the button points at the public profile. When false (rare
+   * fallback after auto-publish failure), the email reverts to the
+   * legacy "review your draft" framing pointing at the dashboard.
+   */
+  autoPublished?: boolean;
 }
 
 export async function renderScanComplete(t: ScanCompleteTemplate): Promise<{
@@ -179,11 +187,15 @@ export async function renderScanComplete(t: ScanCompleteTemplate): Promise<{
   html: string;
   text: string;
 }> {
-  const subject = `Your gitshow draft is ready, @${t.handle}`;
+  const autoPublished = t.autoPublished ?? false;
+  const subject = autoPublished
+    ? `You're live at gitshow.io/${t.handle}`
+    : `Your gitshow draft is ready, @${t.handle}`;
   const element = ScanCompleteEmail({
     handle: t.handle,
     profileUrl: t.profileUrl,
     logoUrl: deriveLogoUrl(t.profileUrl),
+    autoPublished,
   });
   const [html, text] = await Promise.all([
     render(element),

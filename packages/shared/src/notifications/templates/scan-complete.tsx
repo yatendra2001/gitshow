@@ -19,6 +19,14 @@ export interface ScanCompleteEmailProps {
   logoUrl?: string;
   /** Founder's first name — used in the personal signature. */
   founderName?: string;
+  /**
+   * Whether the worker successfully auto-published the profile to
+   * `/{handle}` at scan completion. Drives the celebratory "you're
+   * live" copy + the public profile button. Defaults to false for
+   * backwards-compatibility with the legacy "review your draft"
+   * framing (kept as a fallback when auto-publish fails).
+   */
+  autoPublished?: boolean;
 }
 
 const colors = {
@@ -42,12 +50,16 @@ export function ScanCompleteEmail({
   profileUrl,
   logoUrl,
   founderName = "Yatendra",
+  autoPublished = false,
 }: ScanCompleteEmailProps) {
+  const liveUrl = `gitshow.io/${handle}`;
   return (
     <Html>
       <Head />
       <Preview>
-        Your gitshow draft is ready — have a look, tweak anything, and tell me what you think.
+        {autoPublished
+          ? `You're live at ${liveUrl} — share it, tweak it, tell me what you think.`
+          : `Your gitshow draft is ready — have a look, tweak anything, and tell me what you think.`}
       </Preview>
       <Body
         style={{
@@ -124,7 +136,7 @@ export function ScanCompleteEmail({
                   verticalAlign: "middle",
                 }}
               />
-              Scan complete
+              {autoPublished ? "You're live" : "Scan complete"}
             </Text>
             <Heading
               as="h1"
@@ -137,7 +149,7 @@ export function ScanCompleteEmail({
                 color: colors.ink,
               }}
             >
-              Your draft is ready.
+              {autoPublished ? `You're live at ${liveUrl}.` : "Your draft is ready."}
             </Heading>
             <Text
               style={{
@@ -157,12 +169,14 @@ export function ScanCompleteEmail({
                 color: colors.body,
               }}
             >
-              gitshow just finished reading the commits, PRs, and reviews for{" "}
+              gitshow finished reading the commits, PRs, and reviews for{" "}
               <span style={{ fontFamily: monoStack, color: colors.ink, fontSize: "14px" }}>
                 @{handle}
               </span>
-              . Every claim in your portfolio is anchored to the work that proves it — no
-              fluff, just receipts.
+              .{" "}
+              {autoPublished
+                ? "Your portfolio is already live — every claim is anchored to the work that proves it. Share the URL, or jump in and tweak anything."
+                : "Every claim in your portfolio is anchored to the work that proves it — no fluff, just receipts."}
             </Text>
           </Section>
 
@@ -182,7 +196,7 @@ export function ScanCompleteEmail({
                 textDecoration: "none",
               }}
             >
-              Review your draft →
+              {autoPublished ? "View your live profile →" : "Review your draft →"}
             </Button>
           </Section>
 
@@ -204,24 +218,42 @@ export function ScanCompleteEmail({
                 color: colors.muted,
               }}
             >
-              Three things before you publish
+              {autoPublished ? "Two things you can do now" : "Three things before you publish"}
             </Text>
-            <NextStep
-              n="01"
-              title="Review"
-              body="Skim the claims I surfaced. Each one links back to the commit, PR, or review."
-            />
-            <NextStep
-              n="02"
-              title="Edit"
-              body="Reorder, rewrite, drop anything that doesn't sound like you. The editor is live."
-            />
-            <NextStep
-              n="03"
-              title="Publish"
-              body="Share your gitshow URL when it feels right. You can keep iterating after."
-              last
-            />
+            {autoPublished ? (
+              <>
+                <NextStep
+                  n="01"
+                  title="Share"
+                  body={`Your URL is ${liveUrl}. Drop it in your bio, your résumé, your next intro DM.`}
+                />
+                <NextStep
+                  n="02"
+                  title="Edit"
+                  body="Reorder, rewrite, drop anything that doesn't sound like you. Edits go live the moment you save."
+                  last
+                />
+              </>
+            ) : (
+              <>
+                <NextStep
+                  n="01"
+                  title="Review"
+                  body="Skim the claims I surfaced. Each one links back to the commit, PR, or review."
+                />
+                <NextStep
+                  n="02"
+                  title="Edit"
+                  body="Reorder, rewrite, drop anything that doesn't sound like you. The editor is live."
+                />
+                <NextStep
+                  n="03"
+                  title="Publish"
+                  body="Share your gitshow URL when it feels right. You can keep iterating after."
+                  last
+                />
+              </>
+            )}
           </Section>
 
           <Section style={{ padding: "28px 32px 0 32px" }}>
