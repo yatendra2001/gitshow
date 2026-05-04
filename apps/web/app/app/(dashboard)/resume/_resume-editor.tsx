@@ -55,6 +55,7 @@ import {
   PrintableResume,
   RESUME_PRINT_CSS,
 } from "@/components/resume/printable";
+import { DeleteResumeButton } from "./_delete-resume-button";
 
 const SAVE_DEBOUNCE_MS = 700;
 
@@ -264,6 +265,7 @@ export function ResumeEditor({
             <AwardsForm doc={doc} onPatch={onPatch} />
             <PublicationsForm doc={doc} onPatch={onPatch} />
             <SectionVisibilityForm doc={doc} onPatch={onPatch} />
+            <DangerZone />
           </div>
         </div>
 
@@ -1362,6 +1364,25 @@ function sectionLabel(key: ResumeSectionKey): string {
     case "publications":
       return "Publications";
   }
+}
+
+// ──────────────────────────────────────────────────────────────
+// Danger zone — wipe + regenerate
+// ──────────────────────────────────────────────────────────────
+
+function DangerZone() {
+  return (
+    <section className="mt-10 border-t border-border/30 pt-6 flex flex-col gap-3">
+      <span className="text-foreground font-medium text-[13px]">
+        Delete resume
+      </span>
+      <span className="text-[12px] text-muted-foreground leading-relaxed">
+        Wipes this resume and every edit. Your portfolio stays intact —
+        you&apos;ll regenerate a fresh one from it.
+      </span>
+      <DeleteResumeButton />
+    </section>
+  );
 }
 
 // ──────────────────────────────────────────────────────────────

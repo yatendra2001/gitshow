@@ -2,11 +2,16 @@ import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getSession } from "@/auth";
 import { requireProApi } from "@/lib/entitlements";
-import { loadResumeDoc, patchResumeDoc } from "@/lib/resume-doc-io";
+import {
+  loadResumeDoc,
+  patchResumeDoc,
+  resumeDocKey,
+} from "@/lib/resume-doc-io";
 
 /**
- * GET   /api/resume/doc    — return the authenticated user's ResumeDoc
- * PATCH /api/resume/doc    — deep-merge a partial ResumeDoc
+ * GET    /api/resume/doc   — return the authenticated user's ResumeDoc
+ * PATCH  /api/resume/doc   — deep-merge a partial ResumeDoc
+ * DELETE /api/resume/doc   — wipe the ResumeDoc so the user can regenerate
  *
  * 404 from GET means "no doc yet" — the client should call
  * /api/resume/doc/generate to create one from the published Resume.
@@ -62,4 +67,38 @@ export async function PATCH(req: Request) {
     );
   }
   return NextResponse.json({ doc: result.doc });
+}
+
+/**
+ * DELETE /api/resume/doc
+ *
+ * Wipes `resumes/{handle}/resume-doc.json` so the user can regenerate
+ * a fresh resume from their portfolio. The portfolio Resume
+ * (published.json + draft.json) and the public `/{handle}` page are
+ * untouched — only the printable ResumeDoc the editor renders. Idempotent
+ * by design: a missing key is not an error.
+ */
+export async function DELETE() {
+  const gate = await requireProApi();
+  if (!gate.ok) return gate.response;
+  const session = gate.session;
+  if (!session.user.login) {
+    return NextResponse.json({ error: "no_handle" }, { status: 400 });
+  }
+
+  const { env } = await getCloudflareContext({ async: true });
+  if (!env.BUCKET) {
+    return NextResponse.json({ error: "r2_not_bound" }, { status: 500 });
+  }
+
+  try {
+    await env.BUCKET.delete(resumeDocKey(session.user.login));
+  } catch (err) {
+    return NextResponse.json(
+      { error: "delete_failed", detail: (err as Error).message },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ ok: true });
 }
