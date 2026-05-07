@@ -17,6 +17,7 @@ import {
   durationLabel,
   scanStatusKind,
 } from "../../_components";
+import { AdminActionButton } from "../../_actions";
 import { cn } from "@/lib/utils";
 
 /**
@@ -101,6 +102,28 @@ export default async function AdminScanLogPage({
             @{scan.user_login ?? scan.handle}
           </Link>
         </span>
+        {scan.status === "queued" || scan.status === "running" ? (
+          <div className="ml-auto flex items-baseline gap-2">
+            <AdminActionButton
+              endpoint={`/api/admin/scans/${scan.id}/force-fail`}
+              label="Force-fail"
+              busyLabel="Failing…"
+              variant="danger"
+              confirmText={`Force-fail scan ${scan.id} and destroy its Fly machine?`}
+            />
+            <AdminActionButton
+              endpoint={`/api/admin/users/${scan.user_id}/rerun`}
+              label="Rerun for this user"
+              busyLabel="Spawning…"
+              variant="primary"
+              confirmText={`Rerun a fresh scan for @${scan.user_login ?? scan.handle}? This force-cancels the current run.`}
+              successMessage={(j) => {
+                const data = j as { scan_id?: string } | null;
+                return data?.scan_id ? `Spawned ${data.scan_id}` : "Spawned new scan";
+              }}
+            />
+          </div>
+        ) : null}
       </header>
 
       <ScanSummary scan={scan} eventCount={events.length} />
