@@ -56,20 +56,60 @@ export default async function AdminUserDetailPage({
 }) {
   const { userId } = await params;
   const { env } = await getCloudflareContext({ async: true });
-  const [user, scans] = await Promise.all([
-    getAdminUserDetail(env.DB, userId),
-    listScansByUser(env.DB, userId, 50),
+
+  // Per-fetch try/catch so a single bad query (or a corrupt R2 object)
+  // doesn't 500 the whole page and leave the operator with no signal.
+  // The card-level renderers below tolerate nulls gracefully — they
+  // already had to, because half the data is genuinely optional. The
+  // banner renders a compact red diag block at the top whenever any
+  // of these failed so we don't silently hide a regression.
+  const [userResult, scansResult] = await Promise.all([
+    safeAwait(() => getAdminUserDetail(env.DB, userId), "getAdminUserDetail"),
+    safeAwait(() => listScansByUser(env.DB, userId, 50), "listScansByUser"),
   ]);
 
-  if (!user) notFound();
+  if (userResult.kind === "ok" && !userResult.value) notFound();
 
-  const handleForR2 = user.handle ?? user.login ?? null;
-  const [draft, published] = handleForR2
-    ? await Promise.all([
-        loadDraftResume(env.BUCKET, handleForR2),
-        loadPublishedResume(env.BUCKET, handleForR2),
-      ])
-    : [null, null];
+  const user =
+    userResult.kind === "ok"
+      ? (userResult.value as AdminUserDetail)
+      : null;
+  const scans =
+    scansResult.kind === "ok" ? (scansResult.value as AdminScanRow[]) : [];
+
+  const handleForR2 = user ? (user.handle ?? user.login ?? null) : null;
+  const draftResult = handleForR2
+    ? await safeAwait(
+        () => loadDraftResume(env.BUCKET, handleForR2),
+        "loadDraftResume",
+      )
+    : { kind: "ok" as const, value: null };
+  const publishedResult = handleForR2
+    ? await safeAwait(
+        () => loadPublishedResume(env.BUCKET, handleForR2),
+        "loadPublishedResume",
+      )
+    : { kind: "ok" as const, value: null };
+  const draft =
+    draftResult.kind === "ok" ? draftResult.value : null;
+  const published =
+    publishedResult.kind === "ok" ? publishedResult.value : null;
+
+  const errors: Array<{ source: string; message: string }> = [];
+  for (const r of [userResult, scansResult, draftResult, publishedResult]) {
+    if (r.kind === "err") errors.push(r);
+  }
+
+  if (!user) {
+    return (
+      <>
+        <div className="mb-3">
+          <AdminBackLink href="/app/admin/users" label="All users" />
+        </div>
+        <FailureBanner errors={errors} userId={userId} />
+      </>
+    );
+  }
 
   const plan = planKindFor({
     status: user.subscription_status,
@@ -142,6 +182,8 @@ export default async function AdminUserDetailPage({
           />
         </div>
       </header>
+
+      {errors.length > 0 ? <FailureBanner errors={errors} userId={userId} /> : null}
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-3 mb-3">
         <IdentityCard user={user} />
@@ -552,4 +594,69 @@ function draftSummary(
   const updated = resume.meta?.updatedAt;
   const dt = updated ? new Date(updated).toLocaleDateString() : "?";
   return `${tpl} · v${v} · ${dt}`;
+}
+
+/**
+ * Wrap an async data-fetch so it returns a discriminated union instead
+ * of throwing. Lets the page surface partial success — if `subscription`
+ * has a corrupt row, we still want to show the user's identity + scans
+ * card and just flag the broken sub query at the top.
+ */
+type SafeResult<T> =
+  | { kind: "ok"; value: T }
+  | { kind: "err"; source: string; message: string; stack?: string };
+
+async function safeAwait<T>(
+  fn: () => Promise<T>,
+  source: string,
+): Promise<SafeResult<T>> {
+  try {
+    return { kind: "ok", value: await fn() };
+  } catch (err) {
+    const e = err as Error;
+    // Log to the Worker console so wrangler tail / observability picks
+    // it up alongside the user-visible banner. Never re-throws —
+    // operator surface absorbs the failure and renders what it can.
+    console.error(`[admin] ${source} failed`, { source, error: e });
+    return {
+      kind: "err",
+      source,
+      message: (e?.message ?? String(err)).slice(0, 600),
+      stack: e?.stack?.split("\n").slice(0, 4).join("\n"),
+    };
+  }
+}
+
+function FailureBanner({
+  errors,
+  userId,
+}: {
+  errors: Array<{ source: string; message: string; stack?: string }>;
+  userId: string;
+}) {
+  return (
+    <div className="mb-4 rounded-2xl border border-rose-500/30 bg-rose-500/[0.04] p-4">
+      <div className="flex items-baseline justify-between gap-2 mb-2">
+        <h3 className="text-[13px] font-semibold leading-tight tracking-tight text-rose-600 dark:text-rose-400">
+          Partial load
+        </h3>
+        <code className="font-mono text-[10.5px] text-muted-foreground">
+          user_id={userId}
+        </code>
+      </div>
+      <ul className="space-y-2">
+        {errors.map((err, i) => (
+          <li key={`${err.source}-${i}`}>
+            <div className="text-[11.5px] font-medium text-rose-600 dark:text-rose-400">
+              {err.source}
+            </div>
+            <pre className="mt-0.5 whitespace-pre-wrap break-words font-mono text-[11px] leading-snug text-rose-700/90 dark:text-rose-400/80">
+              {err.message}
+              {err.stack ? `\n${err.stack}` : ""}
+            </pre>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }
