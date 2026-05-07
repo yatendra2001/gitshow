@@ -92,8 +92,30 @@ export function faviconUrl(host: string): string {
 
 const REL = new Intl.RelativeTimeFormat("en", { numeric: "auto" });
 
-export function relativeTime(ts: number): string {
-  const diff = Date.now() - ts;
+/**
+ * Accept either an epoch-ms number OR an ISO date string.
+ *
+ * Why: Better Auth writes Date objects to D1's `users.createdAt`, which
+ * SQLite stores as TEXT in the loosely-typed `INTEGER` column even
+ * though our migration declared it as INTEGER. Pre-migration users were
+ * backfilled with integers; post-migration users land as ISO strings.
+ * Both flow through this function from the admin panel + recent-visitor
+ * cards. Without this coercion, an ISO string causes `Date.now() - ts`
+ * → NaN → `Intl.RelativeTimeFormat.format(-NaN, …)` → `RangeError`,
+ * which crashes the entire server-component render.
+ *
+ * Returns finite epoch-ms or `null` for unparseable input.
+ */
+function toEpochMs(ts: number | string): number | null {
+  if (typeof ts === "number") return Number.isFinite(ts) ? ts : null;
+  const parsed = Date.parse(ts);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function relativeTime(ts: number | string): string {
+  const ms = toEpochMs(ts);
+  if (ms === null) return "";
+  const diff = Date.now() - ms;
   const secs = Math.round(diff / 1000);
   if (secs < 60) return secs <= 5 ? "just now" : `${secs}s ago`;
   const mins = Math.round(secs / 60);
@@ -104,6 +126,17 @@ export function relativeTime(ts: number): string {
   if (days < 7) return REL.format(-days, "day");
   if (days < 30) return REL.format(-Math.round(days / 7), "week");
   return REL.format(-Math.round(days / 30), "month");
+}
+
+/**
+ * Same dual-format coercion as `relativeTime`. Returns null for any
+ * unparseable input so callers can fall back to a placeholder.
+ */
+export function coerceTimestamp(
+  ts: number | string | null | undefined,
+): number | null {
+  if (ts === null || ts === undefined) return null;
+  return toEpochMs(ts);
 }
 
 export function formatDateShort(date: string | number): string {
