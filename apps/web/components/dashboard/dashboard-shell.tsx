@@ -33,6 +33,7 @@ import {
   Menu01Icon,
   MoonIcon,
   PencilEdit01Icon,
+  ShieldKeyIcon,
   SunIcon,
   ViewIcon,
 } from "@hugeicons/core-free-icons";
@@ -80,12 +81,21 @@ const NAV_SECTIONS: NavSection[] = [
   },
 ];
 
+/** Admin-only nav section. Appended to NAV_SECTIONS at render time when
+ *  the session belongs to an operator (see lib/admin.ts). */
+const ADMIN_SECTION: NavSection = {
+  title: "Operator",
+  items: [{ href: "/app/admin", label: "Admin", icon: ShieldKeyIcon }],
+};
+
 export interface DashboardShellProps {
   handle: string;
   avatarUrl?: string | null;
   publicSlug: string | null;
   isPublished: boolean;
   planLabel: string;
+  /** Show the operator-only Admin section in the rail. */
+  isAdmin?: boolean;
   /** Trailing content slot for the topbar (right side). */
   topbarTrailing?: React.ReactNode;
   /** Click handler for the sign-out button. Component provides the styling. */
@@ -101,6 +111,7 @@ export function DashboardShell({
   publicSlug,
   isPublished,
   planLabel,
+  isAdmin = false,
   topbarTrailing,
   signOutSlot,
   children,
@@ -130,6 +141,7 @@ export function DashboardShell({
       publicSlug={publicSlug}
       isPublished={isPublished}
       planLabel={planLabel}
+      isAdmin={isAdmin}
       currentPath={pathname}
       onNavigate={() => setMobileOpen(false)}
       signOutSlot={signOutSlot}
@@ -223,6 +235,7 @@ function SidebarBody({
   publicSlug,
   isPublished,
   planLabel,
+  isAdmin,
   currentPath,
   onNavigate,
   signOutSlot,
@@ -232,10 +245,12 @@ function SidebarBody({
   publicSlug: string | null;
   isPublished: boolean;
   planLabel: string;
+  isAdmin: boolean;
   currentPath: string;
   onNavigate: () => void;
   signOutSlot: React.ReactNode;
 }) {
+  const sections = isAdmin ? [...NAV_SECTIONS, ADMIN_SECTION] : NAV_SECTIONS;
   return (
     <div className="flex h-full flex-col">
       {/* Brand */}
@@ -258,7 +273,7 @@ function SidebarBody({
       {/* Nav — no animation on click. Sidebar is hit 100×/day; per
           Emil's frequency principle it must feel instant, not animated. */}
       <nav className="flex-1 overflow-y-auto px-2 pt-2 pb-3 gs-pane-scroll">
-        {NAV_SECTIONS.map((section) => (
+        {sections.map((section) => (
           <div key={section.title} className="mt-3 first:mt-1">
             <div className="px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.08em] text-muted-foreground/60">
               {section.title}

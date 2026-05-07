@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getSession } from "@/auth";
+import { isAdminLogin } from "@/lib/admin";
 import { getSubscription, isActive } from "@/lib/entitlements";
 
 /**
@@ -34,6 +35,8 @@ export interface DashboardContext {
   subscriptionStatus: string | null;
   profile: DashboardProfileRow | null;
   isPublished: boolean;
+  /** Operator admin (GitHub login allowlist in lib/admin.ts). */
+  isAdmin: boolean;
 }
 
 export const loadDashboardContext = cache(
@@ -74,6 +77,7 @@ export const loadDashboardContext = cache(
       subscriptionStatus: subscription?.status ?? null,
       profile: profile ?? null,
       isPublished: Boolean(profile?.current_profile_r2_key),
+      isAdmin: isAdminLogin(session.user.login ?? null),
     };
   },
 );
