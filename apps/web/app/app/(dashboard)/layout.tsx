@@ -29,6 +29,7 @@ export default async function DashboardLayout({
       publicSlug={ctx.profile?.public_slug ?? null}
       isPublished={ctx.isPublished}
       planLabel={ctx.planLabel}
+      isAdmin={ctx.isAdmin}
       topbarTrailing={
         <>
           <PushEnableButton />
