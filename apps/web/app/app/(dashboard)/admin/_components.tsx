@@ -5,7 +5,7 @@ import {
 } from "@hugeicons/core-free-icons";
 import { Icon } from "@/components/dashboard/icon";
 import { cn } from "@/lib/utils";
-import { relativeTime } from "@/components/dashboard/format";
+import { coerceTimestamp, relativeTime } from "@/components/dashboard/format";
 
 /**
  * Shared visual primitives for the admin panel.
@@ -240,15 +240,26 @@ export function MutedExternalLink({
   );
 }
 
-export function TimeStamp({ ts }: { ts: number | null | undefined }) {
-  if (!ts) return <span className="text-muted-foreground/70">—</span>;
+export function TimeStamp({
+  ts,
+}: {
+  ts: number | string | null | undefined;
+}) {
+  // Accept ISO strings as well as epoch-ms numbers.
+  // Better Auth writes Date objects to D1's `users.createdAt` which land
+  // as ISO strings — see coerceTimestamp() doc comment for full
+  // backstory. Without this coercion, an ISO string here would crash
+  // `Intl.RelativeTimeFormat.format(NaN, ...)` server-side, taking the
+  // whole admin user-detail render down with it.
+  const ms = coerceTimestamp(ts);
+  if (ms === null) return <span className="text-muted-foreground/70">—</span>;
   return (
     <time
-      dateTime={new Date(ts).toISOString()}
-      title={new Date(ts).toLocaleString()}
+      dateTime={new Date(ms).toISOString()}
+      title={new Date(ms).toLocaleString()}
       className="tabular-nums"
     >
-      {relativeTime(ts)}
+      {relativeTime(ms)}
     </time>
   );
 }
