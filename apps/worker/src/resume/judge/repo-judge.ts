@@ -18,6 +18,7 @@ import { runAgentWithSubmit, type AgentEventEmit } from "../../agents/base.js";
 import type { ScanSession } from "../../schemas.js";
 import type { SessionUsage } from "../../session.js";
 import type { RepoRef, GitHubData } from "../../types.js";
+import { withTimeout, TimeoutError } from "../../util/timeout.js";
 import { modelForRole } from "@gitshow/shared/models";
 import {
   ProjectKindSchema,
@@ -238,6 +239,22 @@ const CHUNK_BATCH_MAX_CHARS = 90_000;
 const CHUNK_ANALYSIS_CONCURRENCY = 4;
 const CHUNK_ANALYSIS_TIMEOUT_MS = 2 * 60_000;
 const CHUNK_ANALYSIS_MAX_ITERATIONS = 12;
+
+/**
+ * Hard wall-clock cap on the entire `judgeRepo` call (sample + corpus
+ * analysis + final judgment). The per-call timeouts above only bound a
+ * single agent attempt; with the SDK's 6-attempt transient-retry loop and
+ * three forcing-retry rounds, a single bad chunk batch can chew ~38min
+ * before throwing — and once Promise.all in `judgeAllRepos` is waiting
+ * on it, the entire repo-judge phase is wedged. This is the outer hard
+ * cap that breaks the deadlock: when it fires the repo falls back to
+ * `fallbackJudgment` and the rest of the phase proceeds.
+ *
+ * 10 minutes is ~10x p95 (most repos finish in 30–90s); a repo that
+ * needs more than that is almost certainly stuck on a hung SDK stream
+ * and worth dropping a Kimi judgment for.
+ */
+const REPO_WALL_CLOCK_MS = 10 * 60_000;
 
 export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput> {
   const { repo, repoPath, study, session, usage, trace, onProgress, emit } = input;
@@ -671,20 +688,34 @@ export async function judgeAllRepos(
     candidates.map((c) =>
       limit(async () => {
         try {
-          const judged = await judgeRepo({
-            session: opts.session,
-            usage: opts.usage,
-            repo: c.repo,
-            repoPath: c.repoPath,
-            study: opts.studies?.[c.repo.fullName],
-            trace: opts.trace,
-            onProgress: opts.onProgress,
-            emit: opts.emit,
-          });
+          const judged = await withTimeout(
+            judgeRepo({
+              session: opts.session,
+              usage: opts.usage,
+              repo: c.repo,
+              repoPath: c.repoPath,
+              study: opts.studies?.[c.repo.fullName],
+              trace: opts.trace,
+              onProgress: opts.onProgress,
+              emit: opts.emit,
+            }),
+            REPO_WALL_CLOCK_MS,
+            `judge:${c.repo.fullName}`,
+          );
           out[c.repo.fullName] = judged;
         } catch (err) {
-          // Fallback: if the agent failed entirely, log + assume "experiment / suggested".
+          // Fallback: if the agent failed entirely (or hit the wall-clock
+          // cap above), log + assume "experiment / suggested". The
+          // wall-clock cap exists because the agent SDK's retry loop has
+          // been observed pinning a repo for >2h on a hung stream; the
+          // inner Promise keeps running but the pLimit slot frees and
+          // the rest of the phase makes progress.
           const judgment = fallbackJudgment(c.repo, err as Error);
+          if (err instanceof TimeoutError) {
+            opts.trace?.note(`judge:${c.repo.fullName}`, "judge wall-clock cap hit", {
+              capMs: REPO_WALL_CLOCK_MS,
+            });
+          }
           out[c.repo.fullName] = {
             repo: c.repo,
             judgment,

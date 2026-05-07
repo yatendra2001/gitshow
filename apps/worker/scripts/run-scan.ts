@@ -43,6 +43,29 @@ import type { ScanSession, ScanSocials } from "../src/schemas.js";
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
 /**
+ * Watchdog: how often to poll for pipeline progress, and how long the
+ * pipeline can be silent before we declare it hung and kill the worker.
+ *
+ * "Silent" means `scan_events.MAX(at)` hasn't moved. Heartbeat is a
+ * separate setInterval that fires regardless of whether the pipeline
+ * is alive, so it can't be the signal — heartbeat-fresh + no-new-events
+ * is exactly the failure mode we hit on scan-4fSFzYZ8cE (3h on a
+ * performance-4x box doing nothing because Promise.all in the repo-
+ * judge phase never resolved).
+ *
+ * 25 minutes is generous: the longest legitimate inter-event gap we've
+ * seen in production is ~5 min during a multi-batch chunk-judge fan-
+ * out. Anything beyond 25 min is almost certainly a wedged SDK stream
+ * or an orphan promise; failing the scan and letting the user retry is
+ * strictly better than burning compute forever.
+ *
+ * On fire: mark the scan failed, exit 1. Fly's `auto_destroy: true`
+ * tears the machine down.
+ */
+const WATCHDOG_POLL_MS = 60_000;
+const WATCHDOG_NO_EVENTS_THRESHOLD_MS = 25 * 60_000;
+
+/**
  * Catch unhandled promise rejections so a stray TimeoutError or
  * AbortError from one of the SDK's background streams can't crash
  * the bun process. Bun's default behaviour on unhandled rejection
@@ -167,15 +190,62 @@ async function main() {
     });
   }, HEARTBEAT_INTERVAL_MS);
 
+  // Watchdog: poll scan_events.MAX(at). If it doesn't advance for
+  // WATCHDOG_NO_EVENTS_THRESHOLD_MS we conclude the pipeline is hung
+  // (heartbeat-fresh but doing no work) and kill the worker. Tracked
+  // entirely in-memory so a transient D1 read failure can't trip it.
+  let lastSeenEventAt = 0;
+  let lastEventChangeAt = Date.now();
+  const watchdog = setInterval(() => {
+    void (async () => {
+      try {
+        const resp = await d1.query(
+          `SELECT MAX(at) AS max_at FROM scan_events WHERE scan_id = ?`,
+          [scanId],
+        );
+        const maxAt = (resp.result?.[0]?.results?.[0] as { max_at: number | null } | undefined)
+          ?.max_at;
+        const cur = typeof maxAt === "number" ? maxAt : 0;
+        if (cur > lastSeenEventAt) {
+          lastSeenEventAt = cur;
+          lastEventChangeAt = Date.now();
+          return;
+        }
+        const stale = Date.now() - lastEventChangeAt;
+        if (stale >= WATCHDOG_NO_EVENTS_THRESHOLD_MS) {
+          scanLog.error(
+            {
+              stale_ms: stale,
+              threshold_ms: WATCHDOG_NO_EVENTS_THRESHOLD_MS,
+              last_event_at: lastSeenEventAt
+                ? new Date(lastSeenEventAt).toISOString()
+                : null,
+            },
+            "watchdog: pipeline emitted no events past threshold — declaring hung, killing worker",
+          );
+          void shutdown("watchdog-pipeline-hung");
+        }
+      } catch (err) {
+        // D1 read flaked; try again next cycle. Don't trip the
+        // watchdog on a network blip.
+        scanLog.warn({ err }, "watchdog: poll failed (transient)");
+      }
+    })();
+  }, WATCHDOG_POLL_MS);
+
   let shuttingDown = false;
   const shutdown = async (signal: string) => {
     if (shuttingDown) return;
     shuttingDown = true;
     clearInterval(heartbeat);
+    clearInterval(watchdog);
     try {
       await d1.updateScanStatus(scanId, {
         status: "failed",
-        error: `interrupted by ${signal}`,
+        error:
+          signal === "watchdog-pipeline-hung"
+            ? `pipeline hung — no events for ${Math.round(WATCHDOG_NO_EVENTS_THRESHOLD_MS / 60_000)}min, killed by watchdog`
+            : `interrupted by ${signal}`,
       });
     } catch (err) {
       scanLog.error({ err }, "shutdown mark-failed write failed");
@@ -339,6 +409,7 @@ async function main() {
     }
 
     clearInterval(heartbeat);
+    clearInterval(watchdog);
     // Pull from the PostHog cost aggregator (ground-truth pricing × tokens)
     // instead of the legacy `usage.estimatedCostUsd` which the agent SDK
     // never populated. Falls back to legacy when the aggregator is unbound
@@ -361,6 +432,7 @@ async function main() {
     process.exit(0);
   } catch (err) {
     clearInterval(heartbeat);
+    clearInterval(watchdog);
     const msg = err instanceof Error ? err.message : String(err);
     scanLog.error({ err }, "pipeline failed");
     try {
