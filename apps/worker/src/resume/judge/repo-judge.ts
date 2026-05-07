@@ -326,7 +326,17 @@ export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput>
     });
     judgment = res.result;
   } catch (err) {
-    judgment = fallbackJudgment(repo, err as Error);
+    // Pass `analysis` so the fallback can use chunk-extracted technologies
+    // instead of just `repo.languages`. This is the "inner fallback" — fires
+    // when the final judge agent exhausts its 3 forcing-retry rounds. Common
+    // for Swift apps, JS apps with sparse manifests, or any repo where Kimi
+    // can't compactly land submit_judgment despite reading the source.
+    trace?.note(`judge:${repo.fullName}`, "judge agent failed — using chunk-derived fallback", {
+      error: err instanceof Error ? err.message.slice(0, 200) : String(err).slice(0, 200),
+      analysisTechCount: analysis.technologies.length,
+      analysisFindingsCount: analysis.findings.length,
+    });
+    judgment = fallbackJudgment(repo, err as Error, analysis);
   }
 
   const filesRead =
@@ -784,7 +794,11 @@ function scoreRepo(r: RepoRef): number {
   return s;
 }
 
-function fallbackJudgment(repo: RepoRef, err: Error): RepoJudgment {
+function fallbackJudgment(
+  repo: RepoRef,
+  err: Error,
+  analysis?: RepoCorpusAnalysis,
+): RepoJudgment {
   // Prefer the repo's own description (always written by the user
   // themselves, so it reads well in the rendered build log). Fall
   // back to a language-aware one-liner instead of the previous
@@ -799,6 +813,18 @@ function fallbackJudgment(repo: RepoRef, err: Error): RepoJudgment {
       : langTag
         ? `${friendlyName} — ${langTag} project on GitHub.`
         : `${friendlyName} — public repository on GitHub.`;
+  // Prefer chunk-extracted technologies when available — they include
+  // frameworks/libraries (SwiftUI, FastAPI, Tailwind, …) detected via
+  // import-style analysis, not just the GitHub primaryLanguage. Observed
+  // (scan-3hAQbDVnOR / scan-KF8uZJJoX1, @pcnoic): cooperly + gistvid hit
+  // the inner fallback, came back as ["Swift"] / ["JavaScript"] only
+  // because we discarded the perfectly-good chunk analysis and reached
+  // for `repo.languages`. Falling back to GitHub languages only when no
+  // analysis exists (chunk path also failed).
+  const technologies =
+    analysis && analysis.technologies.length > 0
+      ? analysis.technologies.slice(0, 12)
+      : (repo.languages ?? []).slice(0, 6);
   return {
     kind: "experiment",
     authorship: "primary",
@@ -809,6 +835,6 @@ function fallbackJudgment(repo: RepoRef, err: Error): RepoJudgment {
     // Internal-only — surfaced in trace.json + kg.judgments. Never
     // rendered into the public portfolio.
     reason: `Judge failed: ${err.message.slice(0, 200)} — defaulted to non-featured experiment`,
-    technologies: (repo.languages ?? []).slice(0, 6),
+    technologies,
   };
 }
