@@ -250,11 +250,18 @@ const CHUNK_ANALYSIS_MAX_ITERATIONS = 12;
  * cap that breaks the deadlock: when it fires the repo falls back to
  * `fallbackJudgment` and the rest of the phase proceeds.
  *
- * 10 minutes is ~10x p95 (most repos finish in 30–90s); a repo that
- * needs more than that is almost certainly stuck on a hung SDK stream
- * and worth dropping a Kimi judgment for.
+ * 20 minutes — was 10min initially, but observed on @pcnoic's run
+ * (2026-05-07): 3/6 featured projects came back with fallback-shaped
+ * descriptions ("X — Lang project on GitHub.") because the cap fired on
+ * legitimately-slow repos with many chunk batches. The phase took
+ * exactly 1800s (30min total wall-clock for 12-concurrent repos), with
+ * a TimeoutError unhandledRejection at the tail confirming abandoned
+ * SDK streams. 20min gives one full forcing-retry round of headroom on
+ * a 36-batch repo while still cutting hangs short well inside the
+ * 25min watchdog threshold — repos that legitimately need more than
+ * 20min are exceedingly rare and the fallback is acceptable for them.
  */
-const REPO_WALL_CLOCK_MS = 10 * 60_000;
+const REPO_WALL_CLOCK_MS = 20 * 60_000;
 
 export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput> {
   const { repo, repoPath, study, session, usage, trace, onProgress, emit } = input;
