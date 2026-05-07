@@ -14,6 +14,7 @@ import {
   type AdminUserDetail,
 } from "@/lib/admin-queries";
 import { loadDraftResume, loadPublishedResume } from "@/lib/resume-io";
+import { AdminActionButton } from "../../_actions";
 import {
   AdminBackLink,
   AdminCard,
@@ -128,6 +129,17 @@ export default async function AdminUserDetailPage({
               Open {draft ? "draft" : "published"} preview
             </Link>
           ) : null}
+          <AdminActionButton
+            endpoint={`/api/admin/users/${user.user_id}/rerun`}
+            label="Rerun scan"
+            busyLabel="Spawning…"
+            variant="primary"
+            confirmText={`Rerun scan for @${user.login ?? user.handle ?? user.user_id}? Any in-flight scan will be force-cancelled.`}
+            successMessage={(j) => {
+              const data = j as { scan_id?: string } | null;
+              return data?.scan_id ? `Spawned ${data.scan_id}` : "Spawned new scan";
+            }}
+          />
         </div>
       </header>
 

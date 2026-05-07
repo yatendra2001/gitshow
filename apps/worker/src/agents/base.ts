@@ -260,7 +260,28 @@ export async function runAgentLoop(config: AgentRunConfig): Promise<{
 
     try {
 
-    for await (const item of result.getItemsStream()) {
+    /**
+     * Idle-stream watchdog. The OpenRouter SDK's `timeoutMs` is a
+     * request-level deadline (start → finish), not a per-chunk idle
+     * timeout. If the upstream connection silently stalls mid-stream,
+     * the for-await below blocks indefinitely while the heartbeat keeps
+     * writing on a separate setInterval — the scan looks alive but no
+     * progress is made (we lost a 3-day-stuck scan to this exact mode
+     * on 2026-05-04: judge:tanmayyadav2323/astral-insights-site streamed
+     * reasoning-deltas, then the stream froze without the timeout firing).
+     *
+     * Fix: wrap the underlying async iterator so each `next()` races
+     * against a 5-minute idle deadline. Throws a transient-classified
+     * "idle stream timeout" so the outer retry loop kicks in. 5 min is
+     * generous — repo-judge reasoning blocks routinely run 60-90s;
+     * legitimate work always emits SOMETHING (a delta, a tool-start)
+     * within that window.
+     */
+    const IDLE_STREAM_LIMIT_MS = 5 * 60_000;
+    const rawStream = result.getItemsStream();
+    const watched = withIdleWatchdog(rawStream, IDLE_STREAM_LIMIT_MS, agentName);
+
+    for await (const item of watched) {
       const itemId = (item as { id?: string }).id ?? "";
 
       switch (item.type) {
@@ -533,8 +554,56 @@ function isTransientError(msg: string): boolean {
     lower.includes("unterminated string") ||
     lower.includes("maximum context length") ||
     lower.includes("content_filter") ||
-    lower.includes("output_length")
+    lower.includes("output_length") ||
+    lower.includes("idle stream timeout")
   );
+}
+
+/**
+ * Wrap an async iterable so each `next()` races against an idle deadline.
+ * If no item arrives within `idleMs`, the wrapped iterator throws an
+ * `idle stream timeout` Error — classified transient by `isTransientError`
+ * so the outer retry loop kicks in.
+ *
+ * Generic so the original element type flows through (TS sees the same
+ * `StreamableOutputItem` union the SDK exposes from `getItemsStream`).
+ */
+function withIdleWatchdog<T>(
+  source: AsyncIterable<T>,
+  idleMs: number,
+  label: string,
+): AsyncIterable<T> {
+  return {
+    [Symbol.asyncIterator](): AsyncIterator<T> {
+      const inner = source[Symbol.asyncIterator]();
+      return {
+        async next(): Promise<IteratorResult<T>> {
+          let timer: NodeJS.Timeout | null = null;
+          const idle = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+              reject(
+                new Error(
+                  `idle stream timeout: no items received in ${idleMs / 1000}s (label=${label})`,
+                ),
+              );
+            }, idleMs);
+          });
+          try {
+            return await Promise.race([inner.next(), idle]);
+          } finally {
+            if (timer) clearTimeout(timer);
+          }
+        },
+        async return(value): Promise<IteratorResult<T>> {
+          return inner.return ? inner.return(value) : { value, done: true };
+        },
+        async throw(err): Promise<IteratorResult<T>> {
+          if (inner.throw) return inner.throw(err);
+          throw err;
+        },
+      };
+    },
+  };
 }
 
 /**
