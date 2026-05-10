@@ -151,37 +151,27 @@ export default function ContributionTrend(props: ContributionTrendProps) {
       <div
         className={
           compact
-            ? "px-1 pt-1 pb-0 flex items-baseline gap-3 flex-wrap"
-            : "px-5 pt-4 pb-1 flex items-baseline gap-3 flex-wrap"
+            ? "px-1 pt-1 pb-0 flex items-baseline gap-2 flex-wrap"
+            : "px-4 pt-3 pb-0 flex items-baseline gap-3 flex-wrap"
         }
       >
-        <div className="flex flex-col">
-          {!compact && (
-            <span
-              className="text-[10.5px] uppercase tracking-[0.18em] mt-0.5"
-              style={{ color: dim }}
-            >
-              {eyebrow}
-            </span>
-          )}
+        <div className="flex items-baseline gap-2">
           <span
             className={
               compact
-                ? "text-2xl font-semibold tabular-nums leading-none"
-                : "text-3xl sm:text-4xl font-semibold tabular-nums leading-none mt-1"
+                ? "text-xl font-semibold tabular-nums leading-none"
+                : "text-2xl font-semibold tabular-nums leading-none"
             }
             style={{ color: fg }}
           >
             {totalLabel}
           </span>
-          {compact && (
-            <span
-              className="text-[10.5px] uppercase tracking-[0.18em] mt-1"
-              style={{ color: dim }}
-            >
-              {eyebrow}
-            </span>
-          )}
+          <span
+            className="text-[10px] uppercase tracking-[0.16em]"
+            style={{ color: dim }}
+          >
+            {eyebrow}
+          </span>
         </div>
       </div>
 
@@ -202,7 +192,7 @@ export default function ContributionTrend(props: ContributionTrendProps) {
       {caption && (
         <div
           className={
-            compact ? "px-1 pb-0 pt-1 text-[11px]" : "px-5 pb-3 pt-0.5 text-[11px]"
+            compact ? "px-1 pb-0 pt-1 text-[10.5px]" : "px-4 pb-2 pt-0 text-[10.5px]"
           }
           style={{ color: dim, textAlign: "right" }}
         >

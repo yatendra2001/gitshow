@@ -86,8 +86,8 @@ export default function TerminalTemplate() {
               cardBg={BG_SOFT}
               cardBorder={FG_GHOST}
               radius={6}
-              chartHeight={180}
-              pad={{ x: 10, y: 16 }}
+              chartHeight={110}
+              pad={{ x: 8, y: 10 }}
               eyebrow="lifetime"
               caption="streamed live · github.com"
               tooltipBg={BG}

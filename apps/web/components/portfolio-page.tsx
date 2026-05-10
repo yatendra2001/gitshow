@@ -189,8 +189,9 @@ export default function PortfolioPage() {
             ghost="color-mix(in oklab, var(--foreground) 10%, transparent)"
             cardBg="color-mix(in oklab, var(--card) 92%, transparent)"
             cardBorder="var(--border)"
-            radius={14}
-            chartHeight={220}
+            radius={12}
+            chartHeight={120}
+            pad={{ x: 10, y: 10 }}
             caption="lifetime GitHub contributions · live"
             tooltipBg="var(--popover, var(--card))"
             tooltipBorder="var(--border)"
