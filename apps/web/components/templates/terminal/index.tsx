@@ -5,6 +5,7 @@ import Markdown from "react-markdown";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import { useResume, useHandle } from "@/components/data-provider";
+import ContributionTrend from "@/components/contribution-trend";
 import { allSocials } from "@gitshow/shared/resume";
 import { formatResumeDate, formatResumeDateRange } from "@/lib/format-date";
 
@@ -66,6 +67,33 @@ export default function TerminalTemplate() {
               <About summary={r.person.summary} />
             </Block>
           )}
+
+          {/* Live contribution trend — sits in a "gh contributions"
+               command block so it reads as another shell tool's output.
+               Terminal-green stroke, BG_SOFT card, no card padding so
+               the indented border-l rail of <Block> is the frame. */}
+          <Block
+            command="gh contributions --graph"
+            sectionId="contributions"
+            onView={setActiveSection}
+          >
+            <ContributionTrend
+              handle={handle}
+              accent={ACCENT}
+              fg={FG}
+              dim={FG_DIM}
+              ghost={FG_GHOST}
+              cardBg={BG_SOFT}
+              cardBorder={FG_GHOST}
+              radius={6}
+              chartHeight={180}
+              pad={{ x: 10, y: 16 }}
+              eyebrow="lifetime"
+              caption="streamed live · github.com"
+              tooltipBg={BG}
+              tooltipBorder={FG_GHOST}
+            />
+          </Block>
 
           {!hidden.has("work") && r.work.length > 0 && (
             <Block

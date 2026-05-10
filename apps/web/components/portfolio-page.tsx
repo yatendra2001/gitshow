@@ -4,7 +4,8 @@
 import BlurFade from "@/components/magicui/blur-fade";
 import BlurFadeText from "@/components/magicui/blur-fade-text";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { useData, useResume } from "@/components/data-provider";
+import { useData, useHandle, useResume } from "@/components/data-provider";
+import ContributionTrend from "@/components/contribution-trend";
 import Link from "next/link";
 import Markdown from "react-markdown";
 import ContactSection from "@/components/section/contact-section";
@@ -130,6 +131,7 @@ const smoothAnchorMarkdownComponents = {
 export default function PortfolioPage() {
   const DATA = useData();
   const resume = useResume();
+  const handle = useHandle();
   const hidden = new Set(resume.sections.hidden);
   // Document-level click interceptor for /#section anchor links —
   // smooth-scrolls instead of full-page nav. See hook docstring.
@@ -177,6 +179,24 @@ export default function PortfolioPage() {
           </div>
         </section>
       )}
+      <section id="contributions">
+        <BlurFade delay={BLUR_FADE_DELAY * 4.5}>
+          <ContributionTrend
+            handle={handle}
+            accent="var(--gradient-primary)"
+            fg="var(--foreground)"
+            dim="var(--muted-foreground)"
+            ghost="color-mix(in oklab, var(--foreground) 10%, transparent)"
+            cardBg="color-mix(in oklab, var(--card) 92%, transparent)"
+            cardBorder="var(--border)"
+            radius={14}
+            chartHeight={220}
+            caption="lifetime GitHub contributions · live"
+            tooltipBg="var(--popover, var(--card))"
+            tooltipBorder="var(--border)"
+          />
+        </BlurFade>
+      </section>
       {!hidden.has("work") && DATA.work.length > 0 && (
         <section id="work">
           <div className="flex min-h-0 flex-col gap-y-6">
