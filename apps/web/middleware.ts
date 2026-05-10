@@ -58,6 +58,11 @@ export async function middleware(request: NextRequest) {
       path === "/api/views" ||
       path.startsWith("/api/views/") ||
       path === "/api/og" ||
+      // Public, read-only contribution-trend proxy. No cookies, no PII,
+      // edge-cached. The chart on every public template fetches this
+      // same-origin from the portfolio page, so it must be reachable
+      // when the page is served on a customer's own domain too.
+      path.startsWith("/api/contributions/") ||
       path.startsWith("/_next/") ||
       path === "/favicon.ico" ||
       path === "/robots.txt" ||
