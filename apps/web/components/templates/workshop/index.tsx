@@ -19,13 +19,15 @@ import { formatResumeDateRange } from "@/lib/format-date";
  */
 
 // ─────────────────────────  Palette  ─────────────────────────
-// True-black bg (no blue cast). Section header color varies by panel
-// purpose: AMBER for state/metric panels, CYAN for list/inventory.
+// True-black bg (no blue cast). Single background everywhere — panels
+// and insets share the page background; borders alone define structure.
+// Section header color varies by panel purpose: AMBER for state/metric,
+// CYAN for list/inventory.
 const BG = "#0a0a0a";
-const BG_CARD = "#101010";
-const BG_INSET = "#070707";
+const BG_CARD = BG;
+const BG_INSET = BG;
 const FRAME = "rgba(126, 231, 135, 0.32)";
-const PANEL_BORDER = "rgba(126, 231, 135, 0.14)";
+const PANEL_BORDER = "rgba(126, 231, 135, 0.18)";
 const ACCENT_GREEN = "#7ee787";
 const ACCENT_CYAN = "#79c0ff";
 const ACCENT_AMBER = "#f9e2af";
@@ -105,61 +107,63 @@ export default function WorkshopTemplate() {
             </div>
           )}
 
-          {/* Tools row */}
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.05fr_0.95fr_1fr] gap-3">
-            {!hidden.has("skills") && r.skills.length > 0 && (
-              <Panel
-                title={`> ${r.skills.length} TOOLS IN ROTATION`}
-                subtitle="(daily drivers)"
-              >
-                <PowerTools skills={r.skills} />
-              </Panel>
-            )}
-
-            {techs.length > 0 && (
-              <Panel
-                title="> TECH STACK"
-                subtitle={`(${techs.length}+ in production)`}
-              >
-                <TechGrid techs={techs} />
-              </Panel>
-            )}
-
-            {!hidden.has("work") && r.work.length > 0 && (
-              <Panel title="> CAREER" subtitle="(timeline)">
-                <CareerTimeline work={r.work} />
-              </Panel>
-            )}
-          </div>
+          {/* Tools row — auto-shrinks to the number of visible panels */}
+          <AdaptiveRow
+            panels={[
+              !hidden.has("skills") && r.skills.length > 0 ? (
+                <Panel
+                  key="skills"
+                  title={`> ${r.skills.length} TOOLS IN ROTATION`}
+                  subtitle="(daily drivers)"
+                >
+                  <PowerTools skills={r.skills} />
+                </Panel>
+              ) : null,
+              techs.length > 0 ? (
+                <Panel
+                  key="tech"
+                  title="> TECH STACK"
+                  subtitle={`(${techs.length}+ in production)`}
+                >
+                  <TechGrid techs={techs} />
+                </Panel>
+              ) : null,
+              !hidden.has("work") && r.work.length > 0 ? (
+                <Panel key="career" title="> CAREER" subtitle="(timeline)">
+                  <CareerTimeline work={r.work} />
+                </Panel>
+              ) : null,
+            ]}
+          />
 
           {/* Optional row: education + hackathons + buildLog */}
-          {((!hidden.has("education") && r.education.length > 0) ||
-            (!hidden.has("hackathons") && r.hackathons.length > 0) ||
-            (!hidden.has("buildLog") && r.buildLog.length > 0)) && (
-            <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
-              {!hidden.has("education") && r.education.length > 0 ? (
-                <Panel title="> EDUCATION">
+          <AdaptiveRow
+            panels={[
+              !hidden.has("education") && r.education.length > 0 ? (
+                <Panel key="edu" title="> EDUCATION">
                   <EducationList items={r.education} />
                 </Panel>
-              ) : null}
-              {!hidden.has("hackathons") && r.hackathons.length > 0 ? (
+              ) : null,
+              !hidden.has("hackathons") && r.hackathons.length > 0 ? (
                 <Panel
+                  key="hack"
                   title="> HACKATHON LOG"
                   subtitle={`(${r.hackathons.length})`}
                 >
                   <HackathonsLog items={r.hackathons.slice(0, 5)} />
                 </Panel>
-              ) : null}
-              {!hidden.has("buildLog") && r.buildLog.length > 0 ? (
+              ) : null,
+              !hidden.has("buildLog") && r.buildLog.length > 0 ? (
                 <Panel
+                  key="git"
                   title="> GIT LOG"
                   subtitle={`(${r.buildLog.length})`}
                 >
                   <BuildLogList items={r.buildLog.slice(0, 6)} />
                 </Panel>
-              ) : null}
-            </div>
-          )}
+              ) : null,
+            ]}
+          />
 
           {/* Footer row */}
           <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr_1fr] gap-3 pb-1">
@@ -191,6 +195,34 @@ function Frame({ children }: { children: React.ReactNode }) {
       }}
     >
       {children}
+    </div>
+  );
+}
+
+/* ─────────────────────────  AdaptiveRow  ─────────────────────
+ *
+ * Row of optional panels that collapses to the number of visible
+ * children. Avoids the "ghost column" bug where a fixed `grid-cols-3`
+ * leaves a blank slot when some sections are empty or hidden (e.g.
+ * no hackathons → 3rd column floats empty next to GIT LOG).
+ *
+ * Stays single-column on mobile; at ≥lg it uses the exact number
+ * of visible panels as its column count. Tailwind class strings
+ * are inlined so the JIT picks them up. */
+function AdaptiveRow({ panels }: { panels: Array<React.ReactNode | false | null> }) {
+  const visible = panels.filter(Boolean);
+  if (visible.length === 0) return null;
+
+  const colsClass =
+    visible.length === 1
+      ? ""
+      : visible.length === 2
+        ? "lg:grid-cols-2"
+        : "lg:grid-cols-3";
+
+  return (
+    <div className={`mt-4 grid grid-cols-1 ${colsClass} gap-3`}>
+      {visible}
     </div>
   );
 }
