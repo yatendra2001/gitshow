@@ -42,7 +42,6 @@ export default function WorkshopTemplate() {
   const bullets = useMemo(() => extractBullets(r.person.summary), [r.person.summary]);
   const quote = useMemo(() => pickQuote(r), [r]);
   const techs = useMemo(() => collectTechs(r), [r]);
-  const topProject = r.projects.find((p) => p.href) ?? r.projects[0];
 
   return (
     <div
@@ -83,20 +82,22 @@ export default function WorkshopTemplate() {
                 />
               </Panel>
 
-              <Panel title="$ INSTALL IN 30 SECONDS">
-                <InstallBlock href={topProject?.href} title={topProject?.title ?? "portfolio"} />
+              <Panel title="$ CURRENTLY">
+                <CurrentlyBlock r={r} />
               </Panel>
             </div>
           </div>
 
-          {/* Specialists */}
+          {/* Featured projects */}
           {!hidden.has("projects") && r.projects.length > 0 && (
             <div className="mt-4">
               <Panel
-                title={`> THE ${r.projects.length} SPECIALISTS`}
-                subtitle="(slash commands)"
+                title={`> ${r.projects.length} ${
+                  r.projects.length === 1 ? "PROJECT" : "PROJECTS"
+                } SHIPPED`}
+                subtitle="(highlight reel)"
               >
-                <SpecialistsGrid projects={r.projects} />
+                <ProjectsGrid projects={r.projects} />
               </Panel>
             </div>
           )}
@@ -105,26 +106,25 @@ export default function WorkshopTemplate() {
           <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.05fr_0.95fr_1fr] gap-3">
             {!hidden.has("skills") && r.skills.length > 0 && (
               <Panel
-                title={`> ${r.skills.length} POWER TOOLS`}
-                subtitle="(on demand)"
+                title={`> ${r.skills.length} TOOLS IN ROTATION`}
+                subtitle="(daily drivers)"
               >
                 <PowerTools skills={r.skills} />
               </Panel>
             )}
 
             {techs.length > 0 && (
-              <Panel title={`> WORKS WITH ${techs.length}+ TOOLS`}>
+              <Panel
+                title="> TECH STACK"
+                subtitle={`(${techs.length}+ in production)`}
+              >
                 <TechGrid techs={techs} />
               </Panel>
             )}
 
             {!hidden.has("work") && r.work.length > 0 && (
-              <Panel title="> QUICK START" subtitle="(30 seconds)">
-                <QuickStart
-                  handle={handle}
-                  topRepo={topProject?.href}
-                  topTitle={topProject?.title}
-                />
+              <Panel title="> CAREER" subtitle="(timeline)">
+                <CareerTimeline work={r.work} />
               </Panel>
             )}
           </div>
@@ -161,12 +161,12 @@ export default function WorkshopTemplate() {
           {/* Footer row */}
           <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr_1fr] gap-3 pb-1">
             <Manifesto name={r.person.name} />
-            <LicenseCard email={r.contact.email} socials={socials} />
-            <ShipTerminal
-              handle={handle}
-              projects={r.projects.length}
-              skills={r.skills.length}
+            <ContactCard
+              email={r.contact.email}
+              socials={socials}
+              url={r.person.url}
             />
+            <ShipTerminal handle={handle} stats={stats} />
           </div>
         </Frame>
       </div>
@@ -264,17 +264,34 @@ function Hero({
         <AsciiTitle text={handle} />
       </div>
 
-      {/* Meta block */}
+      {/* Meta block — portfolio facts, not "power tools / ship" copy */}
       <div className="min-w-0 text-[14px] leading-snug pt-1">
         <div style={{ color: ACCENT_CYAN }}>
-          {truncate(r.person.description, 80)}
+          {truncate(r.person.description, 90)}
         </div>
-        <div className="mt-3" style={{ color: FG }}>
-          <div>{r.projects.length} projects.</div>
-          <div>{r.skills.length} power tools.</div>
-          <div>
-            One mission: <span style={{ color: ACCENT_GREEN }}>ship.</span>
-          </div>
+        <div className="mt-3 space-y-0.5" style={{ color: FG }}>
+          {r.projects.length > 0 && (
+            <div>
+              {r.projects.length}{" "}
+              {r.projects.length === 1 ? "project" : "projects"} shipped.
+            </div>
+          )}
+          {(() => {
+            const years = Math.max(1, new Date().getFullYear() - firstActiveYear(r));
+            return (
+              <div>
+                {years} {years === 1 ? "year" : "years"} building.
+              </div>
+            );
+          })()}
+          {firstWork && (
+            <div>
+              Currently:{" "}
+              <span style={{ color: ACCENT_GREEN }}>
+                {truncate(`${firstWork.title} @ ${firstWork.company}`, 42)}
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -527,50 +544,76 @@ function WhatIs({
   );
 }
 
-/* ─────────────────────────  Install block  ────────────────────── */
+/* ─────────────────────────  Currently block  ──────────────────── */
 
-function InstallBlock({ href, title }: { href?: string; title: string }) {
-  const clone = href ? toGitClone(href) : null;
-  const slug = slugify(title);
+function CurrentlyBlock({ r }: { r: ReturnType<typeof useResume> }) {
+  const job = r.work[0];
+  const activeProject =
+    r.projects.find((p) => p.active) ?? r.projects[0] ?? null;
+  const rows: Array<{ key: string; value: React.ReactNode }> = [];
+  if (job) {
+    rows.push({
+      key: "role",
+      value: (
+        <>
+          <span style={{ color: FG }}>{job.title}</span>
+          <span style={{ color: FG_FAINT }}> @ </span>
+          <span style={{ color: ACCENT_CYAN }}>{job.company}</span>
+        </>
+      ),
+    });
+  }
+  if (activeProject) {
+    rows.push({
+      key: "shipping",
+      value: activeProject.href ? (
+        <a
+          href={activeProject.href}
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: ACCENT_CYAN }}
+          className="hover:underline underline-offset-2 truncate"
+        >
+          {activeProject.title}
+        </a>
+      ) : (
+        <span style={{ color: FG }}>{activeProject.title}</span>
+      ),
+    });
+  }
+  if (r.person.location) {
+    rows.push({
+      key: "based in",
+      value: <span style={{ color: FG }}>{r.person.location}</span>,
+    });
+  }
+  rows.push({
+    key: "open to",
+    value: <span style={{ color: ACCENT_GREEN }}>say hi · collab · advise</span>,
+  });
+
   return (
     <div className="text-[11.5px]">
       <div
-        className="rounded-sm px-2.5 py-2"
-        style={{
-          background: BG_INSET,
-          border: `1px solid ${PANEL_BORDER}`,
-        }}
+        className="rounded-sm px-2.5 py-2 space-y-0.5"
+        style={{ background: BG_INSET, border: `1px solid ${PANEL_BORDER}` }}
       >
-        <div style={{ color: FG }}>
-          <span style={{ color: ACCENT_GREEN }}>$</span>{" "}
-          {clone ? `git clone ${clone}` : `gh repo clone /${slug}`}
-        </div>
-        <div style={{ color: FG }}>
-          <span style={{ color: ACCENT_GREEN }}>$</span> cd {slug} &amp;&amp;{" "}
-          <span style={{ color: ACCENT_CYAN }}>./setup</span>
-        </div>
-      </div>
-      <div className="flex items-center justify-between mt-2">
-        <p className="text-[11px]" style={{ color: ACCENT_GREEN }}>
-          That&rsquo;s it. You&rsquo;re ready.
-        </p>
-        <span
-          className="inline-flex items-center justify-center size-5 rounded-sm"
-          style={{
-            border: `1px solid ${ACCENT_GREEN}`,
-            color: ACCENT_GREEN,
-          }}
-        >
-          ✓
-        </span>
+        {rows.map((row) => (
+          <div key={row.key} className="grid grid-cols-[68px_1fr] gap-2">
+            <span className="truncate" style={{ color: FG_DIM }}>
+              {row.key}
+            </span>
+            <span className="truncate min-w-0">{row.value}</span>
+          </div>
+        ))}
       </div>
     </div>
   );
 }
 
-/* ─────────────────────────  Specialists grid  ─────────────────── */
+/* ─────────────────────────  Projects grid  ────────────────────── */
 
-function SpecialistsGrid({
+function ProjectsGrid({
   projects,
 }: {
   projects: ReturnType<typeof useResume>["projects"];
@@ -578,20 +621,19 @@ function SpecialistsGrid({
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-3 pt-1">
       {projects.map((p, i) => (
-        <SpecialistCell key={p.id} p={p} index={i} />
+        <ProjectCell key={p.id} p={p} index={i} />
       ))}
     </div>
   );
 }
 
-function SpecialistCell({
+function ProjectCell({
   p,
   index,
 }: {
   p: ReturnType<typeof useResume>["projects"][number];
   index: number;
 }) {
-  const slug = slugify(p.title);
   const color = pickIndexColor(index);
   const summary = stripMd(p.description).split("\n")[0];
   return (
@@ -602,14 +644,17 @@ function SpecialistCell({
       className="block min-w-0 group"
     >
       <div className="flex items-baseline gap-1.5">
-        <span style={{ color }} className="text-[11px] flex-none">
-          {glyph(index)}
+        <span
+          className="text-[10px] flex-none translate-y-[-1px]"
+          style={{ color: p.active ? ACCENT_GREEN : color }}
+        >
+          {p.active ? "●" : glyph(index)}
         </span>
         <span
           className="text-[12.5px] font-bold truncate group-hover:underline underline-offset-2"
           style={{ color }}
         >
-          /{slug}
+          {p.title}
         </span>
       </div>
       <p
@@ -633,14 +678,17 @@ function PowerTools({
     <ul className="space-y-0.5 text-[11.5px] pt-1">
       {skills.slice(0, 12).map((s, i) => (
         <li key={s.name} className="flex items-baseline gap-2">
-          <span style={{ color: pickIndexColor(i) }} className="flex-none">
-            ⚙
+          <span
+            style={{ color: pickIndexColor(i) }}
+            className="flex-none text-[10px] translate-y-[-1px]"
+          >
+            ▸
           </span>
           <span
             className="font-bold truncate flex-none"
-            style={{ color: ACCENT_CYAN, minWidth: "90px" }}
+            style={{ color: ACCENT_CYAN, minWidth: "84px" }}
           >
-            /{slugify(s.name)}
+            {s.name}
           </span>
           <span
             className="truncate flex-1 min-w-0"
@@ -728,55 +776,72 @@ function TechGrid({ techs }: { techs: string[] }) {
   );
 }
 
-/* ─────────────────────────  Quick start  ──────────────────────── */
+/* ─────────────────────────  Career timeline  ──────────────────── */
 
-function QuickStart({
-  handle,
-  topRepo,
-  topTitle,
+function CareerTimeline({
+  work,
 }: {
-  handle: string;
-  topRepo?: string;
-  topTitle?: string;
+  work: ReturnType<typeof useResume>["work"];
 }) {
-  const clone = topRepo ? toGitClone(topRepo) : null;
+  const recent = work.slice(0, 4);
+  const current = work[0];
   return (
-    <div className="text-[11.5px] pt-1">
-      <div>
-        <p style={{ color: FG }}>
-          <span style={{ color: ACCENT_ORANGE }}>1.</span> Visit the portfolio
-        </p>
-        <div
-          className="mt-1 rounded-sm px-2.5 py-1.5"
-          style={{ background: BG_INSET, border: `1px solid ${PANEL_BORDER}` }}
-        >
-          <span style={{ color: ACCENT_GREEN }}>$</span>{" "}
-          <span style={{ color: ACCENT_CYAN }}>open</span> gitshow.io/{handle}
-        </div>
-      </div>
-      <div className="mt-2.5">
-        <p style={{ color: FG }}>
-          <span style={{ color: ACCENT_ORANGE }}>2.</span>{" "}
-          {clone ? "Clone the headline project" : "Clone something I shipped"}
-        </p>
-        <div
-          className="mt-1 rounded-sm px-2.5 py-1.5 space-y-0.5"
-          style={{ background: BG_INSET, border: `1px solid ${PANEL_BORDER}` }}
-        >
-          <div>
-            <span style={{ color: ACCENT_GREEN }}>$</span>{" "}
-            {clone ? `git clone ${clone}` : `gh repo clone ${handle}/${slugify(topTitle ?? "portfolio")}`}
+    <ol className="text-[11.5px] pt-1 space-y-2">
+      {recent.map((w, i) => (
+        <li key={w.id}>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span
+              className="text-[11px] font-bold tabular-nums flex-none"
+              style={{ color: ACCENT_ORANGE }}
+            >
+              {i + 1}.
+            </span>
+            <span className="font-bold" style={{ color: FG }}>
+              {w.title}
+            </span>
+            <span style={{ color: FG_FAINT }}>@</span>
+            {w.href ? (
+              <a
+                href={w.href}
+                target="_blank"
+                rel="noreferrer"
+                className="font-bold hover:underline underline-offset-2"
+                style={{ color: ACCENT_CYAN }}
+              >
+                {w.company}
+              </a>
+            ) : (
+              <span className="font-bold" style={{ color: ACCENT_CYAN }}>
+                {w.company}
+              </span>
+            )}
           </div>
-          <div>
-            <span style={{ color: ACCENT_GREEN }}>$</span>{" "}
-            {clone ? `cd ${slugify(topTitle ?? "portfolio")}` : `# read, fork, ship`}
+          <div
+            className="ml-4 text-[10.5px] tabular-nums"
+            style={{ color: FG_FAINT }}
+          >
+            {formatResumeDateRange(w.start, w.end)}
+            {w.location ? ` · ${w.location}` : ""}
           </div>
-        </div>
-      </div>
-      <p className="mt-2.5 text-[11px]" style={{ color: FG_DIM }}>
-        Stop there. You&rsquo;ll know if it&rsquo;s for you.
-      </p>
-    </div>
+        </li>
+      ))}
+      <li
+        className="mt-2 pt-2 text-[10.5px]"
+        style={{
+          color: FG_DIM,
+          borderTop: `1px solid ${PANEL_BORDER}`,
+        }}
+      >
+        {current && /present/i.test(current.end) ? (
+          <>
+            Currently at{" "}
+            <span style={{ color: ACCENT_CYAN }}>{current.company}</span>.
+          </>
+        ) : (
+          "Open to what's next."
+        )}
+      </li>
+    </ol>
   );
 }
 
@@ -905,15 +970,26 @@ function Manifesto({ name }: { name: string }) {
   );
 }
 
-function LicenseCard({
+function ContactCard({
   email,
   socials,
+  url,
 }: {
   email?: string;
   socials: ReturnType<typeof allSocials>;
+  url?: string;
 }) {
-  const primary =
-    socials.find((s) => s.name.toLowerCase() === "github") ?? socials[0];
+  const rows: Array<{ key: string; value: string; href: string }> = [];
+  if (email) rows.push({ key: "email", value: email, href: `mailto:${email}` });
+  if (url) rows.push({ key: "site", value: prettyUrl(url), href: url });
+  for (const s of socials.slice(0, 4)) {
+    if (s.url === url) continue;
+    rows.push({
+      key: s.name.toLowerCase(),
+      value: prettyUrl(s.url),
+      href: s.url,
+    });
+  }
   return (
     <section
       className="rounded-md min-w-0 px-3 py-3"
@@ -922,53 +998,51 @@ function LicenseCard({
         background: BG_CARD,
       }}
     >
-      <p className="text-[12.5px] font-bold" style={{ color: ACCENT_GREEN }}>
-        Free. MIT licensed. Open source.
+      <p
+        className="text-[12px] font-bold tracking-wider"
+        style={{ color: ACCENT_CYAN }}
+      >
+        &gt; SAY HI
       </p>
-      <p className="mt-2 text-[11px] leading-snug" style={{ color: FG_DIM }}>
-        No premium tier. No waitlist. Just code that ships.
-      </p>
-      <div className="mt-2.5 space-y-0.5 text-[11px]">
-        {primary && (
-          <div className="truncate">
-            <span style={{ color: FG_FAINT }}>docs:</span>{" "}
+      <div className="mt-2 space-y-0.5 text-[11px]">
+        {rows.slice(0, 5).map((row) => (
+          <div
+            key={row.key}
+            className="grid grid-cols-[56px_1fr] gap-2 items-baseline"
+          >
+            <span className="truncate" style={{ color: FG_FAINT }}>
+              {row.key}
+            </span>
             <a
-              href={primary.url}
-              target="_blank"
+              href={row.href}
+              target={row.href.startsWith("mailto:") ? undefined : "_blank"}
               rel="noreferrer"
+              className="truncate hover:underline underline-offset-2"
               style={{ color: ACCENT_CYAN }}
-              className="hover:underline underline-offset-2"
             >
-              {prettyUrl(primary.url)}
+              {row.value}
             </a>
           </div>
-        )}
-        {email && (
-          <div className="truncate">
-            <span style={{ color: FG_FAINT }}>mail:</span>{" "}
-            <a
-              href={`mailto:${email}`}
-              style={{ color: ACCENT_CYAN }}
-              className="hover:underline underline-offset-2"
-            >
-              {email}
-            </a>
-          </div>
-        )}
+        ))}
       </div>
+      <p
+        className="mt-2.5 text-[10.5px] leading-snug"
+        style={{ color: FG_DIM }}
+      >
+        Always interested in a good build. Pitch me something.
+      </p>
     </section>
   );
 }
 
 function ShipTerminal({
   handle,
-  projects,
-  skills,
+  stats,
 }: {
   handle: string;
-  projects: number;
-  skills: number;
+  stats: Stats;
 }) {
+  const years = Math.max(1, stats.year - stats.firstYear);
   return (
     <section
       className="rounded-md min-w-0 overflow-hidden"
@@ -989,7 +1063,7 @@ function ShipTerminal({
           <span style={{ color: FG_FAINT }}>@</span>
           <span style={{ color: ACCENT_ORANGE }}>workshop</span>
           <span style={{ color: FG_FAINT }}>:~$ </span>
-          <span style={{ color: FG }}>ship</span>
+          <span style={{ color: FG }}>stats</span>
         </span>
         <span className="flex items-center gap-1 flex-none">
           <span className="size-2 rounded-full bg-[#ff5f56]" />
@@ -998,16 +1072,16 @@ function ShipTerminal({
         </span>
       </header>
       <div className="px-3 py-2.5 text-[11.5px] font-mono space-y-0.5">
-        <Row label={`tests: ${projects} passed`} />
-        <Row label={`tools: ${skills} loaded`} />
-        <Row label="pr: opened" check />
-        <Row label="what shipped" check />
+        <StatRow label={`since: ${stats.firstYear}`} />
+        <StatRow label={`years: ${years}`} />
+        <StatRow label={`shipped: ${stats.totalContributions.toLocaleString()}+`} check />
+        <StatRow label="status: building" check />
       </div>
     </section>
   );
 }
 
-function Row({ label, check }: { label: string; check?: boolean }) {
+function StatRow({ label, check }: { label: string; check?: boolean }) {
   return (
     <div>
       <span style={{ color: ACCENT_CYAN }}>[</span>
@@ -1195,14 +1269,6 @@ function glyph(i: number): string {
   return glyphs[i % glyphs.length];
 }
 
-function slugify(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 32);
-}
-
 function truncate(s: string, n: number): string {
   if (!s) return "";
   return s.length > n ? `${s.slice(0, n - 1).trimEnd()}…` : s;
@@ -1218,19 +1284,6 @@ function prettyUrl(u: string): string {
     return url.hostname.replace(/^www\./, "") + url.pathname.replace(/\/$/, "");
   } catch {
     return u;
-  }
-}
-
-function toGitClone(url: string): string | null {
-  try {
-    const u = new URL(url);
-    if (!/github\.com$/.test(u.hostname)) return null;
-    const path = u.pathname.replace(/^\/|\/$/g, "");
-    if (!path.includes("/")) return null;
-    const repoPath = path.split("/").slice(0, 2).join("/");
-    return `https://github.com/${repoPath}.git`;
-  } catch {
-    return null;
   }
 }
 
