@@ -56,12 +56,12 @@ export const TEMPLATES: TemplateMeta[] = [
     preferredMode: "dark",
   },
   {
-    id: "bento",
-    name: "Bento",
-    tagline: "Apple-style bento grid — facet cards of varied size at a single glance.",
-    bestFor: "Full-stack devs, product engineers, and visual thinkers.",
-    vibes: ["modern", "grid", "playful"],
-    swatch: { bg: "#0a0a0a", fg: "#fafafa", accent: "#3b82f6" },
+    id: "workshop",
+    name: "Workshop",
+    tagline: "Open-source README poster — bordered green panels, ASCII headline, dashboard density.",
+    bestFor: "Indie hackers and builders with a deep project shelf that loves to be read.",
+    vibes: ["hacker", "dashboard", "monospace"],
+    swatch: { bg: "#0a0d10", fg: "#e6edf3", accent: "#7ee787" },
     preferredMode: "dark",
   },
   {

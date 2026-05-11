@@ -572,17 +572,32 @@ function TemplateSwatch({ id }: { id: TemplateId }) {
     );
   }
 
-  if (id === "bento") {
+  if (id === "workshop") {
     return (
-      <div className="aspect-[4/3] grid grid-cols-3 grid-rows-3 gap-0.5 p-1" style={{ background: bg }}>
+      <div
+        className="aspect-[4/3] grid grid-cols-3 grid-rows-3 gap-0.5 p-1 font-mono"
+        style={{ background: bg }}
+      >
         <div
-          className="col-span-2 row-span-2 rounded-sm"
-          style={{ background: "linear-gradient(135deg, rgba(59,130,246,0.45), rgba(14,165,233,0.20))" }}
-        />
-        <div className="rounded-sm" style={{ background: `${fg}1a` }} />
-        <div className="rounded-sm" style={{ background: `${fg}14` }} />
-        <div className="col-span-2 rounded-sm" style={{ background: `${fg}1a` }} />
-        <div className="rounded-sm" style={{ background: "rgba(99,102,241,0.45)" }} />
+          className="col-span-3 rounded-sm border flex items-center justify-center"
+          style={{ borderColor: "rgba(126,231,135,0.45)" }}
+        >
+          <span
+            className="text-[6px] font-black uppercase tracking-tighter"
+            style={{
+              color: "transparent",
+              WebkitTextStroke: `0.5px ${accent}`,
+            }}
+          >
+            shop
+          </span>
+        </div>
+        <div className="rounded-sm border" style={{ borderColor: "rgba(126,231,135,0.35)" }} />
+        <div className="rounded-sm border" style={{ borderColor: "rgba(121,192,255,0.35)" }} />
+        <div className="rounded-sm border" style={{ borderColor: "rgba(255,166,87,0.35)" }} />
+        <div className="rounded-sm border" style={{ borderColor: "rgba(126,231,135,0.35)" }} />
+        <div className="rounded-sm border" style={{ borderColor: "rgba(247,120,186,0.35)" }} />
+        <div className="rounded-sm border" style={{ borderColor: "rgba(126,231,135,0.35)" }} />
       </div>
     );
   }

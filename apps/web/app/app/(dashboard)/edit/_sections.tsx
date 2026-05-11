@@ -1348,20 +1348,33 @@ function TemplateSwatchLarge({ id }: { id: TemplateId }) {
     );
   }
 
-  if (id === "bento") {
+  if (id === "workshop") {
     return (
-      <div className="aspect-[16/10] grid grid-cols-4 grid-rows-3 gap-1 p-2" style={{ background: bg }}>
+      <div
+        className="aspect-[16/10] grid grid-cols-4 grid-rows-3 gap-1 p-2 font-mono"
+        style={{ background: bg }}
+      >
         <div
-          className="col-span-2 row-span-2 rounded-md"
-          style={{ background: "linear-gradient(135deg, rgba(59,130,246,0.50), rgba(14,165,233,0.22))" }}
-        />
-        <div className="rounded-md" style={{ background: `${fg}1a` }} />
-        <div className="rounded-md" style={{ background: `${fg}14` }} />
-        <div className="col-span-2 rounded-md" style={{ background: `${fg}1a` }} />
-        <div className="rounded-md" style={{ background: "rgba(99,102,241,0.55)" }} />
-        <div className="rounded-md" style={{ background: `${fg}14` }} />
-        <div className="col-span-3 rounded-md" style={{ background: `${fg}1a` }} />
-        <div className="rounded-md" style={{ background: "rgba(96,165,250,0.30)" }} />
+          className="col-span-4 rounded-md border flex items-center justify-center"
+          style={{ borderColor: "rgba(126,231,135,0.45)" }}
+        >
+          <span
+            className="text-[10px] font-black uppercase tracking-tight"
+            style={{
+              color: "transparent",
+              WebkitTextStroke: `1px ${accent}`,
+            }}
+          >
+            workshop
+          </span>
+        </div>
+        <div className="rounded-md border" style={{ borderColor: "rgba(126,231,135,0.35)" }} />
+        <div className="rounded-md border" style={{ borderColor: "rgba(121,192,255,0.35)" }} />
+        <div className="rounded-md border" style={{ borderColor: "rgba(255,166,87,0.35)" }} />
+        <div className="rounded-md border" style={{ borderColor: "rgba(247,120,186,0.35)" }} />
+        <div className="col-span-2 rounded-md border" style={{ borderColor: "rgba(126,231,135,0.35)" }} />
+        <div className="rounded-md border" style={{ borderColor: "rgba(121,192,255,0.35)" }} />
+        <div className="rounded-md border" style={{ borderColor: "rgba(126,231,135,0.35)" }} />
       </div>
     );
   }
