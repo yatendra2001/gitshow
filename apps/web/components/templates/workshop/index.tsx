@@ -674,10 +674,10 @@ function ProjectCell({
         </span>
       </div>
       <p
-        className="mt-0.5 text-[11px] leading-snug line-clamp-2"
+        className="mt-0.5 text-[11px] leading-snug"
         style={{ color: FG_DIM }}
       >
-        {truncate(summary, 80)}
+        {summary}
       </p>
     </a>
   );
