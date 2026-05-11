@@ -27,7 +27,7 @@ const COMPONENTS: Record<TemplateId, React.ComponentType> = {
   terminal: dynamic(() => import("./terminal")),
   spotlight: dynamic(() => import("./spotlight")),
   glow: dynamic(() => import("./glow")),
-  bento: dynamic(() => import("./bento")),
+  workshop: dynamic(() => import("./workshop")),
   minimal: dynamic(() => import("./minimal")),
 };
 

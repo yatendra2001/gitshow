@@ -402,7 +402,7 @@ export const TemplateIdSchema = z.enum([
   "terminal",
   "spotlight",
   "glow",
-  "bento",
+  "workshop",
   "minimal",
 ]);
 export type TemplateId = z.infer<typeof TemplateIdSchema>;
