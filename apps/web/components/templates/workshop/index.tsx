@@ -2,36 +2,32 @@
 "use client";
 
 import { useMemo } from "react";
-import { motion } from "motion/react";
 import { useResume, useHandle } from "@/components/data-provider";
-import ContributionTrend from "@/components/contribution-trend";
 import { allSocials } from "@gitshow/shared/resume";
 import { formatResumeDateRange } from "@/lib/format-date";
 
 /**
  * Workshop — a portfolio that reads like an open-source README poster.
  *
- * Big outlined ASCII-style headline, framed terminal window chrome, and
- * a dashboard of bordered green panels (BY THE NUMBERS, SPECIALISTS,
- * POWER TOOLS, QUICK START) that map the user's resume data onto the
- * "founder's monorepo README" poster aesthetic.
- *
- * Best for: builders with a deep project shelf — every project becomes
- * a card in the SPECIALISTS grid, every skill becomes a POWER TOOL,
- * every job becomes a numbered QUICK START step.
+ * Dashboard-density: one dashed-green outer frame, a tight hero band
+ * (ASCII title | meta block | quote+avatar) on a single row, then a
+ * grid of bordered panels (BY THE NUMBERS, WHAT IS, INSTALL,
+ * SPECIALISTS, POWER TOOLS, WORKS WITH, QUICK START, footer). Maps
+ * the user's resume onto the founder's-README poster aesthetic.
  */
 
 // ─────────────────────────  Palette  ─────────────────────────
 const BG = "#0a0d10";
 const BG_CARD = "#0d1117";
-const BG_HEADER = "#0e1217";
-const BORDER = "#1f6b3a";
-const BORDER_DIM = "rgba(126, 231, 135, 0.22)";
+const BG_INSET = "#070a0c";
+const FRAME = "rgba(126, 231, 135, 0.35)";
+const PANEL_BORDER = "rgba(126, 231, 135, 0.16)";
 const ACCENT_GREEN = "#7ee787";
 const ACCENT_CYAN = "#79c0ff";
 const ACCENT_ORANGE = "#ffa657";
 const ACCENT_PINK = "#f778ba";
 const ACCENT_YELLOW = "#f9e2af";
+const ACCENT_RED = "#ff7b72";
 const FG = "#e6edf3";
 const FG_DIM = "#8b949e";
 const FG_FAINT = "#6e7681";
@@ -43,13 +39,10 @@ export default function WorkshopTemplate() {
   const socials = allSocials(r);
 
   const stats = useMemo(() => computeStats(r), [r]);
-  const summaryBullets = useMemo(
-    () => extractBullets(r.person.summary),
-    [r.person.summary],
-  );
-  const heroQuote = useMemo(() => pickQuote(r), [r]);
-  const topProject = r.projects[0];
-  const techCloud = useMemo(() => collectTechs(r), [r]);
+  const bullets = useMemo(() => extractBullets(r.person.summary), [r.person.summary]);
+  const quote = useMemo(() => pickQuote(r), [r]);
+  const techs = useMemo(() => collectTechs(r), [r]);
+  const topProject = r.projects.find((p) => p.href) ?? r.projects[0];
 
   return (
     <div
@@ -57,75 +50,50 @@ export default function WorkshopTemplate() {
       style={{
         background: BG,
         color: FG,
-        fontSize: "13.5px",
-        lineHeight: "1.6",
-        backgroundImage:
-          "radial-gradient(ellipse at 50% -20%, rgba(126,231,135,0.06), transparent 60%)",
+        fontSize: "13px",
+        lineHeight: "1.55",
       }}
     >
       <Scanline />
 
-      <div className="mx-auto max-w-[1200px] px-3 sm:px-6 py-6 sm:py-10">
-        <WindowFrame title={`${handle}@workshop:~$ cat README.md`}>
-          {/* ───── Hero row ───── */}
-          <Hero r={r} handle={handle} quote={heroQuote} />
+      <div className="mx-auto max-w-[1180px] px-3 sm:px-5 py-5 sm:py-7">
+        <Frame>
+          <PromptLine handle={handle} />
 
-          {/* ───── Stats / What is / Install row ───── */}
-          <div className="mt-5 grid grid-cols-1 lg:grid-cols-[1.05fr_0.95fr] gap-5">
-            <Panel title="BY THE NUMBERS" subtitle="(measured on logical code)">
+          <Hero r={r} handle={handle} quote={quote} />
+
+          <TurnLine handle={handle} />
+
+          {/* Row 2: stats | (what is + install) */}
+          <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.55fr_1fr] gap-3">
+            <Panel
+              title="⚡ BY THE NUMBERS"
+              subtitle="(measured on logical code)"
+              titleColor={ACCENT_ORANGE}
+            >
               <ByTheNumbers stats={stats} />
             </Panel>
 
-            <div className="flex flex-col gap-5">
-              <Panel title={`WHAT IS @${handle.toUpperCase()}?`}>
+            <div className="flex flex-col gap-3 min-w-0">
+              <Panel title={`> WHAT IS @${handle.toUpperCase()}?`}>
                 <WhatIs
-                  bullets={summaryBullets}
+                  bullets={bullets}
                   projectCount={r.projects.length}
                   skillCount={r.skills.length}
                 />
               </Panel>
 
-              {topProject?.href && (
-                <Panel title="INSTALL IN 30 SECONDS">
-                  <InstallBlock
-                    href={topProject.href}
-                    title={topProject.title}
-                  />
-                </Panel>
-              )}
+              <Panel title="$ INSTALL IN 30 SECONDS">
+                <InstallBlock href={topProject?.href} title={topProject?.title ?? "portfolio"} />
+              </Panel>
             </div>
           </div>
 
-          {/* ───── Contribution trend ───── */}
-          <div className="mt-5">
-            <Panel
-              title="GH CONTRIBUTIONS"
-              subtitle="(streamed live · github.com)"
-            >
-              <ContributionTrend
-                handle={handle}
-                accent={ACCENT_GREEN}
-                fg={FG}
-                dim={FG_DIM}
-                ghost={"#30363d"}
-                cardBg="transparent"
-                cardBorder="transparent"
-                radius={0}
-                chartHeight={110}
-                pad={{ x: 0, y: 8 }}
-                eyebrow="lifetime"
-                caption="github.com"
-                tooltipBg={BG}
-                tooltipBorder={BORDER_DIM}
-              />
-            </Panel>
-          </div>
-
-          {/* ───── Projects grid (the "specialists") ───── */}
+          {/* Specialists */}
           {!hidden.has("projects") && r.projects.length > 0 && (
-            <div className="mt-5">
+            <div className="mt-4">
               <Panel
-                title={`THE ${r.projects.length} SPECIALISTS`}
+                title={`> THE ${r.projects.length} SPECIALISTS`}
                 subtitle="(slash commands)"
               >
                 <SpecialistsGrid projects={r.projects} />
@@ -133,175 +101,124 @@ export default function WorkshopTemplate() {
             </div>
           )}
 
-          {/* ───── Power tools / Works with / Quick start row ───── */}
-          <div className="mt-5 grid grid-cols-1 lg:grid-cols-[1.2fr_0.9fr_1fr] gap-5">
+          {/* Tools row */}
+          <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.05fr_0.95fr_1fr] gap-3">
             {!hidden.has("skills") && r.skills.length > 0 && (
               <Panel
-                title={`${r.skills.length} POWER TOOLS`}
+                title={`> ${r.skills.length} POWER TOOLS`}
                 subtitle="(on demand)"
               >
                 <PowerTools skills={r.skills} />
               </Panel>
             )}
 
-            {techCloud.length > 0 && (
-              <Panel
-                title={`WORKS WITH ${techCloud.length}+ TOOLS`}
-              >
-                <TechCloud techs={techCloud} />
+            {techs.length > 0 && (
+              <Panel title={`> WORKS WITH ${techs.length}+ TOOLS`}>
+                <TechGrid techs={techs} />
               </Panel>
             )}
 
             {!hidden.has("work") && r.work.length > 0 && (
-              <Panel title="QUICK START" subtitle="(career)">
-                <QuickStart work={r.work.slice(0, 3)} />
-              </Panel>
-            )}
-          </div>
-
-          {/* ───── Education + Hackathons row ───── */}
-          {((!hidden.has("education") && r.education.length > 0) ||
-            (!hidden.has("hackathons") && r.hackathons.length > 0)) && (
-            <div className="mt-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
-              {!hidden.has("education") && r.education.length > 0 && (
-                <Panel title="EDUCATION" subtitle="(transcripts)">
-                  <EducationList items={r.education} />
-                </Panel>
-              )}
-              {!hidden.has("hackathons") && r.hackathons.length > 0 && (
-                <Panel
-                  title="HACKATHON LOG"
-                  subtitle={`(${r.hackathons.length} entries)`}
-                >
-                  <HackathonsLog items={r.hackathons.slice(0, 6)} />
-                </Panel>
-              )}
-            </div>
-          )}
-
-          {/* ───── Build log ───── */}
-          {!hidden.has("buildLog") && r.buildLog.length > 0 && (
-            <div className="mt-5">
-              <Panel
-                title="GIT LOG"
-                subtitle={`(${r.buildLog.length} commits)`}
-              >
-                <BuildLogList items={r.buildLog.slice(0, 12)} />
-              </Panel>
-            </div>
-          )}
-
-          {/* ───── Publications ───── */}
-          {!hidden.has("publications") && r.publications.length > 0 && (
-            <div className="mt-5">
-              <Panel title="PUBLICATIONS" subtitle="(papers · talks · podcasts)">
-                <PublicationsList items={r.publications.slice(0, 8)} />
-              </Panel>
-            </div>
-          )}
-
-          {/* ───── Footer row ───── */}
-          <div className="mt-5 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr_0.9fr] gap-5 pb-2">
-            <Panel title=">">
-              <FooterPrompt name={r.person.name} />
-            </Panel>
-
-            {!hidden.has("contact") && (
-              <Panel title="CONTACT">
-                <ContactBlock
-                  email={r.contact.email}
-                  socials={socials}
-                  url={r.person.url}
+              <Panel title="> QUICK START" subtitle="(30 seconds)">
+                <QuickStart
+                  handle={handle}
+                  topRepo={topProject?.href}
+                  topTitle={topProject?.title}
                 />
               </Panel>
             )}
-
-            <Panel title={`${handle}@workshop:~$ ship`}>
-              <ShipOutput projects={r.projects.length} skills={r.skills.length} />
-            </Panel>
           </div>
-        </WindowFrame>
+
+          {/* Optional row: education + hackathons + buildLog */}
+          {((!hidden.has("education") && r.education.length > 0) ||
+            (!hidden.has("hackathons") && r.hackathons.length > 0) ||
+            (!hidden.has("buildLog") && r.buildLog.length > 0)) && (
+            <div className="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-3">
+              {!hidden.has("education") && r.education.length > 0 ? (
+                <Panel title="> EDUCATION">
+                  <EducationList items={r.education} />
+                </Panel>
+              ) : null}
+              {!hidden.has("hackathons") && r.hackathons.length > 0 ? (
+                <Panel
+                  title="> HACKATHON LOG"
+                  subtitle={`(${r.hackathons.length})`}
+                >
+                  <HackathonsLog items={r.hackathons.slice(0, 5)} />
+                </Panel>
+              ) : null}
+              {!hidden.has("buildLog") && r.buildLog.length > 0 ? (
+                <Panel
+                  title="> GIT LOG"
+                  subtitle={`(${r.buildLog.length})`}
+                >
+                  <BuildLogList items={r.buildLog.slice(0, 6)} />
+                </Panel>
+              ) : null}
+            </div>
+          )}
+
+          {/* Footer row */}
+          <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr_1fr] gap-3 pb-1">
+            <Manifesto name={r.person.name} />
+            <LicenseCard email={r.contact.email} socials={socials} />
+            <ShipTerminal
+              handle={handle}
+              projects={r.projects.length}
+              skills={r.skills.length}
+            />
+          </div>
+        </Frame>
       </div>
     </div>
   );
 }
 
-/* ─────────────────────────  Window chrome  ─────────────────────────── */
+/* ─────────────────────────  Frame  ─────────────────────────── */
 
-function WindowFrame({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}) {
+function Frame({ children }: { children: React.ReactNode }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: "easeOut" }}
-      className="rounded-2xl overflow-hidden border shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6)]"
-      style={{ background: BG, borderColor: BORDER }}
+    <div
+      className="rounded-xl p-4 sm:p-5"
+      style={{
+        border: `1px dashed ${FRAME}`,
+        background: BG,
+        boxShadow:
+          "0 0 0 1px rgba(126,231,135,0.04) inset, 0 30px 80px -30px rgba(0,0,0,0.6)",
+      }}
     >
-      <header
-        className="flex items-center px-4 py-2.5 border-b select-none"
-        style={{ background: BG_HEADER, borderColor: BORDER }}
-      >
-        <div className="flex items-center gap-1.5">
-          <span className="size-3 rounded-full bg-[#ff5f56]" />
-          <span className="size-3 rounded-full bg-[#ffbd2e]" />
-          <span className="size-3 rounded-full bg-[#27c93f]" />
-        </div>
-        <div
-          className="flex-1 text-center text-[12px] truncate px-4"
-          style={{ color: FG_DIM }}
-        >
-          {title}
-        </div>
-        <div
-          className="text-[11px] tracking-wider hidden sm:block"
-          style={{ color: FG_FAINT }}
-        >
-          README.md
-        </div>
-      </header>
-
-      <div
-        className="p-4 sm:p-6 selection:bg-[#264f78]"
-        style={{ background: BG }}
-      >
-        {children}
-      </div>
-    </motion.div>
+      {children}
+    </div>
   );
 }
 
-/* ─────────────────────────  Panel (bordered card)  ─────────────────── */
+/* ─────────────────────────  Panel  ─────────────────────────── */
 
 function Panel({
   title,
   subtitle,
+  titleColor,
   children,
 }: {
   title: string;
   subtitle?: string;
+  titleColor?: string;
   children: React.ReactNode;
 }) {
   return (
-    <motion.section
-      initial={{ opacity: 0, y: 6 }}
-      whileInView={{ opacity: 1, y: 0 }}
-      viewport={{ once: true, margin: "-15%" }}
-      transition={{ duration: 0.35, ease: "easeOut" }}
-      className="rounded-lg border h-full flex flex-col"
-      style={{ borderColor: BORDER_DIM, background: BG_CARD }}
+    <section
+      className="rounded-md min-w-0"
+      style={{
+        border: `1px solid ${PANEL_BORDER}`,
+        background: BG_CARD,
+      }}
     >
-      <header className="px-4 pt-3 pb-2 flex items-baseline gap-2 flex-wrap">
+      <header className="px-3 pt-2.5 pb-1.5 flex items-baseline gap-2 flex-wrap">
         <span
           className="text-[12px] font-bold tracking-wider"
-          style={{ color: ACCENT_CYAN }}
+          style={{ color: titleColor ?? ACCENT_CYAN }}
         >
-          &gt; {title}
+          {title}
         </span>
         {subtitle && (
           <span className="text-[11px]" style={{ color: FG_FAINT }}>
@@ -309,12 +226,26 @@ function Panel({
           </span>
         )}
       </header>
-      <div className="px-4 pb-4 flex-1">{children}</div>
-    </motion.section>
+      <div className="px-3 pb-3">{children}</div>
+    </section>
   );
 }
 
-/* ─────────────────────────  Hero  ─────────────────────────── */
+/* ─────────────────────────  Prompt line  ────────────────────── */
+
+function PromptLine({ handle }: { handle: string }) {
+  return (
+    <div className="text-[12px] mb-3 flex items-center">
+      <span style={{ color: ACCENT_CYAN }}>{handle}</span>
+      <span style={{ color: FG_FAINT }}>@</span>
+      <span style={{ color: ACCENT_ORANGE }}>workshop</span>
+      <span style={{ color: FG_FAINT }}>:~$ </span>
+      <span style={{ color: FG }} className="ml-1">cat README.md</span>
+    </div>
+  );
+}
+
+/* ─────────────────────────  Hero  ────────────────────────────── */
 
 function Hero({
   r,
@@ -325,159 +256,137 @@ function Hero({
   handle: string;
   quote: { text: string; attribution: string; source?: string } | null;
 }) {
+  const firstWork = r.work[0];
   return (
-    <div
-      className="rounded-lg border overflow-hidden"
-      style={{ borderColor: BORDER_DIM, background: BG_CARD }}
-    >
-      <div
-        className="px-4 py-2 border-b text-[11px]"
-        style={{
-          background: "rgba(13,17,23,0.6)",
-          borderColor: BORDER_DIM,
-          color: FG_DIM,
-        }}
-      >
-        <span style={{ color: ACCENT_CYAN }}>{handle}</span>
-        <span style={{ color: FG_FAINT }}>@</span>
-        <span style={{ color: ACCENT_ORANGE }}>workshop</span>
-        <span style={{ color: FG_FAINT }}>:~$ </span>
-        <span style={{ color: FG }}>cat README.md</span>
+    <div className="grid grid-cols-1 lg:grid-cols-[1.25fr_1fr_1fr] gap-4 lg:gap-6 items-start">
+      {/* Title */}
+      <div className="min-w-0">
+        <AsciiTitle text={handle} />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[1.4fr_1fr_0.7fr] gap-6 p-5 sm:p-6">
-        {/* Left: Big ASCII title */}
-        <div className="min-w-0">
-          <AsciiTitle text={handle} />
-          <p
-            className="mt-3 text-[14px] leading-relaxed"
-            style={{ color: ACCENT_CYAN }}
+      {/* Meta block */}
+      <div className="min-w-0 text-[14px] leading-snug pt-1">
+        <div style={{ color: ACCENT_CYAN }}>
+          {truncate(r.person.description, 80)}
+        </div>
+        <div className="mt-3" style={{ color: FG }}>
+          <div>{r.projects.length} projects.</div>
+          <div>{r.skills.length} power tools.</div>
+          <div>
+            One mission: <span style={{ color: ACCENT_GREEN }}>ship.</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Quote + avatar column */}
+      <div className="min-w-0 flex flex-col gap-3">
+        {quote && (
+          <div
+            className="rounded-md p-3 text-[12px]"
+            style={{
+              border: `1px solid ${PANEL_BORDER}`,
+              background: BG_INSET,
+            }}
           >
-            {r.person.description}
-          </p>
-          <p className="mt-2 text-[13px]" style={{ color: FG }}>
-            {r.projects.length} projects.{" "}
-            {r.skills.length} power tools.{" "}
-            <span style={{ color: ACCENT_GREEN }}>One mission: ship.</span>
-          </p>
-          {r.person.location && (
-            <p className="mt-3 text-[12px]" style={{ color: ACCENT_CYAN }}>
-              &gt; Operating out of{" "}
-              <span style={{ color: FG }}>{r.person.location}</span>.
+            <div
+              className="text-[22px] leading-none -mb-1"
+              style={{ color: ACCENT_GREEN }}
+            >
+              &ldquo;
+            </div>
+            <p style={{ color: FG }} className="leading-snug">
+              {truncate(quote.text, 160)}
             </p>
-          )}
-        </div>
-
-        {/* Middle: quote */}
-        <div className="min-w-0">
-          {quote ? (
-            <div
-              className="rounded-md border p-3 h-full flex flex-col"
-              style={{ borderColor: BORDER_DIM, background: BG }}
-            >
-              <span
-                className="text-[20px] leading-none"
-                style={{ color: ACCENT_GREEN }}
-              >
-                &ldquo;
-              </span>
-              <p
-                className="text-[12.5px] leading-relaxed mt-1"
-                style={{ color: FG }}
-              >
-                {quote.text}
-              </p>
-              <div className="mt-auto pt-3 text-[11.5px]" style={{ color: FG_DIM }}>
-                — {quote.attribution}
-                {quote.source && (
-                  <div className="text-[10.5px]" style={{ color: FG_FAINT }}>
-                    {quote.source}
-                  </div>
-                )}
+            <div className="mt-2 text-[11px]" style={{ color: FG_DIM }}>
+              — {quote.attribution}
+            </div>
+            {quote.source && (
+              <div className="text-[10.5px]" style={{ color: FG_FAINT }}>
+                {quote.source}
               </div>
-            </div>
-          ) : (
-            <div
-              className="rounded-md border p-3 h-full flex items-center"
-              style={{ borderColor: BORDER_DIM, background: BG }}
-            >
-              <p className="text-[12.5px]" style={{ color: FG_DIM }}>
-                <span style={{ color: ACCENT_GREEN }}>&gt;</span> Quietly
-                shipping since {firstActiveYear(r)}.
-              </p>
-            </div>
-          )}
-        </div>
+            )}
+          </div>
+        )}
 
-        {/* Right: avatar */}
-        <div className="min-w-0 flex flex-col items-center sm:items-end justify-center">
+        <div className="flex items-center gap-3">
           {r.person.avatarUrl ? (
             <div
-              className="rounded-lg overflow-hidden border"
-              style={{ borderColor: BORDER_DIM, background: BG }}
+              className="rounded-md overflow-hidden flex-none"
+              style={{
+                border: `1px solid ${PANEL_BORDER}`,
+                background: BG_INSET,
+              }}
             >
               <img
                 src={r.person.avatarUrl}
                 alt={r.person.name}
-                className="size-28 sm:size-32 object-cover"
+                className="size-20 object-cover"
                 style={{
-                  filter:
-                    "grayscale(1) contrast(1.15) brightness(0.95) sepia(0.4) hue-rotate(70deg) saturate(2.2)",
+                  filter: "grayscale(1) contrast(1.25) brightness(0.95)",
+                  mixBlendMode: "screen",
                 }}
               />
             </div>
           ) : (
             <div
-              className="size-28 sm:size-32 rounded-lg border flex items-center justify-center text-3xl font-bold"
+              className="size-20 rounded-md flex items-center justify-center text-2xl font-bold flex-none"
               style={{
-                borderColor: BORDER_DIM,
-                background: BG,
+                border: `1px solid ${PANEL_BORDER}`,
+                background: BG_INSET,
                 color: ACCENT_GREEN,
               }}
             >
               {r.person.initials}
             </div>
           )}
-          <div className="text-center sm:text-right mt-2">
+          <div className="min-w-0">
             <div
-              className="text-[12.5px] font-bold uppercase tracking-wider"
+              className="text-[13px] font-bold uppercase tracking-wider truncate"
               style={{ color: ACCENT_GREEN }}
             >
               {r.person.name}
             </div>
-            {firstWorkLine(r) && (
-              <div className="text-[11px]" style={{ color: FG_DIM }}>
-                {firstWorkLine(r)}
+            {firstWork && (
+              <div
+                className="text-[11px] truncate"
+                style={{ color: FG_DIM }}
+              >
+                {firstWork.title} · {firstWork.company}
               </div>
             )}
           </div>
         </div>
       </div>
-
-      <div
-        className="px-5 sm:px-6 pb-4 text-[12.5px]"
-        style={{ color: ACCENT_CYAN }}
-      >
-        &gt; Turn this README into a portfolio at{" "}
-        <span style={{ color: FG }}>gitshow.io/{handle}</span>.
-      </div>
     </div>
   );
 }
 
-/* ─────────────────────────  ASCII title  ──────────────────────────── */
+/* ─────────────────────────  ASCII title  ──────────────────────── */
 
 function AsciiTitle({ text }: { text: string }) {
   const display = text.slice(0, 12);
+  const len = display.length;
+  // Scale the headline so the full handle fits on one line within its
+  // ~32% hero column. Short handles get a poster-sized title; longer
+  // handles auto-shrink so we never wrap mid-word.
+  const fontSize =
+    len <= 5
+      ? "clamp(56px, 8.5vw, 104px)"
+      : len <= 7
+        ? "clamp(48px, 7vw, 80px)"
+        : len <= 9
+          ? "clamp(38px, 5.4vw, 64px)"
+          : "clamp(30px, 4.4vw, 52px)";
+  const strokeWidth = len <= 7 ? "1.5px" : "1.25px";
   return (
     <h1
-      className="font-mono font-black uppercase leading-[0.85] select-none"
+      className="font-mono font-black leading-[0.85] select-none whitespace-nowrap"
       style={{
-        fontSize: "clamp(56px, 10vw, 112px)",
+        fontSize,
         color: "transparent",
-        WebkitTextStroke: `2px ${ACCENT_GREEN}`,
-        letterSpacing: "-0.04em",
-        textShadow: `0 0 24px rgba(126,231,135,0.18)`,
+        WebkitTextStroke: `${strokeWidth} ${ACCENT_GREEN}`,
+        letterSpacing: "-0.05em",
+        textShadow: `0 0 16px rgba(126,231,135,0.15)`,
       }}
     >
       {display}
@@ -485,90 +394,106 @@ function AsciiTitle({ text }: { text: string }) {
   );
 }
 
-/* ─────────────────────────  BY THE NUMBERS  ───────────────────────── */
+/* ─────────────────────────  Turn line  ────────────────────────── */
+
+function TurnLine({ handle }: { handle: string }) {
+  return (
+    <p className="mt-3 text-[13px]" style={{ color: ACCENT_CYAN }}>
+      &gt; Turn this README into a portfolio at{" "}
+      <span style={{ color: FG }}>gitshow.io/{handle}</span>.
+    </p>
+  );
+}
+
+/* ─────────────────────────  BY THE NUMBERS  ───────────────────── */
 
 function ByTheNumbers({ stats }: { stats: Stats }) {
   return (
-    <div>
-      <div className="grid grid-cols-2 gap-5 mt-2">
+    <div className="pt-1">
+      <div className="grid grid-cols-[1fr_auto_1fr] gap-x-3 sm:gap-x-5 items-center">
+        {/* Past */}
         <div>
           <div className="text-[12px]" style={{ color: ACCENT_CYAN }}>
-            {stats.firstYear}
-          </div>
-          <div className="text-[10px] mb-2" style={{ color: FG_FAINT }}>
-            (first commit)
+            {stats.firstYear}{" "}
+            <span style={{ color: FG_FAINT }}>(first commit)</span>
           </div>
           <div
-            className="text-[28px] font-bold leading-none tabular-nums"
+            className="text-[24px] sm:text-[26px] font-bold leading-none tabular-nums mt-2.5"
             style={{ color: ACCENT_CYAN }}
           >
             {stats.earlyDaily}
           </div>
-          <div className="text-[10.5px]" style={{ color: FG_DIM }}>
+          <div className="text-[10.5px] mt-0.5" style={{ color: FG_DIM }}>
             commits / day
           </div>
           <div
-            className="mt-3 text-[26px] font-bold tabular-nums"
+            className="text-[22px] sm:text-[24px] font-bold tabular-nums mt-2.5"
             style={{ color: ACCENT_CYAN }}
           >
             {stats.earlyTotal.toLocaleString()}
           </div>
-          <div className="text-[10.5px]" style={{ color: FG_DIM }}>
+          <div className="text-[10.5px] mt-0.5" style={{ color: FG_DIM }}>
             contributions
           </div>
         </div>
 
+        {/* Multiplier pill — middle column, sits between the two stat stacks */}
+        <div
+          className="rounded-md px-3 py-2.5 text-center self-center"
+          style={{
+            border: `1px dashed ${ACCENT_GREEN}`,
+            background: BG_INSET,
+            minWidth: "92px",
+          }}
+        >
+          <div
+            className="text-[20px] font-bold leading-none tabular-nums"
+            style={{ color: ACCENT_GREEN }}
+          >
+            ~{stats.multiplier}x
+          </div>
+          <div className="text-[10px] mt-1 leading-tight" style={{ color: FG_DIM }}>
+            more
+            <br />
+            productive
+          </div>
+        </div>
+
+        {/* Now */}
         <div>
           <div className="text-[12px]" style={{ color: ACCENT_GREEN }}>
             {stats.year} <span style={{ color: FG_FAINT }}>(run rate)</span>
           </div>
           <div
-            className="text-[28px] font-bold leading-none tabular-nums mt-[18px]"
+            className="text-[24px] sm:text-[26px] font-bold leading-none tabular-nums mt-2.5"
             style={{ color: ACCENT_GREEN }}
           >
             {stats.latestDaily.toLocaleString()}
           </div>
-          <div className="text-[10.5px]" style={{ color: FG_DIM }}>
+          <div className="text-[10.5px] mt-0.5" style={{ color: FG_DIM }}>
             commits / day
           </div>
           <div
-            className="mt-3 text-[26px] font-bold tabular-nums"
+            className="text-[22px] sm:text-[24px] font-bold tabular-nums mt-2.5"
             style={{ color: ACCENT_GREEN }}
           >
             {stats.totalContributions.toLocaleString()}+
           </div>
-          <div className="text-[10.5px]" style={{ color: FG_DIM }}>
-            contributions (and counting)
+          <div className="text-[10.5px] mt-0.5" style={{ color: FG_DIM }}>
+            contributions{" "}
+            <span style={{ color: FG_FAINT }}>(and counting)</span>
           </div>
         </div>
       </div>
 
-      <div
-        className="mt-4 mx-auto rounded-md border px-4 py-3 text-center max-w-[200px]"
-        style={{ borderColor: BORDER_DIM, background: BG }}
-      >
-        <div
-          className="text-[22px] font-bold leading-none"
-          style={{ color: ACCENT_GREEN }}
-        >
-          ~{stats.multiplier}x
-        </div>
-        <div className="text-[10.5px] mt-1" style={{ color: FG_DIM }}>
-          more productive
-        </div>
-      </div>
-
-      <p
-        className="mt-4 text-[12px] italic"
-        style={{ color: ACCENT_CYAN }}
-      >
+      <p className="mt-3 text-[12px] italic" style={{ color: ACCENT_CYAN }}>
         Same person. Different era. The difference is the tooling.
       </p>
     </div>
   );
 }
 
-/* ─────────────────────────  WHAT IS  ─────────────────────────────── */
+/* ─────────────────────────  WHAT IS  ─────────────────────────── */
 
 function WhatIs({
   bullets,
@@ -579,52 +504,71 @@ function WhatIs({
   projectCount: number;
   skillCount: number;
 }) {
-  const defaults = [
-    `${projectCount} projects shipped, every one open to inspection.`,
-    `${skillCount} languages, frameworks, and tools — picked up to ship faster.`,
-    "Bias for clarity, taste, and getting it into production.",
+  const fallback = [
+    `${projectCount} projects, each open to inspection.`,
+    `${skillCount} tools and frameworks on call.`,
+    "Bias for taste, clarity, and shipping.",
     "AI wrote some of it. The point is what shipped.",
   ];
-  const list = bullets.length >= 2 ? bullets : defaults;
+  const list = bullets.length >= 2 ? bullets : fallback;
   return (
-    <ul className="space-y-1.5 mt-1 text-[12.5px]">
+    <ul className="space-y-1 text-[12px] pt-0.5">
       {list.slice(0, 5).map((b, i) => (
         <li key={i} className="flex gap-2">
-          <span style={{ color: ACCENT_GREEN }}>•</span>
-          <span style={{ color: FG }}>{b}</span>
+          <span style={{ color: ACCENT_GREEN }} className="flex-none">
+            •
+          </span>
+          <span style={{ color: FG }} className="leading-snug">
+            {b}
+          </span>
         </li>
       ))}
     </ul>
   );
 }
 
-/* ─────────────────────────  Install block  ────────────────────────── */
+/* ─────────────────────────  Install block  ────────────────────── */
 
-function InstallBlock({ href, title }: { href: string; title: string }) {
-  const clone = toGitClone(href);
-  if (!clone) return null;
+function InstallBlock({ href, title }: { href?: string; title: string }) {
+  const clone = href ? toGitClone(href) : null;
+  const slug = slugify(title);
   return (
-    <div className="text-[12px]">
+    <div className="text-[11.5px]">
       <div
-        className="rounded-md border px-3 py-2"
-        style={{ borderColor: BORDER_DIM, background: BG }}
+        className="rounded-sm px-2.5 py-2"
+        style={{
+          background: BG_INSET,
+          border: `1px solid ${PANEL_BORDER}`,
+        }}
       >
-        <div style={{ color: FG_DIM }}>
-          <span style={{ color: ACCENT_GREEN }}>$</span> git clone {clone}
+        <div style={{ color: FG }}>
+          <span style={{ color: ACCENT_GREEN }}>$</span>{" "}
+          {clone ? `git clone ${clone}` : `gh repo clone /${slug}`}
         </div>
-        <div style={{ color: FG_DIM }}>
-          <span style={{ color: ACCENT_GREEN }}>$</span> cd {slugify(title)}{" "}
-          &amp;&amp; ./setup
+        <div style={{ color: FG }}>
+          <span style={{ color: ACCENT_GREEN }}>$</span> cd {slug} &amp;&amp;{" "}
+          <span style={{ color: ACCENT_CYAN }}>./setup</span>
         </div>
       </div>
-      <p className="mt-2 text-[11.5px]" style={{ color: ACCENT_GREEN }}>
-        That&rsquo;s it. You&rsquo;re ready.
-      </p>
+      <div className="flex items-center justify-between mt-2">
+        <p className="text-[11px]" style={{ color: ACCENT_GREEN }}>
+          That&rsquo;s it. You&rsquo;re ready.
+        </p>
+        <span
+          className="inline-flex items-center justify-center size-5 rounded-sm"
+          style={{
+            border: `1px solid ${ACCENT_GREEN}`,
+            color: ACCENT_GREEN,
+          }}
+        >
+          ✓
+        </span>
+      </div>
     </div>
   );
 }
 
-/* ─────────────────────────  Specialists grid  ─────────────────────── */
+/* ─────────────────────────  Specialists grid  ─────────────────── */
 
 function SpecialistsGrid({
   projects,
@@ -632,15 +576,15 @@ function SpecialistsGrid({
   projects: ReturnType<typeof useResume>["projects"];
 }) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 mt-2">
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-3 pt-1">
       {projects.map((p, i) => (
-        <SpecialistCard key={p.id} p={p} index={i} />
+        <SpecialistCell key={p.id} p={p} index={i} />
       ))}
     </div>
   );
 }
 
-function SpecialistCard({
+function SpecialistCell({
   p,
   index,
 }: {
@@ -655,37 +599,30 @@ function SpecialistCard({
       href={p.href ?? "#"}
       target={p.href ? "_blank" : undefined}
       rel="noreferrer"
-      className="block rounded-md border p-3 transition-colors hover:bg-[rgba(126,231,135,0.04)]"
-      style={{ borderColor: BORDER_DIM, background: BG }}
+      className="block min-w-0 group"
     >
       <div className="flex items-baseline gap-1.5">
-        <span style={{ color }}>{glyph(index)}</span>
+        <span style={{ color }} className="text-[11px] flex-none">
+          {glyph(index)}
+        </span>
         <span
-          className="text-[12.5px] font-bold truncate"
+          className="text-[12.5px] font-bold truncate group-hover:underline underline-offset-2"
           style={{ color }}
         >
           /{slug}
         </span>
       </div>
       <p
-        className="mt-1.5 text-[11.5px] leading-snug line-clamp-3"
+        className="mt-0.5 text-[11px] leading-snug line-clamp-2"
         style={{ color: FG_DIM }}
       >
-        {truncate(summary, 90)}
+        {truncate(summary, 80)}
       </p>
-      {p.active && (
-        <div
-          className="mt-1.5 text-[10px] font-bold uppercase tracking-wider"
-          style={{ color: ACCENT_GREEN }}
-        >
-          ● active
-        </div>
-      )}
     </a>
   );
 }
 
-/* ─────────────────────────  Power tools  ──────────────────────────── */
+/* ─────────────────────────  Power tools  ──────────────────────── */
 
 function PowerTools({
   skills,
@@ -693,58 +630,96 @@ function PowerTools({
   skills: ReturnType<typeof useResume>["skills"];
 }) {
   return (
-    <div className="text-[12px] grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1 mt-1">
-      {skills.map((s, i) => (
-        <div
-          key={s.name}
-          className="flex items-baseline gap-2"
-          style={{ color: FG }}
-        >
+    <ul className="space-y-0.5 text-[11.5px] pt-1">
+      {skills.slice(0, 12).map((s, i) => (
+        <li key={s.name} className="flex items-baseline gap-2">
           <span style={{ color: pickIndexColor(i) }} className="flex-none">
             ⚙
           </span>
           <span
-            className="font-bold truncate"
-            style={{ color: ACCENT_CYAN }}
+            className="font-bold truncate flex-none"
+            style={{ color: ACCENT_CYAN, minWidth: "90px" }}
           >
             /{slugify(s.name)}
           </span>
-          {s.usageCount ? (
-            <span
-              className="text-[10.5px] tabular-nums ml-auto flex-none"
-              style={{ color: FG_FAINT }}
-            >
-              ×{s.usageCount}
-            </span>
-          ) : null}
-        </div>
+          <span
+            className="truncate flex-1 min-w-0"
+            style={{ color: FG_DIM }}
+          >
+            {describeSkill(s.name, s.usageCount)}
+          </span>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 
-/* ─────────────────────────  Tech cloud  ──────────────────────────── */
+function describeSkill(name: string, count?: number): string {
+  const n = name.toLowerCase();
+  if (n.includes("typescript") || n === "ts") return "Strongly typed app code.";
+  if (n.includes("react")) return "Component-first interfaces.";
+  if (n.includes("next")) return "Full-stack app framework.";
+  if (n.includes("python")) return "Tooling & data work.";
+  if (n.includes("rust")) return "Systems-grade primitives.";
+  if (n.includes("tailwind")) return "Atomic styling system.";
+  if (n.includes("postgres") || n.includes("sql")) return "Relational data.";
+  if (n.includes("redis")) return "In-memory state.";
+  if (n.includes("docker")) return "Reproducible containers.";
+  if (n.includes("kuber") || n === "k8s") return "Orchestrated workloads.";
+  if (n.includes("cloudflare")) return "Edge runtime + R2 + D1.";
+  if (n.includes("aws") || n.includes("gcp") || n.includes("azure"))
+    return "Cloud infrastructure.";
+  if (n.includes("node")) return "Server-side runtime.";
+  if (n.includes("bun")) return "Faster Node-shaped runtime.";
+  if (n.includes("go") || n === "golang") return "Concurrent backends.";
+  if (n.includes("swift")) return "Native iOS / macOS.";
+  if (n.includes("kotlin")) return "Native Android / JVM.";
+  if (n.includes("anthropic") || n.includes("claude"))
+    return "Frontier LLM SDK.";
+  if (n.includes("openai") || n.includes("gpt")) return "OpenAI-family models.";
+  if (n.includes("vercel")) return "Frontend deploy target.";
+  if (n.includes("fly")) return "Edge deploy target.";
+  if (n.includes("supabase")) return "Postgres + auth + storage.";
+  if (n.includes("prisma") || n.includes("drizzle")) return "Type-safe ORM.";
+  return count ? `Used in ${count} repos.` : "Production-grade.";
+}
 
-function TechCloud({ techs }: { techs: string[] }) {
+/* ─────────────────────────  Tech grid (Works With)  ───────────── */
+
+function TechGrid({ techs }: { techs: string[] }) {
   return (
-    <div className="mt-1">
-      <div className="flex flex-wrap gap-1.5">
-        {techs.slice(0, 20).map((t, i) => (
-          <span
+    <div className="pt-1">
+      <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+        {techs.slice(0, 12).map((t, i) => (
+          <div
             key={t}
-            className="px-2 py-0.5 rounded text-[11px] border"
+            className="flex flex-col items-center justify-center px-1 py-1.5 rounded-sm"
             style={{
-              borderColor: BORDER_DIM,
-              background: BG,
-              color: pickIndexColor(i),
+              background: BG_INSET,
+              border: `1px solid ${PANEL_BORDER}`,
+              minHeight: "44px",
             }}
           >
-            {t}
-          </span>
+            <div
+              className="size-5 rounded-sm flex items-center justify-center text-[10px] font-bold"
+              style={{
+                background: `${pickIndexColor(i)}22`,
+                color: pickIndexColor(i),
+              }}
+            >
+              {t.charAt(0).toUpperCase()}
+            </div>
+            <span
+              className="text-[10px] mt-1 truncate w-full text-center"
+              style={{ color: FG_DIM }}
+            >
+              {truncate(t, 10)}
+            </span>
+          </div>
         ))}
       </div>
       <p
-        className="mt-3 text-[11.5px]"
+        className="text-[11px] mt-2 italic"
         style={{ color: ACCENT_GREEN }}
       >
         …and more. One setup. All supported.
@@ -753,52 +728,59 @@ function TechCloud({ techs }: { techs: string[] }) {
   );
 }
 
-/* ─────────────────────────  Quick start (work)  ──────────────────── */
+/* ─────────────────────────  Quick start  ──────────────────────── */
 
 function QuickStart({
-  work,
+  handle,
+  topRepo,
+  topTitle,
 }: {
-  work: ReturnType<typeof useResume>["work"];
+  handle: string;
+  topRepo?: string;
+  topTitle?: string;
 }) {
+  const clone = topRepo ? toGitClone(topRepo) : null;
   return (
-    <ol className="space-y-3 mt-1 text-[12px]">
-      {work.map((w, i) => (
-        <li key={w.id}>
-          <div className="flex items-baseline gap-2">
-            <span
-              className="text-[11px] font-bold tabular-nums"
-              style={{ color: ACCENT_ORANGE }}
-            >
-              {i + 1}.
-            </span>
-            <span className="font-bold" style={{ color: FG }}>
-              {w.title}
-            </span>
-            <span style={{ color: FG_FAINT }}>at</span>
-            <span className="font-bold" style={{ color: ACCENT_CYAN }}>
-              {w.company}
-            </span>
+    <div className="text-[11.5px] pt-1">
+      <div>
+        <p style={{ color: FG }}>
+          <span style={{ color: ACCENT_ORANGE }}>1.</span> Visit the portfolio
+        </p>
+        <div
+          className="mt-1 rounded-sm px-2.5 py-1.5"
+          style={{ background: BG_INSET, border: `1px solid ${PANEL_BORDER}` }}
+        >
+          <span style={{ color: ACCENT_GREEN }}>$</span>{" "}
+          <span style={{ color: ACCENT_CYAN }}>open</span> gitshow.io/{handle}
+        </div>
+      </div>
+      <div className="mt-2.5">
+        <p style={{ color: FG }}>
+          <span style={{ color: ACCENT_ORANGE }}>2.</span>{" "}
+          {clone ? "Clone the headline project" : "Clone something I shipped"}
+        </p>
+        <div
+          className="mt-1 rounded-sm px-2.5 py-1.5 space-y-0.5"
+          style={{ background: BG_INSET, border: `1px solid ${PANEL_BORDER}` }}
+        >
+          <div>
+            <span style={{ color: ACCENT_GREEN }}>$</span>{" "}
+            {clone ? `git clone ${clone}` : `gh repo clone ${handle}/${slugify(topTitle ?? "portfolio")}`}
           </div>
-          <div
-            className="ml-4 text-[10.5px] tabular-nums"
-            style={{ color: FG_FAINT }}
-          >
-            {formatResumeDateRange(w.start, w.end)}
-            {w.location ? ` · ${w.location}` : ""}
+          <div>
+            <span style={{ color: ACCENT_GREEN }}>$</span>{" "}
+            {clone ? `cd ${slugify(topTitle ?? "portfolio")}` : `# read, fork, ship`}
           </div>
-        </li>
-      ))}
-      <li
-        className="text-[11px] mt-2 pt-2 border-t"
-        style={{ color: FG_DIM, borderColor: BORDER_DIM }}
-      >
+        </div>
+      </div>
+      <p className="mt-2.5 text-[11px]" style={{ color: FG_DIM }}>
         Stop there. You&rsquo;ll know if it&rsquo;s for you.
-      </li>
-    </ol>
+      </p>
+    </div>
   );
 }
 
-/* ─────────────────────────  Education  ───────────────────────────── */
+/* ─────────────────────────  Education  ────────────────────────── */
 
 function EducationList({
   items,
@@ -806,30 +788,25 @@ function EducationList({
   items: ReturnType<typeof useResume>["education"];
 }) {
   return (
-    <div className="space-y-2 text-[12.5px] mt-1">
+    <ul className="space-y-2 text-[11.5px] pt-1">
       {items.map((e) => (
-        <div key={e.id}>
+        <li key={e.id}>
           <div className="flex items-baseline justify-between gap-2 flex-wrap">
             <span className="font-bold" style={{ color: FG }}>
               {e.school}
             </span>
-            <span
-              className="text-[10.5px] tabular-nums"
-              style={{ color: FG_FAINT }}
-            >
+            <span className="text-[10.5px] tabular-nums" style={{ color: FG_FAINT }}>
               {formatResumeDateRange(e.start, e.end)}
             </span>
           </div>
-          <div className="text-[12px]" style={{ color: ACCENT_CYAN }}>
-            {e.degree}
-          </div>
-        </div>
+          <div style={{ color: ACCENT_CYAN }}>{e.degree}</div>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 
-/* ─────────────────────────  Hackathons  ──────────────────────────── */
+/* ─────────────────────────  Hackathons  ───────────────────────── */
 
 function HackathonsLog({
   items,
@@ -837,7 +814,7 @@ function HackathonsLog({
   items: ReturnType<typeof useResume>["hackathons"];
 }) {
   return (
-    <ul className="space-y-2 mt-1 text-[12px]">
+    <ul className="space-y-2 text-[11.5px] pt-1">
       {items.map((h) => (
         <li key={h.id}>
           <div className="flex items-baseline gap-2 flex-wrap">
@@ -852,25 +829,15 @@ function HackathonsLog({
             <span className="font-bold" style={{ color: FG }}>
               {h.title}
             </span>
-            {h.rank && (
-              <span style={{ color: ACCENT_GREEN }}>★ {h.rank}</span>
-            )}
+            {h.rank && <span style={{ color: ACCENT_GREEN }}>★ {h.rank}</span>}
           </div>
-          {h.description && (
-            <p
-              className="text-[11.5px] mt-0.5 line-clamp-2"
-              style={{ color: FG_DIM }}
-            >
-              {h.description}
-            </p>
-          )}
         </li>
       ))}
     </ul>
   );
 }
 
-/* ─────────────────────────  Build log  ───────────────────────────── */
+/* ─────────────────────────  Build log  ────────────────────────── */
 
 function BuildLogList({
   items,
@@ -878,9 +845,9 @@ function BuildLogList({
   items: ReturnType<typeof useResume>["buildLog"];
 }) {
   return (
-    <div className="space-y-1 mt-1 text-[12px]">
+    <ul className="space-y-0.5 text-[11.5px] pt-1">
       {items.map((b, i) => (
-        <div key={b.id} className="flex items-baseline gap-2">
+        <li key={b.id} className="flex items-baseline gap-2">
           <span
             className="text-[10.5px] font-bold tabular-nums flex-none"
             style={{ color: ACCENT_ORANGE }}
@@ -889,182 +856,173 @@ function BuildLogList({
           </span>
           <span
             aria-hidden
-            className="size-1.5 rounded-full flex-none translate-y-[3px]"
+            className="size-1.5 rounded-full flex-none translate-y-[2px]"
             style={{ background: b.languageColor ?? FG_DIM }}
           />
-          <span className="truncate flex-1 min-w-0">
-            <span className="font-bold" style={{ color: FG }}>
-              {b.title}
-            </span>
-            <span style={{ color: FG_DIM }}> — {b.description}</span>
+          <span className="truncate flex-1 min-w-0" style={{ color: FG }}>
+            {b.title}{" "}
+            <span style={{ color: FG_DIM }}>— {b.description}</span>
           </span>
-          <span
-            className="text-[10.5px] tabular-nums hidden sm:inline flex-none"
-            style={{ color: FG_FAINT }}
-          >
-            {b.dates}
-          </span>
-        </div>
+        </li>
       ))}
-    </div>
+    </ul>
   );
 }
 
-/* ─────────────────────────  Publications  ─────────────────────────── */
+/* ─────────────────────────  Footer panels  ────────────────────── */
 
-function PublicationsList({
-  items,
-}: {
-  items: ReturnType<typeof useResume>["publications"];
-}) {
+function Manifesto({ name }: { name: string }) {
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-1 text-[12px]">
-      {items.map((p) => (
-        <a
-          key={p.id}
-          href={p.url}
-          target="_blank"
-          rel="noreferrer"
-          className="rounded-md border p-2.5 hover:bg-[rgba(126,231,135,0.04)] transition-colors block"
-          style={{ borderColor: BORDER_DIM, background: BG }}
-        >
-          <div
-            className="text-[10px] uppercase tracking-wider font-bold"
-            style={{ color: ACCENT_GREEN }}
-          >
-            [{p.kind}]
-          </div>
-          <div className="font-bold mt-0.5" style={{ color: ACCENT_CYAN }}>
-            {p.title}
-          </div>
-          {p.venue && (
-            <div
-              className="text-[11px] mt-0.5 italic"
-              style={{ color: FG_DIM }}
-            >
-              {p.venue}
-            </div>
-          )}
-        </a>
-      ))}
-    </div>
+    <section
+      className="rounded-md min-w-0 px-3 py-3 flex items-start gap-3"
+      style={{
+        border: `1px solid ${PANEL_BORDER}`,
+        background: BG_CARD,
+      }}
+    >
+      <span
+        className="text-[28px] leading-none font-bold flex-none"
+        style={{ color: ACCENT_GREEN }}
+      >
+        &gt;
+      </span>
+      <div className="text-[12.5px] leading-snug">
+        <p style={{ color: ACCENT_CYAN }}>
+          I open sourced how I build software.
+        </p>
+        <p style={{ color: ACCENT_CYAN }}>
+          Fork it. Improve it. Make it yours.
+        </p>
+        <p style={{ color: ACCENT_CYAN }}>
+          Go build something.{" "}
+          <span style={{ color: ACCENT_PINK }}>♥</span>
+        </p>
+        <p className="mt-2 text-[10.5px]" style={{ color: FG_FAINT }}>
+          — {name}
+        </p>
+      </div>
+    </section>
   );
 }
 
-/* ─────────────────────────  Footer prompt  ────────────────────────── */
-
-function FooterPrompt({ name }: { name: string }) {
-  return (
-    <div className="text-[12.5px] mt-1">
-      <p style={{ color: ACCENT_GREEN }}>
-        <span style={{ color: ACCENT_CYAN }}>&gt;</span> I open sourced how I
-        build software.
-      </p>
-      <p className="mt-1" style={{ color: ACCENT_CYAN }}>
-        Fork it. Improve it. Make it yours.
-      </p>
-      <p className="mt-1 flex items-baseline gap-1" style={{ color: ACCENT_CYAN }}>
-        Go build something.{" "}
-        <span style={{ color: ACCENT_PINK }}>♥</span>
-      </p>
-      <p className="mt-3 text-[11px]" style={{ color: FG_DIM }}>
-        — {name}
-      </p>
-    </div>
-  );
-}
-
-/* ─────────────────────────  Contact block  ────────────────────────── */
-
-function ContactBlock({
+function LicenseCard({
   email,
   socials,
-  url,
 }: {
   email?: string;
   socials: ReturnType<typeof allSocials>;
-  url?: string;
 }) {
-  const rows: Array<{ label: string; value: string; href: string }> = [];
-  if (email) rows.push({ label: "email", value: email, href: `mailto:${email}` });
-  if (url)
-    rows.push({ label: "site", value: prettyUrl(url), href: url });
-  for (const s of socials.slice(0, 6)) {
-    rows.push({
-      label: s.name.toLowerCase(),
-      value: prettyUrl(s.url),
-      href: s.url,
-    });
-  }
+  const primary =
+    socials.find((s) => s.name.toLowerCase() === "github") ?? socials[0];
   return (
-    <div className="space-y-1 text-[11.5px] mt-1">
-      {rows.map((r) => (
-        <div
-          key={r.label}
-          className="grid grid-cols-[64px_1fr] gap-2 items-baseline"
-        >
-          <span style={{ color: FG_DIM }}>{r.label}</span>
-          <a
-            href={r.href}
-            target={r.href.startsWith("mailto:") ? undefined : "_blank"}
-            rel="noreferrer"
-            className="truncate hover:underline underline-offset-2"
-            style={{ color: ACCENT_CYAN }}
-          >
-            {r.value}
-          </a>
-        </div>
-      ))}
-      <p className="mt-2 text-[11px]" style={{ color: FG_FAINT }}>
+    <section
+      className="rounded-md min-w-0 px-3 py-3"
+      style={{
+        border: `1px solid ${PANEL_BORDER}`,
+        background: BG_CARD,
+      }}
+    >
+      <p className="text-[12.5px] font-bold" style={{ color: ACCENT_GREEN }}>
+        Free. MIT licensed. Open source.
+      </p>
+      <p className="mt-2 text-[11px] leading-snug" style={{ color: FG_DIM }}>
         No premium tier. No waitlist. Just code that ships.
       </p>
-    </div>
+      <div className="mt-2.5 space-y-0.5 text-[11px]">
+        {primary && (
+          <div className="truncate">
+            <span style={{ color: FG_FAINT }}>docs:</span>{" "}
+            <a
+              href={primary.url}
+              target="_blank"
+              rel="noreferrer"
+              style={{ color: ACCENT_CYAN }}
+              className="hover:underline underline-offset-2"
+            >
+              {prettyUrl(primary.url)}
+            </a>
+          </div>
+        )}
+        {email && (
+          <div className="truncate">
+            <span style={{ color: FG_FAINT }}>mail:</span>{" "}
+            <a
+              href={`mailto:${email}`}
+              style={{ color: ACCENT_CYAN }}
+              className="hover:underline underline-offset-2"
+            >
+              {email}
+            </a>
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
-/* ─────────────────────────  Ship output  ──────────────────────────── */
-
-function ShipOutput({
+function ShipTerminal({
+  handle,
   projects,
   skills,
 }: {
+  handle: string;
   projects: number;
   skills: number;
 }) {
   return (
-    <div className="text-[12px] mt-1">
-      <div className="flex items-center gap-1 mb-1.5">
-        <span className="size-2 rounded-full bg-[#ff5f56]" />
-        <span className="size-2 rounded-full bg-[#ffbd2e]" />
-        <span className="size-2 rounded-full bg-[#27c93f]" />
-      </div>
-      <pre
-        className="font-mono text-[11.5px] leading-relaxed whitespace-pre-wrap"
-        style={{ color: FG }}
+    <section
+      className="rounded-md min-w-0 overflow-hidden"
+      style={{
+        border: `1px solid ${PANEL_BORDER}`,
+        background: BG_CARD,
+      }}
+    >
+      <header
+        className="px-3 py-1.5 flex items-center justify-between gap-2"
+        style={{
+          borderBottom: `1px solid ${PANEL_BORDER}`,
+          background: BG_INSET,
+        }}
       >
-        <span style={{ color: ACCENT_CYAN }}>[</span>
-        <span style={{ color: ACCENT_GREEN }}> tests: {projects} passed </span>
-        <span style={{ color: ACCENT_CYAN }}>]</span>
-        {"\n"}
-        <span style={{ color: ACCENT_CYAN }}>[</span>
-        <span style={{ color: ACCENT_GREEN }}> tools: {skills} loaded </span>
-        <span style={{ color: ACCENT_CYAN }}>]</span>
-        {"\n"}
-        <span style={{ color: ACCENT_CYAN }}>[</span>
-        <span style={{ color: ACCENT_GREEN }}> pr: opened </span>
-        <span style={{ color: ACCENT_CYAN }}>] </span>
-        <span style={{ color: ACCENT_GREEN }}>✓</span>
-        {"\n"}
-        <span style={{ color: ACCENT_CYAN }}>[</span>
-        <span style={{ color: ACCENT_GREEN }}> what shipped </span>
-        <span style={{ color: ACCENT_CYAN }}>] </span>
-        <span style={{ color: ACCENT_GREEN }}>✓</span>
-      </pre>
+        <span className="text-[11px] truncate" style={{ color: FG_DIM }}>
+          <span style={{ color: ACCENT_CYAN }}>{handle}</span>
+          <span style={{ color: FG_FAINT }}>@</span>
+          <span style={{ color: ACCENT_ORANGE }}>workshop</span>
+          <span style={{ color: FG_FAINT }}>:~$ </span>
+          <span style={{ color: FG }}>ship</span>
+        </span>
+        <span className="flex items-center gap-1 flex-none">
+          <span className="size-2 rounded-full bg-[#ff5f56]" />
+          <span className="size-2 rounded-full bg-[#ffbd2e]" />
+          <span className="size-2 rounded-full bg-[#27c93f]" />
+        </span>
+      </header>
+      <div className="px-3 py-2.5 text-[11.5px] font-mono space-y-0.5">
+        <Row label={`tests: ${projects} passed`} />
+        <Row label={`tools: ${skills} loaded`} />
+        <Row label="pr: opened" check />
+        <Row label="what shipped" check />
+      </div>
+    </section>
+  );
+}
+
+function Row({ label, check }: { label: string; check?: boolean }) {
+  return (
+    <div>
+      <span style={{ color: ACCENT_CYAN }}>[</span>
+      <span style={{ color: ACCENT_GREEN }}> {label} </span>
+      <span style={{ color: ACCENT_CYAN }}>]</span>
+      {check && (
+        <span style={{ color: ACCENT_GREEN }} className="ml-2">
+          ✓
+        </span>
+      )}
     </div>
   );
 }
 
-/* ─────────────────────────  Scanline overlay  ─────────────────────── */
+/* ─────────────────────────  Scanline overlay  ─────────────────── */
 
 function Scanline() {
   return (
@@ -1079,7 +1037,7 @@ function Scanline() {
   );
 }
 
-/* ─────────────────────────  Helpers  ──────────────────────────────── */
+/* ─────────────────────────  Stats helpers  ────────────────────── */
 
 type Stats = {
   firstYear: number;
@@ -1103,7 +1061,7 @@ function computeStats(r: ReturnType<typeof useResume>): Stats {
   const totalContributions = Math.max(total, 200);
   const latestDaily = Math.max(
     1,
-    Math.round(totalContributions / Math.max(years, 1) / 365 * 1.6),
+    Math.round((totalContributions / Math.max(years, 1) / 365) * 1.6),
   );
   const earlyDaily = Math.max(
     1,
@@ -1143,36 +1101,31 @@ function firstActiveYear(r: ReturnType<typeof useResume>): number {
   return Math.min(...candidates);
 }
 
-function firstWorkLine(r: ReturnType<typeof useResume>): string | null {
-  const w = r.work[0];
-  if (!w) return null;
-  return `${w.title} · ${w.company}`;
-}
-
 function parseYear(s: string | undefined): number | null {
   if (!s) return null;
   const m = s.match(/(19|20)\d{2}/);
   return m ? parseInt(m[0], 10) : null;
 }
 
+/* ─────────────────────────  Misc helpers  ─────────────────────── */
+
 function extractBullets(summary: string): string[] {
   if (!summary) return [];
   const text = summary.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
-  const sentences = text
+  return text
     .split(/(?<=[.!?])\s+/)
     .map((s) => s.trim())
-    .filter((s) => s.length > 12 && s.length < 180);
-  return sentences.slice(0, 4);
+    .filter((s) => s.length > 12 && s.length < 160)
+    .slice(0, 4);
 }
 
 function pickQuote(
   r: ReturnType<typeof useResume>,
 ): { text: string; attribution: string; source?: string } | null {
-  // Prefer a hackathon win, then a project's first web mention, then a summary excerpt.
   const winner = r.hackathons.find((h) => h.rank);
   if (winner && winner.description) {
     return {
-      text: `"${truncate(winner.description, 180)}"`,
+      text: winner.description,
       attribution: winner.rank ?? winner.title,
       source: winner.title,
     };
@@ -1181,7 +1134,7 @@ function pickQuote(
     const mention = p.webMentions?.[0];
     if (mention?.snippet) {
       return {
-        text: `"${truncate(mention.snippet, 180)}"`,
+        text: mention.snippet,
         attribution: mention.source,
         source: mention.title,
       };
@@ -1232,12 +1185,13 @@ function pickIndexColor(i: number): string {
     ACCENT_ORANGE,
     ACCENT_PINK,
     ACCENT_YELLOW,
+    ACCENT_RED,
   ];
   return palette[i % palette.length];
 }
 
 function glyph(i: number): string {
-  const glyphs = ["▸", "◆", "▣", "◉", "▤", "★", "◈", "▥"];
+  const glyphs = ["▸", "◆", "▣", "◉", "▤", "★", "◈", "▥", "⬢", "▰"];
   return glyphs[i % glyphs.length];
 }
 
