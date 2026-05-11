@@ -3,6 +3,8 @@
 
 import { useMemo } from "react";
 import { useResume, useHandle } from "@/components/data-provider";
+import ContributionTrend from "@/components/contribution-trend";
+import { resolveSkillIcon } from "@/components/skill-icons";
 import { allSocials } from "@gitshow/shared/resume";
 import { formatResumeDateRange } from "@/lib/format-date";
 
@@ -17,20 +19,22 @@ import { formatResumeDateRange } from "@/lib/format-date";
  */
 
 // ─────────────────────────  Palette  ─────────────────────────
-const BG = "#0a0d10";
-const BG_CARD = "#0d1117";
-const BG_INSET = "#070a0c";
-const FRAME = "rgba(126, 231, 135, 0.35)";
-const PANEL_BORDER = "rgba(126, 231, 135, 0.16)";
+// True-black bg (no blue cast). Section header color varies by panel
+// purpose: AMBER for state/metric panels, CYAN for list/inventory.
+const BG = "#0a0a0a";
+const BG_CARD = "#101010";
+const BG_INSET = "#070707";
+const FRAME = "rgba(126, 231, 135, 0.32)";
+const PANEL_BORDER = "rgba(126, 231, 135, 0.14)";
 const ACCENT_GREEN = "#7ee787";
 const ACCENT_CYAN = "#79c0ff";
+const ACCENT_AMBER = "#f9e2af";
 const ACCENT_ORANGE = "#ffa657";
 const ACCENT_PINK = "#f778ba";
-const ACCENT_YELLOW = "#f9e2af";
 const ACCENT_RED = "#ff7b72";
 const FG = "#e6edf3";
-const FG_DIM = "#8b949e";
-const FG_FAINT = "#6e7681";
+const FG_DIM = "#9d9d9d";
+const FG_FAINT = "#787878";
 
 export default function WorkshopTemplate() {
   const r = useResume();
@@ -39,7 +43,6 @@ export default function WorkshopTemplate() {
   const socials = allSocials(r);
 
   const stats = useMemo(() => computeStats(r), [r]);
-  const bullets = useMemo(() => extractBullets(r.person.summary), [r.person.summary]);
   const quote = useMemo(() => pickQuote(r), [r]);
   const techs = useMemo(() => collectTechs(r), [r]);
 
@@ -63,27 +66,27 @@ export default function WorkshopTemplate() {
 
           <TurnLine handle={handle} />
 
-          {/* Row 2: stats | (what is + install) */}
-          <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.55fr_1fr] gap-3">
+          {/* Row 2: stats | (currently + GH contributions) */}
+          <div className="mt-4 grid grid-cols-1 lg:grid-cols-[1.45fr_1fr] gap-3">
             <Panel
               title="⚡ BY THE NUMBERS"
               subtitle="(measured on logical code)"
-              titleColor={ACCENT_ORANGE}
+              titleColor={ACCENT_AMBER}
             >
               <ByTheNumbers stats={stats} />
             </Panel>
 
             <div className="flex flex-col gap-3 min-w-0">
-              <Panel title={`> WHAT IS @${handle.toUpperCase()}?`}>
-                <WhatIs
-                  bullets={bullets}
-                  projectCount={r.projects.length}
-                  skillCount={r.skills.length}
-                />
+              <Panel title="$ CURRENTLY" titleColor={ACCENT_AMBER}>
+                <CurrentlyBlock r={r} />
               </Panel>
 
-              <Panel title="$ CURRENTLY">
-                <CurrentlyBlock r={r} />
+              <Panel
+                title="> GH CONTRIBUTIONS"
+                subtitle="(streamed live · github.com)"
+                titleColor={ACCENT_AMBER}
+              >
+                <ContributionTrendInline handle={handle} />
               </Panel>
             </div>
           </div>
@@ -458,14 +461,14 @@ function ByTheNumbers({ stats }: { stats: Stats }) {
         <div
           className="rounded-md px-3 py-2.5 text-center self-center"
           style={{
-            border: `1px dashed ${ACCENT_GREEN}`,
+            border: `1px dashed ${ACCENT_AMBER}`,
             background: BG_INSET,
             minWidth: "92px",
           }}
         >
           <div
             className="text-[20px] font-bold leading-none tabular-nums"
-            style={{ color: ACCENT_GREEN }}
+            style={{ color: ACCENT_AMBER }}
           >
             ~{stats.multiplier}x
           </div>
@@ -510,40 +513,6 @@ function ByTheNumbers({ stats }: { stats: Stats }) {
   );
 }
 
-/* ─────────────────────────  WHAT IS  ─────────────────────────── */
-
-function WhatIs({
-  bullets,
-  projectCount,
-  skillCount,
-}: {
-  bullets: string[];
-  projectCount: number;
-  skillCount: number;
-}) {
-  const fallback = [
-    `${projectCount} projects, each open to inspection.`,
-    `${skillCount} tools and frameworks on call.`,
-    "Bias for taste, clarity, and shipping.",
-    "AI wrote some of it. The point is what shipped.",
-  ];
-  const list = bullets.length >= 2 ? bullets : fallback;
-  return (
-    <ul className="space-y-1 text-[12px] pt-0.5">
-      {list.slice(0, 5).map((b, i) => (
-        <li key={i} className="flex gap-2">
-          <span style={{ color: ACCENT_GREEN }} className="flex-none">
-            •
-          </span>
-          <span style={{ color: FG }} className="leading-snug">
-            {b}
-          </span>
-        </li>
-      ))}
-    </ul>
-  );
-}
-
 /* ─────────────────────────  Currently block  ──────────────────── */
 
 function CurrentlyBlock({ r }: { r: ReturnType<typeof useResume> }) {
@@ -581,16 +550,6 @@ function CurrentlyBlock({ r }: { r: ReturnType<typeof useResume> }) {
       ),
     });
   }
-  if (r.person.location) {
-    rows.push({
-      key: "based in",
-      value: <span style={{ color: FG }}>{r.person.location}</span>,
-    });
-  }
-  rows.push({
-    key: "open to",
-    value: <span style={{ color: ACCENT_GREEN }}>say hi · collab · advise</span>,
-  });
 
   return (
     <div className="text-[11.5px]">
@@ -607,6 +566,31 @@ function CurrentlyBlock({ r }: { r: ReturnType<typeof useResume> }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/* ─────────────────────────  Contribution chart inline  ─────────── */
+
+function ContributionTrendInline({ handle }: { handle: string }) {
+  return (
+    <div className="pt-1">
+      <ContributionTrend
+        handle={handle}
+        accent={ACCENT_GREEN}
+        fg={FG}
+        dim={FG_DIM}
+        ghost="rgba(255,255,255,0.08)"
+        cardBg="transparent"
+        cardBorder="transparent"
+        radius={0}
+        chartHeight={70}
+        pad={{ x: 0, y: 6 }}
+        eyebrow="lifetime"
+        caption="github.com"
+        tooltipBg={BG}
+        tooltipBorder={PANEL_BORDER}
+      />
     </div>
   );
 }
@@ -738,33 +722,46 @@ function TechGrid({ techs }: { techs: string[] }) {
   return (
     <div className="pt-1">
       <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
-        {techs.slice(0, 12).map((t, i) => (
-          <div
-            key={t}
-            className="flex flex-col items-center justify-center px-1 py-1.5 rounded-sm"
-            style={{
-              background: BG_INSET,
-              border: `1px solid ${PANEL_BORDER}`,
-              minHeight: "44px",
-            }}
-          >
+        {techs.slice(0, 12).map((t, i) => {
+          const Icon = resolveSkillIcon(t);
+          const tone = pickIndexColor(i);
+          return (
             <div
-              className="size-5 rounded-sm flex items-center justify-center text-[10px] font-bold"
+              key={t}
+              className="flex flex-col items-center justify-center gap-1 px-1 py-2 rounded-sm"
               style={{
-                background: `${pickIndexColor(i)}22`,
-                color: pickIndexColor(i),
+                background: BG_INSET,
+                border: `1px solid ${PANEL_BORDER}`,
+                minHeight: "52px",
               }}
             >
-              {t.charAt(0).toUpperCase()}
+              {Icon ? (
+                <Icon
+                  className="size-5"
+                  style={{ color: FG }}
+                  aria-hidden
+                />
+              ) : (
+                <span
+                  className="size-5 rounded-sm flex items-center justify-center text-[10px] font-bold"
+                  style={{
+                    background: `${tone}22`,
+                    color: tone,
+                  }}
+                  aria-hidden
+                >
+                  {t.charAt(0).toUpperCase()}
+                </span>
+              )}
+              <span
+                className="text-[10px] truncate w-full text-center"
+                style={{ color: FG_DIM }}
+              >
+                {truncate(t, 11)}
+              </span>
             </div>
-            <span
-              className="text-[10px] mt-1 truncate w-full text-center"
-              style={{ color: FG_DIM }}
-            >
-              {truncate(t, 10)}
-            </span>
-          </div>
-        ))}
+          );
+        })}
       </div>
       <p
         className="text-[11px] mt-2 italic"
@@ -1183,16 +1180,6 @@ function parseYear(s: string | undefined): number | null {
 
 /* ─────────────────────────  Misc helpers  ─────────────────────── */
 
-function extractBullets(summary: string): string[] {
-  if (!summary) return [];
-  const text = summary.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1");
-  return text
-    .split(/(?<=[.!?])\s+/)
-    .map((s) => s.trim())
-    .filter((s) => s.length > 12 && s.length < 160)
-    .slice(0, 4);
-}
-
 function pickQuote(
   r: ReturnType<typeof useResume>,
 ): { text: string; attribution: string; source?: string } | null {
@@ -1258,7 +1245,7 @@ function pickIndexColor(i: number): string {
     ACCENT_CYAN,
     ACCENT_ORANGE,
     ACCENT_PINK,
-    ACCENT_YELLOW,
+    ACCENT_AMBER,
     ACCENT_RED,
   ];
   return palette[i % palette.length];
