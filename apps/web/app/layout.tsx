@@ -30,20 +30,22 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.NEXT_PUBLIC_APP_URL ?? "https://gitshow.io",
   ),
-  title: "GitShow — portfolios from your git history",
+  title: "GitShow — stop applying. get hired.",
   description:
-    "GitShow turns a developer's public git history into a polished, editable portfolio.",
+    "The job-search system for developers who'd rather ship than spam recruiters. Portfolio, custom domain, analytics, build-in-public engine, tailored resumes — one opinionated stack.",
   openGraph: {
-    title: "GitShow",
-    description: "Portfolios from your git history.",
+    title: "GitShow — stop applying. get hired.",
+    description:
+      "The opinionated job-search stack for developers. Build → Show → Close.",
     url: "/",
     siteName: "GitShow",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "GitShow",
-    description: "Portfolios from your git history.",
+    title: "GitShow — stop applying. get hired.",
+    description:
+      "The opinionated job-search stack for developers. Build → Show → Close.",
   },
   icons: {
     // Browsers pick by media query: light-mode tabs get icon-light,

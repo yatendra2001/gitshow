@@ -4,6 +4,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { DataProvider } from "@/components/data-provider";
 import { TrackView } from "@/components/track-view";
 import { ShareButton } from "@/components/share-button";
+import { OpenToWorkBadge } from "@/components/open-to-work-badge";
 import { loadPublishedResume } from "@/lib/resume-io";
 import { isReservedHandle } from "@/lib/profiles";
 
@@ -49,6 +50,7 @@ export default async function PortfolioLayout({
     >
       <TrackView handle={handle} />
       <ShareButton handle={handle} name={resume.person.name} />
+      <OpenToWorkBadge handle={handle} />
       {children}
     </DataProvider>
   );

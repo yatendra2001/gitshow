@@ -18,7 +18,7 @@ import { ImageResponse } from "next/og";
  * Workers via OpenNext.
  */
 
-export const alt = "GitShow — portfolios from your git history";
+export const alt = "GitShow — stop applying. get hired.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -74,7 +74,7 @@ export default function OgImage() {
               maxWidth: 980,
             }}
           >
-            Portfolios from your git history.
+            Stop applying. Get hired.
           </div>
           <div
             style={{
@@ -85,8 +85,9 @@ export default function OgImage() {
               display: "flex",
             }}
           >
-            AI reads your GitHub and builds your portfolio, ATS resume, and
-            custom domain. Live in 20 minutes.
+            The job-search system for developers who&apos;d rather ship than
+            spam recruiters. Portfolio · domain · analytics · build-in-public
+            · tailored resumes.
           </div>
         </div>
 
@@ -100,7 +101,7 @@ export default function OgImage() {
           }}
         >
           <span>gitshow.io</span>
-          <span>Sign in with GitHub →</span>
+          <span>Build your dev brand →</span>
         </div>
       </div>
     ),

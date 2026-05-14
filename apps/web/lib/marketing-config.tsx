@@ -48,17 +48,22 @@ type NavLink = {
 export const siteConfig = {
     name: "GitShow",
     description:
-        "GitShow turns your GitHub history into a portfolio, ATS resume, custom domain, and visitor analytics dashboard.",
-    cta: "Create my portfolio",
+        "The job-search system for developers who'd rather ship than spam recruiters. Portfolio, custom domain, analytics, build-in-public engine, tailored resumes — one opinionated stack.",
+    cta: "Build my dev brand",
     url: process.env.NEXT_PUBLIC_APP_URL || "https://gitshow.io",
     keywords: [
+        "developer job search",
+        "build in public for engineers",
+        "developer brand",
         "engineering portfolio platform",
         "developer portfolio",
         "GitHub portfolio",
         "ATS resume builder",
+        "tailored resume for job description",
         "portfolio analytics",
         "custom domain portfolio",
         "AI portfolio generator",
+        "get hired as developer",
     ],
     links: {
         email: "yatendra@gitshow.io",
@@ -68,60 +73,65 @@ export const siteConfig = {
     nav: {
         links: [
             { id: 1, name: "Demo", href: "/yatendra2001" },
-            { id: 2, name: "Features", href: "#features" },
-            { id: 3, name: "Pricing", href: "#pricing" },
-            { id: 4, name: "FAQ", href: "#faq" },
+            { id: 2, name: "The system", href: "#system" },
+            { id: 3, name: "Features", href: "#features" },
+            { id: 4, name: "Pricing", href: "#pricing" },
+            { id: 5, name: "FAQ", href: "#faq" },
         ] as NavLink[],
     },
     hero: {
         badgeIcon: <Icons.stackedIcons className="size-4" />,
-        badge: "Live in 20 minutes",
-        title: "Let AI build your portfolio.",
+        badge: "The system for getting hired",
+        title: (
+            <>
+                Stop applying. <Highlight>Get hired.</Highlight>
+            </>
+        ),
         description:
-            "GitShow reads your github history and creates a portfolio site, ats resume, and custom domain setup for you.",
+            "The job-search system for developers who'd rather ship than spam recruiters. Portfolio, custom domain, analytics, build-in-public engine, tailored resumes — one opinionated stack, in one dashboard.",
         demo: {
             label: "See a real portfolio",
             href: "/yatendra2001",
         },
         cta: {
             primary: {
-                text: "Sign in with GitHub",
+                text: "Build my dev brand",
                 href: "/signin",
             },
         },
     },
     demoSection: {
-        title: "See what you get.",
+        title: "One opinionated stack.",
         description:
-            "Templates, resume, domains, and analytics live in one dashboard.",
+            "Portfolio, custom domain, analytics, build-in-public, tailored resumes — every layer of the dev-brand stack, in one dashboard.",
         items: [
             {
                 id: 1,
-                title: "Templates",
+                title: "Portfolio",
                 content:
-                    "Choose Classic, Spotlight, Glow, Bento, Terminal, or Minimal. Switch anytime. Your content stays in place.",
+                    "A portfolio generated from your repos, not a Squarespace template. Pick Classic, Spotlight, Glow, Bento, Terminal, or Workshop and switch anytime — your content carries over.",
                 image: "/marketing/templates.png",
             },
             {
                 id: 2,
-                title: "Resume + PDF",
+                title: "Custom domain",
                 content:
-                "Edit your resume and preview the PDF beside it. It stays synced with your portfolio content.",
-                image: "/marketing/resume.png",
+                    "yourname.dev, hosted, SSL, edge-cached, done. One CNAME and you own the URL recruiters land on.",
+                image: "/marketing/domain.png",
             },
             {
                 id: 3,
                 title: "Analytics",
                 content:
-                "See views, unique visitors, countries, sources, devices, and visit timing. Visitors are hashed, with no cookies.",
+                    "See who is reading, where they came from, and what they opened. No cookies, no third-party scripts, no leaking your audience to anyone else.",
                 image: "/marketing/analytics_1.png",
             },
             {
                 id: 4,
-                title: "Custom domain",
+                title: "Tailored resume",
                 content:
-                    "Use your own domain. GitShow handles SSL, DNS verification, and Cloudflare edge caching.",
-                image: "/marketing/domain.png",
+                    "Paste a job description, get a one-page ATS resume rewritten from your real shipped work. One resume per JD, every claim backed by a commit.",
+                image: "/marketing/resume.png",
             },
         ],
     },
@@ -329,16 +339,16 @@ export const siteConfig = {
     workflowSection: {
         badge: {
             icon: <Icons.globe className="size-4 text-muted-foreground" />,
-            text: "Know who's reading",
+            text: "The Show layer",
         },
-        title: (<>See who is reading <Highlight>your portfolio.</Highlight></>),
+        title: (<>See exactly who is reading <Highlight>your portfolio.</Highlight></>),
 
         description:
-            "GitShow shows where visits come from, which projects people open, and when interest spikes.",
+            "Your portfolio is your storefront. GitShow shows you who is walking in, what they read, and which channels are sending real recruiter traffic.",
         sections: {
-            title: "Analytics built in.",
+            title: "Built-in analytics.",
             description:
-                "Track visits, countries, sources, devices, browsers, and recent activity from your dashboard. No extra scripts, no cookies for visitors.",
+                "Track visits, countries, sources, devices, browsers, and recent activity from your dashboard. No extra scripts, no cookies for visitors. The signal you need to double down on the channels that are working — and ignore the ones that aren't.",
             ctaButton: {
                 text: "See it in action",
                 href: "/yatendra2001",
@@ -349,7 +359,7 @@ export const siteConfig = {
                     icon: <Icons.globe className="size-4 text-muted-foreground" />,
                     title: "Location and timing",
                     description:
-                        "See visit timing by hour, top countries, and geographic spread on a map.",
+                        "See visit timing by hour, top countries, and geographic spread on a map. Catch the spikes when a post lands or a recruiter forwards your link.",
                     image: "/marketing/analytics_2.png",
                 },
                 {
@@ -357,7 +367,7 @@ export const siteConfig = {
                     icon: <Icons.magicStar className="size-4 text-muted-foreground" />,
                     title: "Sources and activity",
                     description:
-                        "See top referrers, devices, browsers, and a recent activity stream.",
+                        "Top referrers, devices, browsers, and a live activity stream. Know which post on which platform is actually moving the needle.",
                     image: "/marketing/analytics_3.png",
                 },
             ],
@@ -366,15 +376,15 @@ export const siteConfig = {
     featureSection: {
         badge: {
             icon: <Icons.terminal className="size-4 text-muted-foreground" />,
-            text: "Written from your work",
+            text: "Your code is the cover letter",
         },
-        title: (<>A portfolio written from <Highlight>your work.</Highlight></>),
+        title: (<>Written from <Highlight>your actual work.</Highlight></>),
         description:
-            "GitShow reads your GitHub activity and drafts clear project writeups with links back to the commits, PRs, and reviews behind them.",
+            "GitShow reads your full GitHub history — repos, commits, PRs, reviews — and builds the entire stack from it. Every claim links back to the work. Every resume bullet is grounded in a real shipped thing.",
         sections: {
-            title: "Proof included.",
+            title: "Receipts included.",
             description:
-                "Portfolio sections can link back to the commit, PR, or review they came from. Recruiters can check the work behind each claim.",
+                "Portfolio paragraphs link back to commits. Resume bullets reference real PRs. Build-in-public posts cite the release that triggered them. Recruiters can check the work behind every claim — and most of them do.",
             ctaButton: {
                 text: "Generate yours",
                 href: "/signin",
@@ -385,14 +395,14 @@ export const siteConfig = {
                     icon: <Icons.terminal className="size-4 text-muted-foreground" />,
                     title: "Use the repos you choose",
                     description:
-                        "Include public repos, private projects, and authorized org repos. You decide what appears before you share.",
+                        "Include public repos, private projects, and authorized org repos. You decide what appears before you share. Private repos get the same depth-of-read as public ones.",
                 },
                 {
                     id: 2,
                     icon: <Icons.globe className="size-4 text-muted-foreground" />,
-                    title: "Publish at your URL",
+                    title: "Found by the right recruiters",
                     description:
-                        "Share gitshow.io/{handle} or connect your own domain. Pages are SEO-indexed and served from the edge.",
+                        "Share gitshow.io/{handle} or connect your own domain. Pages are SEO-indexed and edge-cached. Recruiters searching '<your-name> developer' land on your turf, not LinkedIn's.",
                 },
             ],
         }
@@ -402,23 +412,23 @@ export const siteConfig = {
             icon: <Icons.terminal className="size-4 text-muted-foreground" />,
             text: "How to start",
         },
-        title: (<>Connect. <Highlight>Review. Share.</Highlight></>),
+        title: (<>Connect. Review. <Highlight>Get hired.</Highlight></>),
         description:
-            "Start with GitHub, review the draft, then share your link.",
+            "GitHub in, dev brand out. The system runs you through every layer in order — Build, Show, Close — so nothing important is left out.",
         step1: {
-            title: "Sign in with GitHub",
+            title: "Connect GitHub",
             description:
-                "Grant read-only repo access. You can revoke access from GitHub anytime.",
+                "Grant read-only repo access. GitShow reads your full history — repos, commits, PRs, reviews — and builds the knowledge graph that powers every other surface. Revoke any time.",
         },
         step2: {
             title: "Review the draft",
             description:
-                "GitShow scans your repo data, commits, PRs, and reviews, then drafts your portfolio and resume.",
+                "Portfolio, resume, and your build-in-public voice profile all draft from the same source of truth. Edit any paragraph, hide private work, switch templates, paste a job description for a tailored resume.",
         },
         step3: {
-            title: "Share your portfolio",
+            title: "Show, build, close",
             description:
-                "Pick a template, connect a domain, edit any section, and share the URL when you're ready.",
+                "Ship your portfolio. Turn each notable PR into a post draft. Toggle 'open to work' so recruiters can find you. Tailor a resume when you need to close. Each layer reinforces the others.",
         },
     },
     testimonialSection: {
@@ -573,7 +583,19 @@ export const siteConfig = {
                 id: 1,
                 question: "What does GitShow do, exactly?",
                 answer:
-                    "Sign in with GitHub. GitShow reads your repos, commits, PRs, and reviews, then drafts a portfolio site in plain English. It also creates an ATS-safe PDF resume, adds analytics, and supports custom domains. About twenty minutes end to end.",
+                    "Sign in with GitHub. GitShow reads your full repo history — code, commits, PRs, reviews — and ships the whole dev-brand stack: a portfolio site, ATS resume tailored per job description, custom domain, visitor analytics, an 'open to work' surface, and a build-in-public engine that turns notable PRs and releases into draft posts in your voice. About twenty minutes for the first portfolio; the rest is always-on.",
+            },
+            {
+                id: 10,
+                question: "What's the 'build-in-public engine'?",
+                answer:
+                    "When you ship something notable — a release, a merged PR, a project crossing a milestone — GitShow drafts the LinkedIn post, X thread, and blog stub. In your voice, calibrated from a few writing samples you paste once. You edit and post. GitShow never auto-posts; voice and risk stay with you.",
+            },
+            {
+                id: 11,
+                question: "How does 'open to work' / inbound work?",
+                answer:
+                    "Toggle it on in /app/hiring. Your portfolio gets a subtle 'open to' badge and a recruiter contact form. Inbounds land in your dashboard inbox, lightly triaged for fit. You reply on your own time. Anti-LinkedIn-firehose: you stay in control of the conversation.",
             },
             {
                 id: 2,
@@ -627,14 +649,14 @@ export const siteConfig = {
     },
     ctaSection: {
         id: "cta",
-        title: "Create your portfolio.",
+        title: "Your code is doing the work. Make it count.",
         backgroundImage: "/agent-cta-background.png",
         button: {
-            text: "Sign in with GitHub",
+            text: "Build my dev brand",
             href: "/signin",
         },
         subtext:
-            "Connect GitHub, review the draft, and share your link.",
+            "Connect GitHub. The whole system runs in twenty minutes.",
     },
     footerLinks: [
         {

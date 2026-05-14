@@ -25,12 +25,15 @@ import { useEffect, useId, useState } from "react";
 import {
   Analytics01Icon,
   ArrowUpRight01Icon,
+  Briefcase01Icon,
   Cancel01Icon,
   CreditCardIcon,
   File02Icon,
   Globe02Icon,
   HelpCircleIcon,
+  Megaphone01Icon,
   Menu01Icon,
+  Mic01Icon,
   MoonIcon,
   PencilEdit01Icon,
   ShieldKeyIcon,
@@ -65,6 +68,14 @@ const NAV_SECTIONS: NavSection[] = [
       { href: "/app/preview", label: "Preview", icon: ViewIcon },
       { href: "/app/resume", label: "Resume", icon: File02Icon },
       { href: "/app/domain", label: "Custom domain", icon: Globe02Icon },
+    ],
+  },
+  {
+    title: "Dev brand",
+    items: [
+      { href: "/app/voice", label: "Voice", icon: Mic01Icon },
+      { href: "/app/build", label: "Build in public", icon: Megaphone01Icon },
+      { href: "/app/hiring", label: "Hiring", icon: Briefcase01Icon },
     ],
   },
   {
