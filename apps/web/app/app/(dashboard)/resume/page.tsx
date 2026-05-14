@@ -1,18 +1,20 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { requireProPage } from "@/lib/entitlements";
-import { loadResumeDoc } from "@/lib/resume-doc-io";
 import { loadDraftResume, loadPublishedResume } from "@/lib/resume-io";
 import { loadTailoredIndex } from "@/lib/tailored-resume-io";
-import { ResumeEditor } from "./_resume-editor";
-import { ResumeEmpty } from "./_resume-empty";
+import { ResumeList } from "./_list";
 
 /**
- * /app/resume — printable, ATS-friendly resume editor.
+ * `/app/resume` — list of every resume the user has generated.
  *
- * Three states:
- *   1. No portfolio Resume yet → user must run a scan first.
- *   2. Resume exists but no ResumeDoc generated → show "Generate" CTA.
- *   3. ResumeDoc exists → render the full editor.
+ * Every resume is JD-tied. There's no "base resume" concept anymore;
+ * the only way to generate is via the "New resume" dialog (paste a
+ * JD → stream → land on the new variant's editor).
+ *
+ * Server-loads:
+ *   - The tailored index (one R2 GET, cheap).
+ *   - Whether the user has a portfolio (published or draft) — needed
+ *     so the empty state can nudge them to run a scan if they haven't.
  */
 
 export const dynamic = "force-dynamic";
@@ -22,26 +24,17 @@ export default async function ResumePage() {
   const handle = session.user.login!;
   const { env } = await getCloudflareContext({ async: true });
 
-  const [doc, published, draft, tailoredIndex] = await Promise.all([
-    loadResumeDoc(env.BUCKET, handle),
+  const [index, published, draft] = await Promise.all([
+    loadTailoredIndex(env.BUCKET, handle),
     loadPublishedResume(env.BUCKET, handle),
     loadDraftResume(env.BUCKET, handle),
-    loadTailoredIndex(env.BUCKET, handle),
   ]);
-
-  if (!doc) {
-    return (
-      <div className="gs-enter">
-        <ResumeEmpty hasResume={Boolean(published || draft)} />
-      </div>
-    );
-  }
 
   return (
     <div className="gs-enter">
-      <ResumeEditor
-        initialDoc={doc}
-        tailoredCount={tailoredIndex.items.length}
+      <ResumeList
+        initialItems={index.items}
+        hasPortfolio={Boolean(published || draft)}
       />
     </div>
   );

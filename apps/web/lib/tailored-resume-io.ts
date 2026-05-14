@@ -21,6 +21,7 @@ import {
   type TailoredResumeIndex,
   type TailoredResumeMeta,
 } from "@gitshow/shared/tailored-resume";
+import { ResumeDocSchema } from "@gitshow/shared/resume-doc";
 
 const MAX_TAILORED_PER_USER = 50;
 
@@ -146,6 +147,70 @@ export async function deleteTailoredResume(
     { httpMetadata: { contentType: "application/json" } },
   );
   return { ok: true };
+}
+
+/**
+ * Deep-merge a `Partial<ResumeDoc>` patch onto the existing tailored
+ * resume's doc, validate the result, and write back. Mirrors the base
+ * editor's `patchResumeDoc` shape so the editor form code can target
+ * either surface with the same payload format.
+ *
+ * Arrays are REPLACED rather than merged per-index — callers pass the
+ * full new array when editing list sections.
+ */
+export async function patchTailoredResume(
+  bucket: R2Bucket,
+  handle: string,
+  id: string,
+  patch: unknown,
+): Promise<
+  | { ok: true; tailored: TailoredResume }
+  | { ok: false; error: string; issues?: unknown }
+> {
+  const current = await loadTailoredResume(bucket, handle, id);
+  if (!current) return { ok: false, error: "not_found" };
+
+  const mergedDoc = deepMerge(
+    current.doc as unknown as Record<string, unknown>,
+    patch as Record<string, unknown>,
+  );
+
+  const parsed = ResumeDocSchema.safeParse(mergedDoc);
+  if (!parsed.success) {
+    return { ok: false, error: "invalid_patch", issues: parsed.error.issues };
+  }
+
+  const next: TailoredResume = { ...current, doc: parsed.data };
+  const written = await writeTailoredResume(bucket, handle, next);
+  return { ok: true, tailored: written };
+}
+
+function deepMerge(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) continue;
+    if (Array.isArray(v)) {
+      out[k] = v;
+      continue;
+    }
+    if (v && typeof v === "object") {
+      const baseVal = base[k];
+      if (baseVal && typeof baseVal === "object" && !Array.isArray(baseVal)) {
+        out[k] = deepMerge(
+          baseVal as Record<string, unknown>,
+          v as Record<string, unknown>,
+        );
+        continue;
+      }
+      out[k] = v;
+      continue;
+    }
+    out[k] = v;
+  }
+  return out;
 }
 
 /**
