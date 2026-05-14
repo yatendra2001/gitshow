@@ -34,7 +34,6 @@ import {
   ArrowUp01Icon,
   ArrowDown01Icon,
   Loading03Icon,
-  CheckmarkBadge01Icon,
 } from "@hugeicons/core-free-icons";
 import type {
   ResumeDoc,
@@ -50,14 +49,13 @@ import {
   estimateContentLines,
   ONE_PAGE_LINE_BUDGET,
 } from "@gitshow/shared/resume-doc";
-import type { TailoredResumeMeta } from "@gitshow/shared/tailored-resume";
 import { cn } from "@/lib/utils";
 import {
   PrintableResume,
   RESUME_PRINT_CSS,
 } from "@/components/resume/printable";
 import { DeleteResumeButton } from "./_delete-resume-button";
-import { TailoredVersionsSection } from "./_tailored";
+import { ResumeShellToolbar } from "./_shell";
 
 const SAVE_DEBOUNCE_MS = 700;
 
@@ -71,10 +69,10 @@ type PageFit = {
 
 export function ResumeEditor({
   initialDoc,
-  initialTailored,
+  tailoredCount,
 }: {
   initialDoc: ResumeDoc;
-  initialTailored: TailoredResumeMeta[];
+  tailoredCount: number;
 }) {
   const [doc, setDoc] = useState<ResumeDoc>(initialDoc);
   const [status, setStatus] = useState<Status>("idle");
@@ -244,24 +242,32 @@ export function ResumeEditor({
 
   return (
     <div className="flex flex-col min-h-[calc(100svh-3.5rem)]">
-      <Toolbar
-        status={status}
-        errMsg={errMsg}
-        onDownload={onDownload}
-        downloading={downloading}
-        downloadPct={downloadPct}
-        downloadLabel={downloadLabel}
-        lineCount={lineCount}
-        pageFit={pageFit}
-        overBudget={overBudget}
+      <ResumeShellToolbar
+        active="base"
+        tailoredCount={tailoredCount}
+        trailing={
+          <>
+            <FitIndicator
+              fit={pageFit}
+              estimatedLines={lineCount}
+              over={overBudget}
+            />
+            <SaveBadge status={status} errMsg={errMsg} />
+            <DownloadButton
+              onClick={onDownload}
+              downloading={downloading}
+              pct={downloadPct}
+              label={downloadLabel}
+            />
+          </>
+        }
       />
 
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[minmax(0,520px)_minmax(0,1fr)]">
         {/* Form pane */}
         <div className="border-r border-border/30 lg:overflow-y-auto lg:max-h-[calc(100svh-3.5rem-3.5rem)] gs-pane-scroll">
           <div className="px-5 py-6 space-y-6">
-            <TailoredVersionsSection initialItems={initialTailored} />
-            <AtsBadge />
+            <AtsCaption />
             <HeaderForm doc={doc} onPatch={onPatch} />
             <ExperienceForm doc={doc} onPatch={onPatch} />
             <ProjectsForm doc={doc} onPatch={onPatch} />
@@ -276,58 +282,6 @@ export function ResumeEditor({
 
         {/* Preview pane */}
         <PreviewPane doc={doc} onFitChange={setPageFit} />
-      </div>
-    </div>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────
-// Toolbar
-// ──────────────────────────────────────────────────────────────
-
-function Toolbar({
-  status,
-  errMsg,
-  onDownload,
-  downloading,
-  downloadPct,
-  downloadLabel,
-  lineCount,
-  pageFit,
-  overBudget,
-}: {
-  status: Status;
-  errMsg: string | null;
-  onDownload: () => void;
-  downloading: boolean;
-  downloadPct: number;
-  downloadLabel: string;
-  lineCount: number;
-  pageFit: PageFit | null;
-  overBudget: boolean;
-}) {
-  return (
-    <div className="sticky top-14 z-10 flex items-center gap-3 border-b border-border/30 bg-background/85 backdrop-blur px-5 h-14">
-      <div className="flex items-center gap-2 min-w-0">
-        <h1 className="text-[14px] font-semibold tracking-tight">Resume</h1>
-        <span className="text-[11px] text-muted-foreground">
-          One page · ATS-safe
-        </span>
-      </div>
-
-      <div className="ml-auto flex items-center gap-2">
-        <FitIndicator
-          fit={pageFit}
-          estimatedLines={lineCount}
-          over={overBudget}
-        />
-        <SaveBadge status={status} errMsg={errMsg} />
-        <DownloadButton
-          onClick={onDownload}
-          downloading={downloading}
-          pct={downloadPct}
-          label={downloadLabel}
-        />
       </div>
     </div>
   );
@@ -523,30 +477,24 @@ function SaveBadge({
   );
 }
 
-function AtsBadge() {
+/**
+ * Slim ATS reassurance line. Earlier iterations used a full-bleed
+ * info card here — useful on visit #1, noise from visit #2 onward.
+ * One muted line is enough; the full guarantees live in marketing.
+ */
+function AtsCaption() {
   return (
-    <div
-      className={cn(
-        "flex items-start gap-2.5 rounded-lg border border-border/40 bg-foreground/[0.02] px-3 py-2.5",
-      )}
-    >
+    <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
       <HugeiconsIcon
-        icon={CheckmarkBadge01Icon}
-        size={16}
-        strokeWidth={2}
-        className="mt-0.5 text-foreground/70 shrink-0"
+        icon={Tick02Icon}
+        size={11}
+        strokeWidth={2.25}
+        className="shrink-0 text-foreground/60"
       />
-      <div className="text-[12px] leading-relaxed">
-        <div className="font-semibold text-foreground">
-          ATS-safe, recruiter-friendly, founder-friendly
-        </div>
-        <div className="text-muted-foreground mt-0.5">
-          Single column · pure black & white · standard fonts · zero icons in the
-          PDF · plain bullets. Built to pass every parser and read clean for a
-          human in 10 seconds.
-        </div>
-      </div>
-    </div>
+      <span>
+        ATS-safe · single-column · standard fonts · plain bullets
+      </span>
+    </p>
   );
 }
 

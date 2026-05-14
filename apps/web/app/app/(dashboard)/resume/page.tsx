@@ -39,7 +39,10 @@ export default async function ResumePage() {
 
   return (
     <div className="gs-enter">
-      <ResumeEditor initialDoc={doc} initialTailored={tailoredIndex.items} />
+      <ResumeEditor
+        initialDoc={doc}
+        tailoredCount={tailoredIndex.items.length}
+      />
     </div>
   );
 }
