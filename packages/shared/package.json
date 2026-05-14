@@ -12,6 +12,7 @@
     "./models": "./src/models.ts",
     "./resume": "./src/resume.ts",
     "./resume-doc": "./src/resume-doc.ts",
+    "./tailored-resume": "./src/tailored-resume.ts",
     "./kg": "./src/kg/index.ts",
     "./skill-icon-slugs": "./src/skill-icon-slugs.ts",
     "./events": "./src/events.ts",

@@ -50,12 +50,14 @@ import {
   estimateContentLines,
   ONE_PAGE_LINE_BUDGET,
 } from "@gitshow/shared/resume-doc";
+import type { TailoredResumeMeta } from "@gitshow/shared/tailored-resume";
 import { cn } from "@/lib/utils";
 import {
   PrintableResume,
   RESUME_PRINT_CSS,
 } from "@/components/resume/printable";
 import { DeleteResumeButton } from "./_delete-resume-button";
+import { TailoredVersionsSection } from "./_tailored";
 
 const SAVE_DEBOUNCE_MS = 700;
 
@@ -69,8 +71,10 @@ type PageFit = {
 
 export function ResumeEditor({
   initialDoc,
+  initialTailored,
 }: {
   initialDoc: ResumeDoc;
+  initialTailored: TailoredResumeMeta[];
 }) {
   const [doc, setDoc] = useState<ResumeDoc>(initialDoc);
   const [status, setStatus] = useState<Status>("idle");
@@ -256,6 +260,7 @@ export function ResumeEditor({
         {/* Form pane */}
         <div className="border-r border-border/30 lg:overflow-y-auto lg:max-h-[calc(100svh-3.5rem-3.5rem)] gs-pane-scroll">
           <div className="px-5 py-6 space-y-6">
+            <TailoredVersionsSection initialItems={initialTailored} />
             <AtsBadge />
             <HeaderForm doc={doc} onPatch={onPatch} />
             <ExperienceForm doc={doc} onPatch={onPatch} />
