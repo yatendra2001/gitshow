@@ -2,6 +2,7 @@ import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { requireProPage } from "@/lib/entitlements";
 import { loadResumeDoc } from "@/lib/resume-doc-io";
 import { loadDraftResume, loadPublishedResume } from "@/lib/resume-io";
+import { loadTailoredIndex } from "@/lib/tailored-resume-io";
 import { ResumeEditor } from "./_resume-editor";
 import { ResumeEmpty } from "./_resume-empty";
 
@@ -21,10 +22,11 @@ export default async function ResumePage() {
   const handle = session.user.login!;
   const { env } = await getCloudflareContext({ async: true });
 
-  const [doc, published, draft] = await Promise.all([
+  const [doc, published, draft, tailoredIndex] = await Promise.all([
     loadResumeDoc(env.BUCKET, handle),
     loadPublishedResume(env.BUCKET, handle),
     loadDraftResume(env.BUCKET, handle),
+    loadTailoredIndex(env.BUCKET, handle),
   ]);
 
   if (!doc) {
@@ -37,7 +39,7 @@ export default async function ResumePage() {
 
   return (
     <div className="gs-enter">
-      <ResumeEditor initialDoc={doc} />
+      <ResumeEditor initialDoc={doc} initialTailored={tailoredIndex.items} />
     </div>
   );
 }
