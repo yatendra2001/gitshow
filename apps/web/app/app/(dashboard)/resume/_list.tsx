@@ -1,10 +1,14 @@
 "use client";
 
 /**
- * `/app/resume/tailored` client surface — header + card grid + tailor
- * dialog. Owns the optimistic insert when the dialog produces a new
- * variant, so the new card lands in the grid before the navigation to
- * its detail page completes.
+ * `/app/resume` client surface — the home of resumes.
+ *
+ * Layout: sticky title row with "+ New resume" CTA, then a grid of
+ * cards (one per JD). Click a card → that resume's editor. Empty
+ * state nudges the user with one line of copy.
+ *
+ * Copy is intentionally terse — no marketing paragraphs, no
+ * reassurance prose. The product speaks for itself.
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -21,109 +25,97 @@ import type {
   TailoredResumeMeta,
 } from "@gitshow/shared/tailored-resume";
 import { tailoredDisplayLabel } from "@gitshow/shared/tailored-resume";
-import { ResumeShellToolbar } from "../_shell";
-import { TailorDialog } from "./_tailor-dialog";
+import { NewResumeDialog } from "./_dialog";
 import { cn } from "@/lib/utils";
 
-export function TailoredListPage({
+export function ResumeList({
   initialItems,
-  hasBaseResume,
+  hasPortfolio,
 }: {
   initialItems: TailoredResumeMeta[];
-  hasBaseResume: boolean;
+  hasPortfolio: boolean;
 }) {
   const router = useRouter();
   const [items, setItems] = useState<TailoredResumeMeta[]>(initialItems);
   const [dialogOpen, setDialogOpen] = useState(false);
 
-  const onTailored = useCallback(
+  const onCreated = useCallback(
     (tailored: TailoredResume) => {
+      // Optimistically prepend so the new card flashes in even before
+      // the navigation resolves.
       setItems((prev) => [
         tailored.meta,
         ...prev.filter((it) => it.id !== tailored.meta.id),
       ]);
       setDialogOpen(false);
-      router.push(`/app/resume/tailored/${tailored.meta.id}`);
+      router.push(`/app/resume/${tailored.meta.id}`);
     },
     [router],
   );
 
-  const trailing = (
-    <button
-      type="button"
-      onClick={() => setDialogOpen(true)}
-      disabled={!hasBaseResume}
-      className={cn(
-        "inline-flex items-center gap-1.5 rounded-md h-8 px-3 text-[12.5px] font-medium",
-        "bg-foreground text-background min-h-9",
-        "transition-[opacity] duration-150 ease",
-        "hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed",
-      )}
-      title={
-        hasBaseResume
-          ? undefined
-          : "Generate your base resume first — tailoring builds on top of it."
-      }
-    >
-      <HugeiconsIcon icon={MagicWand01Icon} size={13} strokeWidth={2} />
-      Tailor for job
-    </button>
-  );
-
   return (
     <div className="flex flex-col min-h-[calc(100svh-3.5rem)]">
-      <ResumeShellToolbar
-        active="tailored"
-        tailoredCount={items.length}
-        trailing={trailing}
-      />
+      <div className="sticky top-14 z-10 flex items-center gap-3 border-b border-border/30 bg-background/85 backdrop-blur px-5 h-14">
+        <h1 className="text-[13px] font-medium tracking-tight">Resumes</h1>
+        {items.length > 0 ? (
+          <span className="text-[11px] text-muted-foreground tabular-nums">
+            {items.length}
+          </span>
+        ) : null}
+        <div className="ml-auto">
+          <button
+            type="button"
+            onClick={() => setDialogOpen(true)}
+            disabled={!hasPortfolio}
+            className={cn(
+              "inline-flex items-center gap-1.5 rounded-md h-8 px-3 text-[12.5px] font-medium",
+              "bg-foreground text-background min-h-9",
+              "transition-[opacity] duration-150 ease",
+              "hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed",
+            )}
+            title={
+              hasPortfolio
+                ? undefined
+                : "Run a portfolio scan first — every resume is built from it."
+            }
+          >
+            <HugeiconsIcon icon={MagicWand01Icon} size={13} strokeWidth={2} />
+            New resume
+          </button>
+        </div>
+      </div>
 
-      <main className="mx-auto w-full max-w-5xl px-5 sm:px-6 py-8 sm:py-10">
-        <header className="mb-6 sm:mb-8">
-          <div className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground/70 mb-1">
-            Tailored versions
-          </div>
-          <h1 className="text-[20px] sm:text-[24px] font-semibold tracking-tight leading-tight">
-            Variants of your resume, tailored to specific jobs
-          </h1>
-          <p className="mt-2 text-[13.5px] leading-relaxed text-muted-foreground max-w-prose">
-            Drop a job description and we&apos;ll spin up a tailored copy of
-            your resume — reordered bullets, prioritized projects, JD-aligned
-            skills — using only facts already in your base resume. Your base
-            stays untouched.
-          </p>
-        </header>
-
-        {!hasBaseResume ? (
-          <NoBaseResumeState />
+      <main className="mx-auto w-full max-w-5xl px-5 sm:px-6 py-6 sm:py-8">
+        {!hasPortfolio ? (
+          <NoPortfolioState />
         ) : items.length === 0 ? (
-          <EmptyState onTailor={() => setDialogOpen(true)} />
+          <EmptyState onNew={() => setDialogOpen(true)} />
         ) : (
           <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {items.map((meta) => (
               <li key={meta.id}>
-                <TailoredCard meta={meta} />
+                <ResumeCard meta={meta} />
               </li>
             ))}
           </ul>
         )}
       </main>
 
-      <TailorDialog
+      <NewResumeDialog
         open={dialogOpen}
         onOpenChange={setDialogOpen}
-        onTailored={onTailored}
+        onCreated={onCreated}
       />
     </div>
   );
 }
 
-function TailoredCard({ meta }: { meta: TailoredResumeMeta }) {
+function ResumeCard({ meta }: { meta: TailoredResumeMeta }) {
   const label = tailoredDisplayLabel(meta);
   const rel = useRelativeTime(meta.createdAt);
   return (
     <Link
-      href={`/app/resume/tailored/${meta.id}`}
+      href={`/app/resume/${meta.id}`}
       className={cn(
         "group block rounded-lg border border-border/40 bg-card/40",
         "p-4 h-full flex flex-col gap-2",
@@ -132,7 +124,7 @@ function TailoredCard({ meta }: { meta: TailoredResumeMeta }) {
         "outline-none focus-visible:ring-2 focus-visible:ring-foreground/20",
         "min-h-[120px]",
       )}
-      aria-label={`Open tailored resume: ${label}`}
+      aria-label={`Open resume: ${label}`}
     >
       <div className="flex items-start justify-between gap-2">
         <div className="inline-flex items-center gap-2 min-w-0">
@@ -153,7 +145,7 @@ function TailoredCard({ meta }: { meta: TailoredResumeMeta }) {
           className="mt-0.5 shrink-0 text-muted-foreground/40 transition-transform duration-150 ease group-hover:translate-x-0.5 group-hover:text-foreground/70"
         />
       </div>
-      <p className="flex-1 line-clamp-3 text-[12.5px] leading-snug text-muted-foreground/85">
+      <p className="flex-1 line-clamp-2 text-[12.5px] leading-snug text-muted-foreground/85">
         {meta.jdExcerpt}
       </p>
       <div className="mt-1 text-[11px] tabular-nums text-muted-foreground/70">
@@ -163,23 +155,18 @@ function TailoredCard({ meta }: { meta: TailoredResumeMeta }) {
   );
 }
 
-function EmptyState({ onTailor }: { onTailor: () => void }) {
+function EmptyState({ onNew }: { onNew: () => void }) {
   return (
-    <div className="rounded-xl border border-dashed border-border/50 bg-foreground/[0.015] py-12 px-6 flex flex-col items-center text-center">
+    <div className="rounded-xl border border-dashed border-border/50 bg-foreground/[0.015] py-14 px-6 flex flex-col items-center text-center">
       <div className="mb-3 inline-flex size-9 items-center justify-center rounded-full bg-foreground/[0.05]">
         <HugeiconsIcon icon={MagicWand01Icon} size={16} strokeWidth={2} />
       </div>
-      <h2 className="text-[15px] font-semibold tracking-tight">
-        No tailored versions yet
-      </h2>
-      <p className="mt-1.5 max-w-md text-[12.5px] leading-relaxed text-muted-foreground">
-        Drop your first job description and we&apos;ll build a JD-aligned
-        variant for it — every version stays here for one-click download
-        whenever you need it.
+      <p className="text-[13.5px] text-foreground">
+        Drop a job description to build your first resume.
       </p>
       <button
         type="button"
-        onClick={onTailor}
+        onClick={onNew}
         className={cn(
           "mt-4 inline-flex items-center gap-1.5 rounded-md h-9 px-3.5 text-[13px] font-medium",
           "bg-foreground text-background min-h-9",
@@ -188,25 +175,20 @@ function EmptyState({ onTailor }: { onTailor: () => void }) {
         )}
       >
         <HugeiconsIcon icon={MagicWand01Icon} size={14} strokeWidth={2} />
-        Tailor for a job
+        New resume
       </button>
     </div>
   );
 }
 
-function NoBaseResumeState() {
+function NoPortfolioState() {
   return (
-    <div className="rounded-xl border border-dashed border-border/50 bg-foreground/[0.015] py-12 px-6 flex flex-col items-center text-center">
-      <h2 className="text-[15px] font-semibold tracking-tight">
-        Generate your base resume first
-      </h2>
-      <p className="mt-1.5 max-w-md text-[12.5px] leading-relaxed text-muted-foreground">
-        Tailoring builds on top of your base resume — generate it from
-        your portfolio, then come back here to spin up JD-specific
-        variants.
+    <div className="rounded-xl border border-dashed border-border/50 bg-foreground/[0.015] py-14 px-6 flex flex-col items-center text-center">
+      <p className="text-[13.5px] text-foreground">
+        Run a portfolio scan to begin.
       </p>
       <Link
-        href="/app/resume"
+        href="/app"
         className={cn(
           "mt-4 inline-flex items-center gap-1.5 rounded-md h-9 px-3.5 text-[13px] font-medium",
           "bg-foreground text-background min-h-9",
@@ -214,7 +196,7 @@ function NoBaseResumeState() {
           "hover:opacity-90",
         )}
       >
-        Go to base resume
+        Go to dashboard
       </Link>
     </div>
   );

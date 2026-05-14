@@ -1,7 +1,8 @@
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { parse, Allow } from "partial-json";
 import { requireProApi } from "@/lib/entitlements";
-import { loadResumeDoc } from "@/lib/resume-doc-io";
+import { loadDraftResume, loadPublishedResume } from "@/lib/resume-io";
+import { distillResume } from "@/lib/resume-doc-ai";
 import {
   newTailoredId,
   writeTailoredResume,
@@ -11,7 +12,6 @@ import {
   TAILOR_SONNET_MODEL,
   TAILOR_SYSTEM_PROMPT,
   buildTailoredFromAI,
-  buildTailorUserPrompt,
   coerceTailoredFromAI,
 } from "@/lib/tailored-resume-ai";
 import {
@@ -24,16 +24,19 @@ import {
  *
  * Body: { jobDescription: string }
  *
- * Streams Server-Sent Events as the AI tailors the base ResumeDoc to
- * the supplied JD. Wire format mirrors /api/resume/doc/generate-stream:
+ * Streams Server-Sent Events as the AI generates a JD-tailored resume
+ * directly from the user's portfolio. No "base resume" step — every
+ * resume in gitshow is tied to a JD, so we go portfolio + JD → resume
+ * in a single AI call.
  *
+ * Wire format:
  *   data: {"type":"partial","doc":{...partial ResumeDoc...},"jobTitle":"...","company":"..."}
  *   data: {"type":"done","tailored":{...full TailoredResume...}}
  *   data: {"type":"error","error":"...","detail":"..."}
  *
- * The final `done` event carries the fully validated TailoredResume +
- * meta — the client uses that both to refresh the list AND to render
- * the just-generated resume immediately.
+ * The final `done` event carries the validated TailoredResume + meta
+ * — the client uses that both to refresh the list AND to navigate to
+ * the new variant's editor.
  */
 
 export const maxDuration = 120;
@@ -80,16 +83,20 @@ export async function POST(req: Request) {
   }
 
   const handle = session.user.login;
-  const base = await loadResumeDoc(env.BUCKET, handle);
-  if (!base) {
+  const [published, draft] = await Promise.all([
+    loadPublishedResume(env.BUCKET, handle),
+    loadDraftResume(env.BUCKET, handle),
+  ]);
+  const portfolio = published ?? draft;
+  if (!portfolio) {
     return jsonError(
-      "no_base_resume",
+      "no_portfolio",
       404,
-      "Generate your main resume first — tailoring builds on top of it.",
+      "Run a portfolio scan first — every resume is built from it.",
     );
   }
 
-  const baseSourceVersion = base.meta.version ?? 0;
+  const baseSourceVersion = portfolio.meta.version ?? 0;
   const bucket = env.BUCKET;
 
   const upstream = await fetch(TAILOR_OPENROUTER_URL, {
@@ -104,7 +111,10 @@ export async function POST(req: Request) {
       model: TAILOR_SONNET_MODEL,
       messages: [
         { role: "system", content: TAILOR_SYSTEM_PROMPT },
-        { role: "user", content: buildTailorUserPrompt(base, jd) },
+        {
+          role: "user",
+          content: buildPortfolioJdPrompt(distillResume(portfolio), jd),
+        },
       ],
       temperature: 0.35,
       response_format: { type: "json_object" },
@@ -258,4 +268,27 @@ function jsonError(code: string, status: number, detail?: string) {
     status,
     headers: { "Content-Type": "application/json" },
   });
+}
+
+/**
+ * Build the user-message body for the tailoring call. The system
+ * prompt asks for portfolio + JD → tailored resume; we pass the
+ * distilled portfolio (already trimmed by `distillResume`) and the
+ * raw JD text. The tailoring rules in the prompt (no fabrication,
+ * impact-first bullets, etc.) work identically whether the input is
+ * a previously-generated ResumeDoc or a freshly distilled portfolio.
+ */
+function buildPortfolioJdPrompt(
+  distilledPortfolio: unknown,
+  jobDescription: string,
+): string {
+  return `Tailor a one-page resume from this portfolio against the job below. Return JSON only.
+
+BASE_RESUME (distilled portfolio):
+${JSON.stringify(distilledPortfolio, null, 2)}
+
+JOB_DESCRIPTION:
+"""
+${jobDescription}
+"""`;
 }

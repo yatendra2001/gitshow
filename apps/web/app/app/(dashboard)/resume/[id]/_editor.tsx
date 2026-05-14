@@ -1,29 +1,29 @@
 "use client";
 
 /**
- * Resume editor shell.
+ * Per-resume editor — `/app/resume/[id]`.
  *
- * Layout: form left (max ~520px), live preview right (scrolls into a
- * fixed page frame). On mobile the preview collapses into a tab pair.
+ * Every resume in gitshow is JD-tied; this is the editor for one of
+ * them. Form on the left, live preview on the right, autosaving each
+ * keystroke (debounced) to `/api/resume/tailored/[id]`.
  *
- * State model mirrors /app/edit:
- *   - `doc` is the single source of truth for the editor.
+ * State model:
+ *   - `doc` is the single source of truth for the form.
  *   - Each form change calls `onPatch(partial)` which:
  *       1. Optimistically merges into local state.
- *       2. Queues a debounced PATCH /api/resume/doc.
+ *       2. Queues a debounced PATCH /api/resume/tailored/[id].
  *       3. Reconciles the server response back into local state.
- *   - "Regenerate bullets" hits /api/resume/doc/regenerate-bullets and
- *     folds the response into the matching experience entry, then
- *     PATCHes.
- *   - "Download PDF" POSTs /api/resume/doc/pdf and triggers a download.
+ *   - "Download PDF" POSTs the current doc to /api/resume/doc/pdf.
  *
- * Animation policy (Emil): every transition specifies its property,
- * 150ms ease-out for hover, 200ms for entrance. No layout shift on
- * dynamic numbers (tabular-nums on the page-fit indicator).
+ * Animation policy: every transition specifies its property, 150ms
+ * ease-out for hover, 200ms for entrance. No layout shift on dynamic
+ * numbers (tabular-nums on the page-fit indicator).
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Add01Icon,
@@ -32,6 +32,7 @@ import {
   AlertCircleIcon,
   ArrowUp01Icon,
   ArrowDown01Icon,
+  ArrowLeft01Icon,
   Loading03Icon,
 } from "@hugeicons/core-free-icons";
 import type {
@@ -45,6 +46,11 @@ import type {
   ResumeSectionKey,
 } from "@gitshow/shared/resume-doc";
 import { estimateContentLines } from "@gitshow/shared/resume-doc";
+import type {
+  TailoredResume,
+  TailoredResumeMeta,
+} from "@gitshow/shared/tailored-resume";
+import { tailoredDisplayLabel } from "@gitshow/shared/tailored-resume";
 import { cn } from "@/lib/utils";
 import { ResumePdfDownloadButton } from "@/components/resume/download-pdf-button";
 import {
@@ -52,28 +58,31 @@ import {
   type ResumePageFit,
 } from "@/components/resume/preview-pane";
 import { ResumeFitChip } from "@/components/resume/fit-chip";
-import { DeleteResumeButton } from "./_delete-resume-button";
-import { ResumeShellToolbar } from "./_shell";
 
 const SAVE_DEBOUNCE_MS = 700;
 
 type Status = "idle" | "saving" | "saved" | "error";
 
 export function ResumeEditor({
-  initialDoc,
-  tailoredCount,
+  initialTailored,
 }: {
-  initialDoc: ResumeDoc;
-  tailoredCount: number;
+  initialTailored: TailoredResume;
 }) {
-  const [doc, setDoc] = useState<ResumeDoc>(initialDoc);
+  const router = useRouter();
+  const [meta, setMeta] = useState<TailoredResumeMeta>(initialTailored.meta);
+  const [doc, setDoc] = useState<ResumeDoc>(initialTailored.doc);
   const [status, setStatus] = useState<Status>("idle");
   const [errMsg, setErrMsg] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const pendingRef = useRef<Partial<ResumeDoc>>({});
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = useRef(false);
   const [pageFit, setPageFit] = useState<ResumePageFit | null>(null);
+
+  const tailoredId = meta.id;
+  const patchUrl = `/api/resume/tailored/${tailoredId}`;
 
   const flush = useCallback(async () => {
     const patch = pendingRef.current;
@@ -82,7 +91,7 @@ export function ResumeEditor({
     inFlightRef.current = true;
     setStatus("saving");
     try {
-      const resp = await fetch("/api/resume/doc", {
+      const resp = await fetch(patchUrl, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ patch }),
@@ -93,14 +102,17 @@ export function ResumeEditor({
         setErrMsg(humanizeError(err.error));
         return;
       }
-      const data = (await resp.json()) as { doc: ResumeDoc };
+      const data = (await resp.json()) as { tailored: TailoredResume };
       const queuedPatch = pendingRef.current;
       const hasQueuedPatch = hasPatch(queuedPatch);
-      setDoc(hasQueuedPatch ? mergeShallowDeep(data.doc, queuedPatch) : data.doc);
+      setDoc(
+        hasQueuedPatch
+          ? mergeShallowDeep(data.tailored.doc, queuedPatch)
+          : data.tailored.doc,
+      );
+      setMeta(data.tailored.meta);
       setStatus(hasQueuedPatch ? "saving" : "saved");
       setErrMsg(null);
-      // Drop back to idle after a beat — saved state is for confidence,
-      // not a permanent badge.
       if (!hasQueuedPatch) {
         setTimeout(() => setStatus((s) => (s === "saved" ? "idle" : s)), 1200);
       }
@@ -109,12 +121,11 @@ export function ResumeEditor({
       setErrMsg("Network error");
     } finally {
       inFlightRef.current = false;
-      // If patches landed during the in-flight, kick another flush.
       if (hasPatch(pendingRef.current)) {
         timerRef.current = setTimeout(flush, 50);
       }
     }
-  }, []);
+  }, [patchUrl]);
 
   const onPatch = useCallback(
     (patch: Partial<ResumeDoc>) => {
@@ -141,16 +152,82 @@ export function ResumeEditor({
     setErrMsg(msg);
   }, []);
 
+  const onDelete = useCallback(async () => {
+    if (deleting) return;
+    setDeleting(true);
+    setErrMsg(null);
+    try {
+      const resp = await fetch(`/api/resume/tailored/${tailoredId}`, {
+        method: "DELETE",
+      });
+      if (!resp.ok) {
+        const body = (await resp.json().catch(() => ({}))) as {
+          error?: string;
+          detail?: string;
+        };
+        setStatus("error");
+        setErrMsg(body.detail || humanizeError(body.error));
+        setDeleting(false);
+        return;
+      }
+      router.push("/app/resume");
+      router.refresh();
+    } catch {
+      setStatus("error");
+      setErrMsg("Delete failed");
+      setDeleting(false);
+    }
+  }, [tailoredId, deleting, router]);
+
+  // Filename stem combines the candidate name and the JD target so the
+  // saved PDF is recognisable in the user's downloads folder.
+  const filenameStem = useMemo(() => {
+    const namePart = (doc.header.name || "resume")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-");
+    const tagPart = (meta.company || meta.jobTitle || "tailored")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-");
+    return `${namePart}-${tagPart}`;
+  }, [doc.header.name, meta.company, meta.jobTitle]);
+
+  const displayLabel = tailoredDisplayLabel(meta);
+
   return (
     <div className="flex flex-col min-h-[calc(100svh-3.5rem)]">
-      <ResumeShellToolbar
-        active="base"
-        tailoredCount={tailoredCount}
+      <EditorToolbar
+        label={displayLabel}
         trailing={
           <>
             <ResumeFitChip fit={pageFit} estimatedLines={lineCount} />
             <SaveBadge status={status} errMsg={errMsg} />
-            <ResumePdfDownloadButton doc={doc} onError={onDownloadError} />
+            {deleteConfirm ? (
+              <InlineDeleteConfirm
+                onCancel={() => setDeleteConfirm(false)}
+                onConfirm={onDelete}
+                deleting={deleting}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setDeleteConfirm(true)}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-md h-8 px-2.5 text-[12px]",
+                  "text-muted-foreground hover:text-[var(--destructive)] hover:bg-[var(--destructive)]/[0.08]",
+                  "transition-[background-color,color] duration-150 ease",
+                  "min-h-9",
+                )}
+                aria-label="Delete this resume"
+              >
+                <HugeiconsIcon icon={Delete02Icon} size={12} strokeWidth={2} />
+                <span className="hidden sm:inline">Delete</span>
+              </button>
+            )}
+            <ResumePdfDownloadButton
+              doc={doc}
+              filenameStem={filenameStem}
+              onError={onDownloadError}
+            />
           </>
         }
       />
@@ -168,7 +245,6 @@ export function ResumeEditor({
             <AwardsForm doc={doc} onPatch={onPatch} />
             <PublicationsForm doc={doc} onPatch={onPatch} />
             <SectionVisibilityForm doc={doc} onPatch={onPatch} />
-            <DangerZone />
           </div>
         </div>
 
@@ -178,6 +254,97 @@ export function ResumeEditor({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Editor-specific toolbar — back link + resume label on the left,
+ * page-actions slot on the right. The shared `ResumeShellToolbar` is
+ * tabbed (Resume / Tailored versions), but with the JD-first
+ * restructure there's only one concept — so this toolbar drops the
+ * tabs and adds the `← Resumes` back link instead.
+ */
+function EditorToolbar({
+  label,
+  trailing,
+}: {
+  label: string;
+  trailing: React.ReactNode;
+}) {
+  return (
+    <div className="sticky top-14 z-10 flex items-center gap-3 border-b border-border/30 bg-background/85 backdrop-blur px-5 h-14">
+      <Link
+        href="/app/resume"
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-md h-8 px-2 -ml-1 text-[12.5px]",
+          "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]",
+          "transition-[background-color,color] duration-150 ease",
+          "min-h-9 outline-none focus-visible:ring-2 focus-visible:ring-foreground/20",
+        )}
+        aria-label="Back to resumes"
+      >
+        <HugeiconsIcon icon={ArrowLeft01Icon} size={13} strokeWidth={2} />
+        <span className="hidden sm:inline">Resumes</span>
+      </Link>
+      <span aria-hidden className="text-muted-foreground/30">
+        /
+      </span>
+      <h1 className="truncate text-[13px] font-medium tracking-tight">
+        {label}
+      </h1>
+      <div className="ml-auto flex items-center gap-2">{trailing}</div>
+    </div>
+  );
+}
+
+function InlineDeleteConfirm({
+  onCancel,
+  onConfirm,
+  deleting,
+}: {
+  onCancel: () => void;
+  onConfirm: () => void;
+  deleting: boolean;
+}) {
+  return (
+    <>
+      <span className="hidden sm:inline-block text-[12px] text-muted-foreground">
+        Delete this resume?
+      </span>
+      <button
+        type="button"
+        onClick={onCancel}
+        disabled={deleting}
+        className={cn(
+          "inline-flex items-center rounded-md h-8 px-2.5 text-[12px]",
+          "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.04]",
+          "transition-[background-color,color] duration-150 ease",
+          "min-h-9",
+        )}
+      >
+        Cancel
+      </button>
+      <button
+        type="button"
+        onClick={onConfirm}
+        disabled={deleting}
+        className={cn(
+          "inline-flex items-center gap-1.5 rounded-md h-8 px-3 text-[12px] font-medium",
+          "bg-[var(--destructive)] text-white",
+          "transition-[opacity] duration-150 ease",
+          "hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed",
+          "min-h-9",
+        )}
+      >
+        <HugeiconsIcon
+          icon={deleting ? Loading03Icon : Delete02Icon}
+          size={12}
+          strokeWidth={2}
+          className={deleting ? "animate-spin" : undefined}
+        />
+        {deleting ? "Deleting" : "Confirm delete"}
+      </button>
+    </>
   );
 }
 
@@ -1058,25 +1225,6 @@ function sectionLabel(key: ResumeSectionKey): string {
 }
 
 // ──────────────────────────────────────────────────────────────
-// Danger zone — wipe + regenerate
-// ──────────────────────────────────────────────────────────────
-
-function DangerZone() {
-  return (
-    <section className="mt-10 border-t border-border/30 pt-6 flex flex-col gap-3">
-      <span className="text-foreground font-medium text-[13px]">
-        Delete resume
-      </span>
-      <span className="text-[12px] text-muted-foreground leading-relaxed">
-        Wipes this resume and every edit. Your portfolio stays intact —
-        you&apos;ll regenerate a fresh one from it.
-      </span>
-      <DeleteResumeButton />
-    </section>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────
 // Reusable bits
 // ──────────────────────────────────────────────────────────────
 
@@ -1244,22 +1392,18 @@ function mergeShallowDeep(
 
 function humanizeError(code?: string): string {
   switch (code) {
-    case "no_doc":
+    case "not_found":
       return "Resume not found";
     case "invalid_patch":
       return "Some fields are too long or malformed";
-    case "no_resume":
-      return "Run a portfolio scan first";
-    case "ai_not_configured":
-      return "AI not configured";
     case "browser_not_bound":
       return "PDF service unavailable";
-    case "generation_failed":
-      return "AI couldn't generate the resume";
-    case "regen_failed":
-      return "Couldn't regenerate bullets";
     case "pdf_render_failed":
       return "PDF render failed";
+    case "delete_failed":
+      return "Delete failed";
+    case "payment_required":
+      return "A Pro subscription is required";
     default:
       return code || "Save failed";
   }

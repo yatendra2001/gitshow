@@ -1,14 +1,13 @@
 "use client";
 
 /**
- * "Tailor for job" dialog — pastes a JD, streams a JD-aligned
- * `ResumeDoc` from the API, and on `done` either navigates to the new
- * tailored variant (default) or invokes a custom `onTailored`
- * callback.
+ * "New resume" dialog — pastes a JD, streams a tailored resume from
+ * the API, and on `done` either navigates to the new resume's editor
+ * (default) or hands the validated `TailoredResume` back to the
+ * parent for an optimistic insert.
  *
- * Composes the shared streaming primitives (banner, shimmer, progress
- * label) from `components/resume/streaming.tsx` so the visual language
- * matches the empty-state generator exactly.
+ * Composes the shared streaming primitives so the visual language
+ * matches every other live-AI surface in gitshow.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -35,19 +34,22 @@ import { cn } from "@/lib/utils";
 
 type Phase = "idle" | "streaming" | "done" | "error";
 
-export interface TailorDialogProps {
+export interface NewResumeDialogProps {
   open: boolean;
   onOpenChange: (next: boolean) => void;
   /**
-   * Override the default "navigate to the new variant" behaviour. When
-   * provided, the dialog hands the validated `TailoredResume` back to
-   * the parent instead of routing. Used in the list page where we want
-   * an instant prepend before the navigation transitions.
+   * Override the default "navigate to the new resume" behaviour.
+   * When provided, the dialog hands the validated `TailoredResume`
+   * back instead of routing.
    */
-  onTailored?: (tailored: TailoredResume) => void;
+  onCreated?: (tailored: TailoredResume) => void;
 }
 
-export function TailorDialog({ open, onOpenChange, onTailored }: TailorDialogProps) {
+export function NewResumeDialog({
+  open,
+  onOpenChange,
+  onCreated,
+}: NewResumeDialogProps) {
   const router = useRouter();
   const [jd, setJd] = useState("");
   const [phase, setPhase] = useState<Phase>("idle");
@@ -56,10 +58,9 @@ export function TailorDialog({ open, onOpenChange, onTailored }: TailorDialogPro
   const [err, setErr] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Reset the dialog whenever it closes. We deliberately *do not*
-  // clear the JD draft on close — accidental dismissal shouldn't lose
-  // the user's paste — but the streaming state must reset so a re-open
-  // doesn't show stale shimmer.
+  // Reset streaming state when the dialog closes. The JD draft sticks
+  // around — accidental dismissal shouldn't lose the user's paste —
+  // but the shimmer/preview must reset for a clean re-open.
   useEffect(() => {
     if (!open) {
       abortRef.current?.abort();
@@ -135,8 +136,8 @@ export function TailorDialog({ open, onOpenChange, onTailored }: TailorDialogPro
               setJd("");
               const tailored = evt.tailored;
               setTimeout(() => {
-                if (onTailored) onTailored(tailored);
-                else router.push(`/app/resume/tailored/${tailored.meta.id}`);
+                if (onCreated) onCreated(tailored);
+                else router.push(`/app/resume/${tailored.meta.id}`);
               }, 500);
             } else if (evt.type === "error") {
               setErr(evt.detail || humanizeError(evt.error));
@@ -152,7 +153,7 @@ export function TailorDialog({ open, onOpenChange, onTailored }: TailorDialogPro
       setErr("Network error");
       setPhase("error");
     }
-  }, [jd, onTailored, router]);
+  }, [jd, onCreated, router]);
 
   const isBusy = phase === "streaming" || phase === "done";
 
@@ -160,8 +161,7 @@ export function TailorDialog({ open, onOpenChange, onTailored }: TailorDialogPro
     <Dialog
       open={open}
       onOpenChange={(next) => {
-        // Don't allow Esc/overlay-close while streaming — would lose
-        // the in-flight AI work.
+        // Don't allow Esc/overlay-close while streaming.
         if (isBusy && !next) return;
         onOpenChange(next);
       }}
@@ -170,20 +170,21 @@ export function TailorDialog({ open, onOpenChange, onTailored }: TailorDialogPro
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <HugeiconsIcon icon={MagicWand01Icon} size={16} strokeWidth={2} />
-            Tailor for a job
+            New resume
           </DialogTitle>
           <DialogDescription>
-            Paste the full job description. We&apos;ll reorder, rewrite,
-            and re-rank — using only facts already in your base resume —
-            to produce a JD-aligned variant. Your main resume stays
-            untouched.
+            Paste the job description.
           </DialogDescription>
         </DialogHeader>
 
         {phase === "idle" || phase === "error" ? (
           <IdleForm jd={jd} setJd={setJd} onSubmit={onSubmit} error={err} />
         ) : (
-          <StreamingPreview doc={partialDoc} statusLabel={statusLabel} done={phase === "done"} />
+          <StreamingPreview
+            doc={partialDoc}
+            statusLabel={statusLabel}
+            done={phase === "done"}
+          />
         )}
       </DialogContent>
     </Dialog>
@@ -219,7 +220,7 @@ function IdleForm({
           }
         }}
         rows={10}
-        placeholder={`Paste the job description here — title, requirements, responsibilities, the whole thing.\n\nExample:\nSenior Backend Engineer at Stripe…\n\nYou'll own…\nRequirements:\n- 5+ years…\n- Distributed systems…`}
+        placeholder={`Paste the JD…\n\nSenior Backend Engineer at Stripe\nYou'll own…\nRequirements:\n- 5+ years…\n- Distributed systems…`}
         className={cn(
           "min-h-[220px] max-h-[40vh] w-full rounded-lg border border-border/50 bg-background px-3 py-2.5",
           "text-[13px] leading-relaxed text-foreground placeholder:text-muted-foreground/50",
@@ -232,10 +233,10 @@ function IdleForm({
       <div className="flex items-center justify-between gap-2">
         <span className="text-[11px] text-muted-foreground/70 tabular-nums">
           {trimmed.length === 0
-            ? "Paste the JD to begin"
+            ? "Paste to begin"
             : tooShort
-              ? `Add a bit more context — ${trimmed.length}/50 chars`
-              : `${trimmed.length.toLocaleString()} chars · ⌘ ↵ to tailor`}
+              ? `${trimmed.length}/50`
+              : `${trimmed.length.toLocaleString()} chars · ⌘ ↵`}
         </span>
         <button
           type="button"
@@ -249,7 +250,7 @@ function IdleForm({
           )}
         >
           <HugeiconsIcon icon={MagicWand01Icon} size={14} strokeWidth={2} />
-          Tailor resume
+          Create
         </button>
       </div>
       {error ? (
@@ -285,7 +286,7 @@ function StreamingPreview({
       <ResumeStreamBanner
         statusLabel={statusLabel}
         done={done}
-        title={done ? "Tailored resume ready" : "Tailoring your resume"}
+        title={done ? "Ready" : "Drafting"}
         className="rounded-lg border border-border/40 bg-foreground/[0.02] px-3 py-2"
       />
       <div className="rounded-lg border border-border/40 bg-foreground/[0.015] dark:bg-foreground/[0.04] p-4 max-h-[50vh] overflow-y-auto gs-pane-scroll flex justify-center">
@@ -304,20 +305,20 @@ function StreamingPreview({
 
 function humanizeError(code?: string): string {
   switch (code) {
-    case "no_base_resume":
-      return "Generate your main resume first.";
+    case "no_portfolio":
+      return "Run a portfolio scan first.";
     case "missing_job_description":
-      return "Paste a job description to tailor against.";
+      return "Paste a job description.";
     case "job_description_too_long":
-      return "Job description is too long — trim it under 16k characters.";
+      return "Trim the JD under 16k characters.";
     case "ai_not_configured":
-      return "AI is not configured for this environment.";
+      return "AI is not configured.";
     case "openrouter_failed":
-      return "The AI gateway is having a moment — try again in a few seconds.";
+      return "The AI gateway is having a moment — retry.";
     case "validation_failed":
-      return "The AI returned a malformed resume. Retry once and it usually fixes itself.";
+      return "Malformed output. Retry usually fixes it.";
     case "stream_failed":
-      return "The connection dropped mid-generation. Try again.";
+      return "Connection dropped. Retry.";
     case "payment_required":
       return "A Pro subscription is required.";
     default:
