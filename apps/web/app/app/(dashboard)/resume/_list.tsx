@@ -85,16 +85,16 @@ export function ResumeList({
         </div>
       </div>
 
-      <main className="mx-auto w-full max-w-5xl px-5 sm:px-6 py-6 sm:py-8">
+      <main className="mx-auto w-full max-w-3xl px-5 sm:px-6 py-6 sm:py-8">
         {!hasPortfolio ? (
           <NoPortfolioState />
         ) : items.length === 0 ? (
           <EmptyState onNew={() => setDialogOpen(true)} />
         ) : (
-          <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          <ul className="flex flex-col gap-1.5">
             {items.map((meta) => (
               <li key={meta.id}>
-                <ResumeCard meta={meta} />
+                <ResumeRow meta={meta} />
               </li>
             ))}
           </ul>
@@ -110,47 +110,51 @@ export function ResumeList({
   );
 }
 
-function ResumeCard({ meta }: { meta: TailoredResumeMeta }) {
+/**
+ * Horizontal list row. One row per resume, full-width, tight vertical
+ * stack. Hover is a triple-subtle move — bg fades in, the chevron
+ * nudges + brightens, the leading icon lifts in color — each step
+ * faint enough to read as polish rather than chrome.
+ */
+function ResumeRow({ meta }: { meta: TailoredResumeMeta }) {
   const label = tailoredDisplayLabel(meta);
   const rel = useRelativeTime(meta.createdAt);
   return (
     <Link
       href={`/app/resume/${meta.id}`}
       className={cn(
-        "group block rounded-lg border border-border/40 bg-card/40",
-        "p-4 h-full flex flex-col gap-2",
+        "group block rounded-lg border border-border/30",
+        "px-4 py-3 flex items-center gap-3.5",
         "transition-[background-color,border-color] duration-150 ease",
-        "hover:border-border/60 hover:bg-card/70",
+        "hover:border-border/60 hover:bg-foreground/[0.025]",
         "outline-none focus-visible:ring-2 focus-visible:ring-foreground/20",
-        "min-h-[120px]",
+        "min-h-16",
       )}
       aria-label={`Open resume: ${label}`}
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="inline-flex items-center gap-2 min-w-0">
-          <HugeiconsIcon
-            icon={JobSearchIcon}
-            size={14}
-            strokeWidth={2}
-            className="shrink-0 text-muted-foreground/70 group-hover:text-foreground/80 transition-colors duration-150"
-          />
-          <span className="truncate text-[13.5px] font-medium text-foreground">
-            {label}
-          </span>
-        </div>
-        <HugeiconsIcon
-          icon={ArrowRight01Icon}
-          size={13}
-          strokeWidth={2}
-          className="mt-0.5 shrink-0 text-muted-foreground/40 transition-transform duration-150 ease group-hover:translate-x-0.5 group-hover:text-foreground/70"
-        />
+      <HugeiconsIcon
+        icon={JobSearchIcon}
+        size={15}
+        strokeWidth={2}
+        className="shrink-0 text-muted-foreground/60 transition-colors duration-150 ease group-hover:text-foreground/85"
+      />
+      <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+        <span className="truncate text-[13.5px] font-medium text-foreground">
+          {label}
+        </span>
+        <span className="truncate text-[12px] text-muted-foreground/75">
+          {meta.jdExcerpt}
+        </span>
       </div>
-      <p className="flex-1 line-clamp-2 text-[12.5px] leading-snug text-muted-foreground/85">
-        {meta.jdExcerpt}
-      </p>
-      <div className="mt-1 text-[11px] tabular-nums text-muted-foreground/70">
+      <span className="hidden sm:inline-block shrink-0 text-[11px] tabular-nums text-muted-foreground/70">
         {rel}
-      </div>
+      </span>
+      <HugeiconsIcon
+        icon={ArrowRight01Icon}
+        size={13}
+        strokeWidth={2}
+        className="shrink-0 text-muted-foreground/30 transition-[transform,color] duration-150 ease group-hover:translate-x-0.5 group-hover:text-foreground/70"
+      />
     </Link>
   );
 }
