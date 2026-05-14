@@ -1,47 +1,49 @@
 import { Skeleton } from "@/components/dashboard/skeleton";
 
 /**
- * Streaming fallback for /app/edit. Mirrors the editor shell: tab
- * strip across the top + a column of section forms below. Snaps in
- * the moment the user clicks "Edit" so the click feels instant.
+ * Streaming fallback for `/app/edit`. Mirrors the editor shell: a
+ * page header with title + save chip + publish button, then a
+ * 200px-sidebar + content-card layout matching `_editor.tsx`. Snaps
+ * in instantly so the click feels responsive.
+ *
+ * Stays in sync with the real `<Header>` + `<Sidebar>` + `<SectionView>`
+ * structure — any layout drift there means this needs touching too.
  */
 export default function Loading() {
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-6 flex items-center justify-between gap-3">
+    <div className="mx-auto w-full max-w-5xl px-4 sm:px-6 py-6 flex flex-col gap-5">
+      {/* Header — title block + save chip + publish */}
+      <header className="flex items-end justify-between gap-3">
         <div>
           <Skeleton className="h-2.5 w-20" />
-          <Skeleton className="mt-2.5 h-7 w-40" />
+          <Skeleton className="mt-2.5 h-7 w-44" />
         </div>
-        <Skeleton className="h-9 w-28 rounded-lg" />
-      </div>
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-7 w-24 rounded-md" />
+          <Skeleton className="h-9 w-32 rounded-lg" />
+        </div>
+      </header>
 
-      <div className="mb-6 flex flex-wrap gap-1.5 border-b border-border/40 pb-2">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <Skeleton key={i} className="h-7 w-16 rounded-md" />
-        ))}
-      </div>
+      <div className="grid grid-cols-1 md:grid-cols-[200px_1fr] gap-5">
+        {/* Sidebar — vertical list of section nav items */}
+        <nav className="flex flex-col gap-1">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <Skeleton key={i} className="h-8 w-full rounded-md" />
+          ))}
+        </nav>
 
-      <div className="space-y-4">
-        <FormFieldSkeleton lines={1} />
-        <FormFieldSkeleton lines={3} />
-        <FormFieldSkeleton lines={1} />
-        <FormFieldSkeleton lines={2} />
+        {/* Content card — section view */}
+        <div className="rounded-2xl border border-border/40 bg-card/40 p-5 sm:p-6 min-h-[60vh] space-y-4">
+          <div>
+            <Skeleton className="h-2.5 w-16" />
+            <Skeleton className="mt-2 h-5 w-40" />
+          </div>
+          <Skeleton className="h-9 w-full rounded-md" />
+          <Skeleton className="h-24 w-full rounded-md" />
+          <Skeleton className="h-9 w-full rounded-md" />
+          <Skeleton className="h-32 w-full rounded-md" />
+        </div>
       </div>
-    </div>
-  );
-}
-
-function FormFieldSkeleton({ lines }: { lines: number }) {
-  return (
-    <div className="rounded-xl border border-border/40 bg-card/40 p-4">
-      <Skeleton className="h-3 w-20" />
-      <Skeleton className="mt-2.5 h-9 w-full rounded-md" />
-      {lines > 1
-        ? Array.from({ length: lines - 1 }).map((_, i) => (
-            <Skeleton key={i} className="mt-1.5 h-9 w-full rounded-md" />
-          ))
-        : null}
     </div>
   );
 }

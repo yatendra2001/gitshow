@@ -1,11 +1,12 @@
 import { Skeleton } from "@/components/dashboard/skeleton";
 
 /**
- * Streaming fallback for /app/resume — the list view.
+ * Streaming fallback for `/app/resume` — the row list.
  *
- * Mirrors the real layout: sticky title row at the top, then a grid
- * of card placeholders below. The aim is to occupy the same vertical
- * space the real page will, so the swap doesn't jump.
+ * Mirrors the real layout: sticky title row up top, then a vertical
+ * stack of full-width row placeholders. Container is `max-w-3xl` to
+ * match the live list — anything wider would shift the layout on
+ * swap.
  */
 export default function Loading() {
   return (
@@ -14,15 +15,18 @@ export default function Loading() {
         <Skeleton className="h-4 w-20" />
         <Skeleton className="ml-auto h-8 w-28 rounded-md" />
       </div>
-      <main className="mx-auto w-full max-w-5xl px-5 sm:px-6 py-6 sm:py-8">
-        <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {Array.from({ length: 6 }).map((_, i) => (
+      <main className="mx-auto w-full max-w-3xl px-5 sm:px-6 py-6 sm:py-8">
+        <ul className="flex flex-col gap-1.5">
+          {Array.from({ length: 5 }).map((_, i) => (
             <li key={i}>
-              <div className="rounded-lg border border-border/40 bg-card/40 p-4 h-[120px] flex flex-col gap-2">
-                <Skeleton className="h-4 w-2/3" />
-                <Skeleton className="h-3 w-full" />
-                <Skeleton className="h-3 w-4/5" />
-                <Skeleton className="mt-auto h-3 w-16" />
+              <div className="rounded-lg border border-border/30 px-4 py-3 flex items-center gap-3.5 min-h-16">
+                <Skeleton className="size-4 rounded-full" />
+                <div className="min-w-0 flex-1 flex flex-col gap-1.5">
+                  <Skeleton className="h-3.5 w-[42%]" />
+                  <Skeleton className="h-3 w-[78%]" />
+                </div>
+                <Skeleton className="hidden sm:block h-3 w-12" />
+                <Skeleton className="size-3 rounded" />
               </div>
             </li>
           ))}
