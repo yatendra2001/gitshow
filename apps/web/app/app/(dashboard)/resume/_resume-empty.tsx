@@ -28,61 +28,13 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { ResumeDoc } from "@gitshow/shared/resume-doc";
 import { cn } from "@/lib/utils";
+import { PrintableResume } from "@/components/resume/printable";
 import {
-  PrintableResume,
-  RESUME_PRINT_CSS,
-} from "@/components/resume/printable";
-
-/**
- * Streaming-only CSS — shimmer for the pre-stream skeleton, fade-in
- * when the first partial arrives, and bouncing dots in the banner so
- * the spin-up window before any tokens lands doesn't feel dead.
- *
- * Scoped to `.gs-…` classes; no overlap with RESUME_PRINT_CSS. Honors
- * `prefers-reduced-motion` by collapsing every animation to a static
- * end state.
- */
-const STREAM_CSS = `
-@keyframes gs-shimmer {
-  0%   { background-position: 200% 0; }
-  100% { background-position: -200% 0; }
-}
-.gs-shimmer-bar {
-  display: block;
-  background: linear-gradient(
-    90deg,
-    #ececec 0%,
-    #f6f6f6 45%,
-    #fafafa 50%,
-    #f6f6f6 55%,
-    #ececec 100%
-  );
-  background-size: 200% 100%;
-  animation: gs-shimmer 1.6s linear infinite;
-  border-radius: 2pt;
-}
-@keyframes gs-fade-in {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-.gs-resume-reveal {
-  animation: gs-fade-in 260ms cubic-bezier(0.2, 0.6, 0.2, 1) both;
-}
-@keyframes gs-bounce-dot {
-  0%, 80%, 100% { opacity: 0.25; transform: scale(0.7); }
-  40%           { opacity: 1;    transform: scale(1); }
-}
-.gs-bounce-dot {
-  animation: gs-bounce-dot 1.2s ease-in-out infinite both;
-}
-.gs-bounce-dot:nth-child(2) { animation-delay: 0.15s; }
-.gs-bounce-dot:nth-child(3) { animation-delay: 0.3s; }
-@media (prefers-reduced-motion: reduce) {
-  .gs-shimmer-bar { animation: none; background: #eee; }
-  .gs-resume-reveal { animation: none; }
-  .gs-bounce-dot { animation: none; opacity: 0.6; }
-}
-`;
+  ResumeStreamCss,
+  ResumeStreamBanner,
+  ResumeShimmerPlaceholder,
+  progressLabelFor,
+} from "@/components/resume/streaming";
 
 type Phase = "idle" | "streaming" | "done";
 
@@ -144,7 +96,7 @@ export function ResumeEmpty({ hasResume }: { hasResume: boolean }) {
             const evt = JSON.parse(json) as StreamEvent;
             if (evt.type === "partial") {
               setPartialDoc(evt.doc);
-              setStatusLabel(progressLabelFor(evt.doc));
+              setStatusLabel(progressLabelFor(evt.doc, "generate"));
             } else if (evt.type === "done") {
               setPartialDoc(evt.doc);
               setStatusLabel("Polishing");
@@ -309,38 +261,15 @@ function StreamingView({
   const isDone = phase === "done";
   return (
     <div className="relative min-h-[calc(100svh-3.5rem)]">
-      {/* Plain <style> tag — styled-jsx eats interpolation-only globals. */}
-      <style dangerouslySetInnerHTML={{ __html: RESUME_PRINT_CSS + STREAM_CSS }} />
+      <ResumeStreamCss />
 
       {/* Status banner — sticky at the top of the streaming surface. */}
       <div className="sticky top-14 z-10 bg-background/80 backdrop-blur border-b border-border/30">
-        <div className="mx-auto max-w-5xl px-5 h-12 flex items-center gap-3">
-          {isDone ? (
-            <HugeiconsIcon
-              icon={Tick02Icon}
-              size={14}
-              strokeWidth={2}
-              className="shrink-0 text-foreground"
-            />
-          ) : (
-            // Bouncing dots — keeps the banner visibly alive even when
-            // the model hasn't streamed a token yet (the dead 5-10s).
-            <span
-              className="shrink-0 inline-flex items-center gap-1"
-              aria-hidden
-            >
-              <span className="gs-bounce-dot inline-block size-1.5 rounded-full bg-foreground/70" />
-              <span className="gs-bounce-dot inline-block size-1.5 rounded-full bg-foreground/70" />
-              <span className="gs-bounce-dot inline-block size-1.5 rounded-full bg-foreground/70" />
-            </span>
-          )}
-          <span className="text-[12.5px] font-medium tracking-tight">
-            {isDone ? "Resume ready" : "Generating your resume"}
-          </span>
-          <span className="text-[12px] text-muted-foreground/80 truncate">
-            · {statusLabel}
-          </span>
-        </div>
+        <ResumeStreamBanner
+          statusLabel={statusLabel}
+          done={isDone}
+          className="mx-auto max-w-5xl px-5 h-12"
+        />
       </div>
 
       <div className="px-5 py-8 flex justify-center">
@@ -357,96 +286,12 @@ function StreamingView({
               animation every ~100ms. */}
           <div
             key={doc ? "doc" : "placeholder"}
-            className="gs-resume-reveal"
+            className="gs-stream-reveal"
           >
-            {doc ? <PrintableResume doc={doc} /> : <ResumePlaceholder />}
+            {doc ? <PrintableResume doc={doc} /> : <ResumeShimmerPlaceholder />}
           </div>
         </div>
       </div>
     </div>
   );
-}
-
-/**
- * Animated skeleton showing the resume's silhouette before the first
- * partial event lands. Each bar shimmers with a moving gradient so the
- * 5-10s spin-up window before any tokens arrive feels alive — not a
- * dead static page. Matches the printable's typographic rhythm so the
- * cross-fade into real content feels continuous.
- */
-function ResumePlaceholder() {
-  return (
-    <div
-      className="resume-doc"
-      style={{
-        width: "8.5in",
-        minHeight: "11in",
-        boxShadow:
-          "0 1px 2px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.08)",
-      }}
-    >
-      <div className="resume-header">
-        <div
-          className="gs-shimmer-bar"
-          style={{ height: "20pt", width: "60%", margin: "0 auto 4pt" }}
-        />
-        <div
-          className="gs-shimmer-bar"
-          style={{ height: "10pt", width: "75%", margin: "0 auto 4pt" }}
-        />
-        <div
-          className="gs-shimmer-bar"
-          style={{ height: "9pt", width: "85%", margin: "0 auto" }}
-        />
-      </div>
-      {[0, 1, 2].map((i) => (
-        <div key={i} className="resume-section">
-          <div
-            className="gs-shimmer-bar"
-            style={{ height: "10pt", width: "120pt", margin: "0 0 6pt 0" }}
-          />
-          {[0, 1, 2].map((j) => (
-            <div
-              key={j}
-              className="gs-shimmer-bar"
-              style={{
-                height: "9pt",
-                width: `${85 - j * 8}%`,
-                margin: "3pt 0",
-              }}
-            />
-          ))}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-/**
- * Pick a human-readable progress label from the doc's current shape.
- * The model emits sections in order, so the first non-empty section
- * we don't yet see is the one being written *now*.
- */
-function progressLabelFor(doc: ResumeDoc): string {
-  if (!doc.header.name) return "Reading your portfolio";
-  if (doc.experience.length === 0) return "Drafting your headline";
-  // Inside experience the bullets fill in last for the current entry —
-  // we use an absent-bullet-on-last-entry as the "still writing" hint.
-  const lastExp = doc.experience[doc.experience.length - 1];
-  if (lastExp && lastExp.bullets.length === 0) {
-    return `Writing impact bullets for ${lastExp.company || "experience"}`;
-  }
-  if (doc.projects.length === 0 && doc.experience.length > 0) {
-    return "Picking your top projects";
-  }
-  if (doc.education.length === 0 && doc.projects.length > 0) {
-    return "Adding education";
-  }
-  if (doc.skills.length === 0 && doc.education.length > 0) {
-    return "Grouping skills";
-  }
-  if (doc.skills.length > 0 && doc.awards.length === 0) {
-    return "Reviewing awards";
-  }
-  return "Polishing";
 }
