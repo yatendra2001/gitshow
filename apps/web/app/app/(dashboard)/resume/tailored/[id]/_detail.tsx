@@ -1,14 +1,16 @@
 "use client";
 
 /**
- * Tailored-resume detail view — preview pane + Download PDF + Delete +
+ * Tailored-resume detail view — preview + Download PDF + Delete +
  * collapsible JD reference. Read-only by design: if a user wants to
  * fine-tune they re-tailor with a tweaked JD. The base resume editor
  * is the single editing surface; tailored variants are snapshots tied
  * to a specific JD.
  *
- * Reuses `<ScaledResumePreview>` for the centered scaled preview and
- * the `<ResumeShellToolbar>` for the persistent tabs strip.
+ * Composes shared resume components — toolbar, preview pane with
+ * page-fit measurement, the fit chip, and the animated PDF download
+ * button — so the surface matches the editor's tactile feel without
+ * a single line of duplicated UI.
  */
 
 import { useCallback, useMemo, useState } from "react";
@@ -16,7 +18,6 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { HugeiconsIcon } from "@hugeicons/react";
 import {
-  Download04Icon,
   Delete02Icon,
   Loading03Icon,
   ArrowLeft01Icon,
@@ -24,8 +25,14 @@ import {
 } from "@hugeicons/core-free-icons";
 import type { TailoredResume } from "@gitshow/shared/tailored-resume";
 import { tailoredDisplayLabel } from "@gitshow/shared/tailored-resume";
+import { estimateContentLines } from "@gitshow/shared/resume-doc";
 import { ResumeShellToolbar } from "../../_shell";
-import { ScaledResumePreview } from "@/components/resume/scaled-preview";
+import { ResumePdfDownloadButton } from "@/components/resume/download-pdf-button";
+import {
+  ResumePreview,
+  type ResumePageFit,
+} from "@/components/resume/preview-pane";
+import { ResumeFitChip } from "@/components/resume/fit-chip";
 import { cn } from "@/lib/utils";
 
 export function TailoredDetailView({
@@ -36,11 +43,11 @@ export function TailoredDetailView({
   tailoredCount: number;
 }) {
   const router = useRouter();
-  const [downloading, setDownloading] = useState(false);
   const [downloadErr, setDownloadErr] = useState<string | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteErr, setDeleteErr] = useState<string | null>(null);
+  const [pageFit, setPageFit] = useState<ResumePageFit | null>(null);
 
   const label = tailoredDisplayLabel(tailored.meta);
   const createdLabel = useMemo(
@@ -52,47 +59,27 @@ export function TailoredDetailView({
     [tailored.meta.createdAt],
   );
 
-  const onDownload = useCallback(async () => {
-    if (downloading) return;
-    setDownloading(true);
-    setDownloadErr(null);
-    try {
-      const resp = await fetch("/api/resume/doc/pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ doc: tailored.doc }),
-      });
-      if (!resp.ok) {
-        const body = (await resp.json().catch(() => ({}))) as {
-          error?: string;
-          detail?: string;
-        };
-        setDownloadErr(body.detail || humanizeError(body.error));
-        return;
-      }
-      const blob = await resp.blob();
-      const baseName =
-        (tailored.doc.header.name || "resume")
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-") +
-        "-" +
-        (tailored.meta.company || tailored.meta.jobTitle || "tailored")
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-");
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${baseName}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-    } catch {
-      setDownloadErr("PDF download failed");
-    } finally {
-      setDownloading(false);
-    }
-  }, [tailored, downloading]);
+  const lineCount = useMemo(
+    () => estimateContentLines(tailored.doc),
+    [tailored.doc],
+  );
+
+  // Build a tailored-specific filename stem: "name-company". Falls back
+  // through company → jobTitle → "tailored" so the file always reads
+  // as the variant, not the base resume.
+  const filenameStem = useMemo(() => {
+    const namePart = (tailored.doc.header.name || "resume")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-");
+    const tagPart = (
+      tailored.meta.company ||
+      tailored.meta.jobTitle ||
+      "tailored"
+    )
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-");
+    return `${namePart}-${tagPart}`;
+  }, [tailored]);
 
   const onDelete = useCallback(async () => {
     if (deleting) return;
@@ -119,11 +106,14 @@ export function TailoredDetailView({
     }
   }, [tailored.meta.id, deleting, router]);
 
+  const inlineError = downloadErr || deleteErr;
+
   const trailing = (
     <div className="flex items-center gap-2">
-      {downloadErr || deleteErr ? (
+      <ResumeFitChip fit={pageFit} estimatedLines={lineCount} />
+      {inlineError ? (
         <span className="hidden sm:inline-block text-[11px] text-foreground">
-          {downloadErr || deleteErr}
+          {inlineError}
         </span>
       ) : null}
       {deleteConfirm ? (
@@ -181,25 +171,11 @@ export function TailoredDetailView({
           <span className="hidden sm:inline">Delete</span>
         </button>
       )}
-      <button
-        type="button"
-        onClick={onDownload}
-        disabled={downloading}
-        className={cn(
-          "inline-flex items-center gap-1.5 rounded-md h-8 px-3 text-[12px] font-medium",
-          "bg-foreground text-background min-h-9",
-          "transition-[opacity] duration-150 ease",
-          "hover:opacity-90 disabled:opacity-50 disabled:cursor-progress",
-        )}
-      >
-        <HugeiconsIcon
-          icon={downloading ? Loading03Icon : Download04Icon}
-          size={13}
-          strokeWidth={2}
-          className={downloading ? "animate-spin" : undefined}
-        />
-        {downloading ? "Generating" : "Download PDF"}
-      </button>
+      <ResumePdfDownloadButton
+        doc={tailored.doc}
+        filenameStem={filenameStem}
+        onError={setDownloadErr}
+      />
     </div>
   );
 
@@ -243,7 +219,13 @@ export function TailoredDetailView({
           </div>
         </header>
 
-        <ScaledResumePreview doc={tailored.doc} scale={0.72} />
+        <div className="rounded-lg border border-border/40 bg-foreground/[0.015] dark:bg-foreground/[0.04]">
+          <ResumePreview
+            doc={tailored.doc}
+            scale={0.72}
+            onFitChange={setPageFit}
+          />
+        </div>
 
         <JdAccordion jd={tailored.jobDescription} />
       </main>
@@ -301,10 +283,6 @@ function JdAccordion({ jd }: { jd: string }) {
 
 function humanizeError(code?: string): string {
   switch (code) {
-    case "pdf_render_failed":
-      return "PDF render failed.";
-    case "browser_not_bound":
-      return "PDF service unavailable.";
     case "payment_required":
       return "A Pro subscription is required.";
     case "not_found":
