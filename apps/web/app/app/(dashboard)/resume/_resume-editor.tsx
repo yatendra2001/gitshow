@@ -28,7 +28,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import {
   Add01Icon,
   Delete02Icon,
-  Download04Icon,
   Tick02Icon,
   AlertCircleIcon,
   ArrowUp01Icon,
@@ -45,27 +44,20 @@ import type {
   PublicationDocEntry,
   ResumeSectionKey,
 } from "@gitshow/shared/resume-doc";
-import {
-  estimateContentLines,
-  ONE_PAGE_LINE_BUDGET,
-} from "@gitshow/shared/resume-doc";
+import { estimateContentLines } from "@gitshow/shared/resume-doc";
 import { cn } from "@/lib/utils";
+import { ResumePdfDownloadButton } from "@/components/resume/download-pdf-button";
 import {
-  PrintableResume,
-  RESUME_PRINT_CSS,
-} from "@/components/resume/printable";
+  ResumePreview,
+  type ResumePageFit,
+} from "@/components/resume/preview-pane";
+import { ResumeFitChip } from "@/components/resume/fit-chip";
 import { DeleteResumeButton } from "./_delete-resume-button";
 import { ResumeShellToolbar } from "./_shell";
 
 const SAVE_DEBOUNCE_MS = 700;
 
 type Status = "idle" | "saving" | "saved" | "error";
-type PageFit = {
-  pages: number;
-  pageHeightPx: number;
-  scrollHeight: number;
-  overflowPx: number;
-};
 
 export function ResumeEditor({
   initialDoc,
@@ -77,19 +69,11 @@ export function ResumeEditor({
   const [doc, setDoc] = useState<ResumeDoc>(initialDoc);
   const [status, setStatus] = useState<Status>("idle");
   const [errMsg, setErrMsg] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState(false);
-  // PDF generation has 4 visible phases. We drive the percentage with
-  // a smooth easeOut curve over the expected wall-clock time, then
-  // snap to 100 when the fetch resolves. Phase labels swap as pct
-  // crosses each band so the user always knows what's happening.
-  const [downloadPct, setDownloadPct] = useState(0);
-  const [downloadLabel, setDownloadLabel] = useState("Starting");
 
   const pendingRef = useRef<Partial<ResumeDoc>>({});
-  const progressRafRef = useRef<number | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const inFlightRef = useRef(false);
-  const [pageFit, setPageFit] = useState<PageFit | null>(null);
+  const [pageFit, setPageFit] = useState<ResumePageFit | null>(null);
 
   const flush = useCallback(async () => {
     const patch = pendingRef.current;
@@ -150,95 +134,12 @@ export function ResumeEditor({
     };
   }, []);
 
-  const onDownload = useCallback(async () => {
-    if (downloading) return;
-    setDownloading(true);
-    setErrMsg(null);
-    setDownloadPct(0);
-    setDownloadLabel("Starting");
-
-    // Smooth easeOut progress driven by elapsed time. The curve
-    // 1 - exp(-3t) hits 95% at the expected duration and then
-    // asymptotes — feels honest because the real bottleneck (PDF
-    // render) slows as it nears completion. We snap to 100 when the
-    // fetch actually resolves.
-    const startedAt = performance.now();
-    const expectedMs = 9000;
-    const tick = () => {
-      const elapsed = performance.now() - startedAt;
-      const t = elapsed / expectedMs;
-      const eased = 1 - Math.exp(-3 * t);
-      const pct = Math.min(eased * 95, 95);
-      setDownloadPct(pct);
-      setDownloadLabel(labelForPct(pct));
-      progressRafRef.current = requestAnimationFrame(tick);
-    };
-    progressRafRef.current = requestAnimationFrame(tick);
-
-    try {
-      const resp = await fetch("/api/resume/doc/pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ doc }),
-      });
-      if (!resp.ok) {
-        const err = (await resp.json().catch(() => ({}))) as {
-          error?: string;
-          detail?: string;
-        };
-        setErrMsg(err.detail || humanizeError(err.error));
-        if (progressRafRef.current)
-          cancelAnimationFrame(progressRafRef.current);
-        progressRafRef.current = null;
-        setDownloading(false);
-        return;
-      }
-      const blob = await resp.blob();
-      // Stop the easing tick and finish the bar — the user sees a
-      // satisfying snap to 100 instead of the asymptotic crawl.
-      if (progressRafRef.current)
-        cancelAnimationFrame(progressRafRef.current);
-      progressRafRef.current = null;
-      setDownloadPct(100);
-      setDownloadLabel("Ready");
-
-      const filename =
-        (doc.header.name || "resume").toLowerCase().replace(/[^a-z0-9]+/g, "-") +
-        "-resume.pdf";
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-
-      // Hold the "Ready" state briefly so the 100% feels intentional
-      // rather than an instant flash, then return to the idle button.
-      setTimeout(() => {
-        setDownloading(false);
-        setDownloadPct(0);
-      }, 700);
-    } catch {
-      if (progressRafRef.current)
-        cancelAnimationFrame(progressRafRef.current);
-      progressRafRef.current = null;
-      setErrMsg("PDF download failed");
-      setDownloading(false);
-    }
-  }, [doc, downloading]);
-
-  // Cancel any pending progress tick if the editor unmounts mid-render.
-  useEffect(() => {
-    return () => {
-      if (progressRafRef.current)
-        cancelAnimationFrame(progressRafRef.current);
-    };
-  }, []);
-
   const lineCount = useMemo(() => estimateContentLines(doc), [doc]);
-  const overBudget = pageFit ? pageFit.pages > 1 : false;
+
+  const onDownloadError = useCallback((msg: string) => {
+    setStatus("error");
+    setErrMsg(msg);
+  }, []);
 
   return (
     <div className="flex flex-col min-h-[calc(100svh-3.5rem)]">
@@ -247,18 +148,9 @@ export function ResumeEditor({
         tailoredCount={tailoredCount}
         trailing={
           <>
-            <FitIndicator
-              fit={pageFit}
-              estimatedLines={lineCount}
-              over={overBudget}
-            />
+            <ResumeFitChip fit={pageFit} estimatedLines={lineCount} />
             <SaveBadge status={status} errMsg={errMsg} />
-            <DownloadButton
-              onClick={onDownload}
-              downloading={downloading}
-              pct={downloadPct}
-              label={downloadLabel}
-            />
+            <ResumePdfDownloadButton doc={doc} onError={onDownloadError} />
           </>
         }
       />
@@ -280,165 +172,11 @@ export function ResumeEditor({
           </div>
         </div>
 
-        {/* Preview pane */}
-        <PreviewPane doc={doc} onFitChange={setPageFit} />
+        {/* Preview pane — shared component owns measurement + overflow marker */}
+        <div className="bg-foreground/[0.015] dark:bg-foreground/[0.04] hidden lg:block lg:overflow-y-auto lg:max-h-[calc(100svh-3.5rem-3.5rem)] gs-pane-scroll">
+          <ResumePreview doc={doc} onFitChange={setPageFit} />
+        </div>
       </div>
-    </div>
-  );
-}
-
-/**
- * Download button with an in-place progress fill. Idle state is the
- * standard primary button; the moment the user clicks, the same
- * button morphs into a progress chip — same dimensions, same rounded
- * corners, same typography — with a thin progress strip running
- * along the bottom edge. Fill scales from 0% → 100% with a smooth
- * easeOut curve.
- *
- * Why no width/layout change? Anything that resizes the button on
- * click looks like a bug, even when intentional. We pin the width
- * (min-w-[148px]) so the button stays put while content swaps
- * inside.
- */
-function DownloadButton({
-  onClick,
-  downloading,
-  pct,
-  label,
-}: {
-  onClick: () => void;
-  downloading: boolean;
-  pct: number;
-  label: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={downloading}
-      className={cn(
-        "relative overflow-hidden inline-flex items-center justify-center gap-1.5",
-        "rounded-md h-8 px-3 text-[12px] font-medium",
-        "bg-foreground text-background min-h-9 min-w-[148px]",
-        "transition-[opacity] duration-150 ease",
-        "disabled:cursor-progress",
-      )}
-      aria-label={
-        downloading
-          ? `Generating PDF — ${Math.round(pct)} percent complete`
-          : "Download resume as PDF"
-      }
-      aria-live="polite"
-      aria-busy={downloading}
-      aria-valuenow={downloading ? Math.round(pct) : undefined}
-      aria-valuemin={downloading ? 0 : undefined}
-      aria-valuemax={downloading ? 100 : undefined}
-      role={downloading ? "progressbar" : undefined}
-    >
-      {/* Progress fill underlay — slightly lighter than the button
-          background so it reads as a fill without breaking the
-          button's identity. Sits at 0 width when idle. */}
-      <span
-        aria-hidden
-        className={cn(
-          "absolute inset-y-0 left-0 origin-left",
-          "bg-background/15",
-          "transition-[transform] duration-150 ease-out",
-        )}
-        style={{
-          width: "100%",
-          transform: `scaleX(${downloading ? pct / 100 : 0})`,
-        }}
-      />
-      {/* Bottom strip — the precise progress indicator. Visible only
-          while downloading; fades out on completion. */}
-      <span
-        aria-hidden
-        className={cn(
-          "absolute bottom-0 left-0 h-[2px] origin-left",
-          "bg-background/55",
-          "transition-[transform,opacity] duration-150 ease-out",
-        )}
-        style={{
-          width: "100%",
-          transform: `scaleX(${downloading ? pct / 100 : 0})`,
-          opacity: downloading ? 1 : 0,
-        }}
-      />
-      <span className="relative z-10 inline-flex items-center gap-1.5 tabular-nums">
-        <HugeiconsIcon
-          icon={downloading ? Loading03Icon : Download04Icon}
-          size={14}
-          strokeWidth={2}
-          className={downloading ? "animate-spin" : ""}
-        />
-        {downloading ? (
-          <>
-            <span>{Math.round(pct)}%</span>
-            <span className="opacity-75 font-normal">· {label}</span>
-          </>
-        ) : (
-          "Download PDF"
-        )}
-      </span>
-    </button>
-  );
-}
-
-/**
- * Map a percentage to a phase label. The bands roughly track when
- * Cloudflare Browser Rendering is doing each step in practice — they
- * land near the right phase even though we're not getting real signals
- * from the server. Honest enough that "Rendering layout" appears when
- * Puppeteer is actually rendering the page.
- */
-function labelForPct(pct: number): string {
-  if (pct < 12) return "Connecting";
-  if (pct < 35) return "Loading fonts";
-  if (pct < 65) return "Rendering layout";
-  if (pct < 85) return "Generating PDF";
-  return "Almost there";
-}
-
-function FitIndicator({
-  fit,
-  estimatedLines,
-  over,
-}: {
-  fit: PageFit | null;
-  estimatedLines: number;
-  over: boolean;
-}) {
-  const label = fit
-    ? `${fit.pages} ${fit.pages === 1 ? "page" : "pages"}`
-    : "Measuring";
-  const title = fit
-    ? over
-      ? `Rendered resume spans ${fit.pages} pages. Overflow: ${Math.ceil(fit.overflowPx)}px. Estimate: ${estimatedLines}/${ONE_PAGE_LINE_BUDGET} lines.`
-      : `Rendered resume fits on one page. Estimate: ${estimatedLines}/${ONE_PAGE_LINE_BUDGET} lines.`
-    : `Measuring rendered resume layout. Estimate: ${estimatedLines}/${ONE_PAGE_LINE_BUDGET} lines.`;
-  const icon = fit ? (over ? AlertCircleIcon : Tick02Icon) : Loading03Icon;
-
-  return (
-    <div
-      className={cn(
-        "hidden sm:inline-flex items-center gap-1.5 rounded-md px-2 h-7 text-[11px] font-medium",
-        "transition-[background-color,color] duration-200 ease-out",
-        over
-          ? "bg-foreground/[0.06] text-foreground"
-          : "bg-foreground/[0.04] text-muted-foreground",
-      )}
-      title={title}
-    >
-      <HugeiconsIcon
-        icon={icon}
-        size={12}
-        strokeWidth={2}
-        className={fit ? undefined : "animate-spin"}
-      />
-      <span style={{ fontVariantNumeric: "tabular-nums" }}>
-        {label}
-      </span>
     </div>
   );
 }
@@ -1467,106 +1205,8 @@ function sameStringArray(a: string[], b: string[]): boolean {
 }
 
 // ──────────────────────────────────────────────────────────────
-// Preview
-// ──────────────────────────────────────────────────────────────
-
-function PreviewPane({
-  doc,
-  onFitChange,
-}: {
-  doc: ResumeDoc;
-  onFitChange: (fit: PageFit) => void;
-}) {
-  const previewRef = useRef<HTMLDivElement | null>(null);
-  const [localFit, setLocalFit] = useState<PageFit | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    let raf = 0;
-
-    const measure = () => {
-      if (raf) window.cancelAnimationFrame(raf);
-      raf = window.requestAnimationFrame(() => {
-        const article = previewRef.current?.querySelector(".resume-doc");
-        if (!(article instanceof HTMLElement) || cancelled) return;
-
-        const pageHeightPx = pageHeightForSize(doc.page.size);
-        const scrollHeight = article.scrollHeight;
-        const fit = {
-          pages: Math.max(1, Math.ceil(scrollHeight / pageHeightPx)),
-          pageHeightPx,
-          scrollHeight,
-          overflowPx: scrollHeight - pageHeightPx,
-        };
-
-        setLocalFit(fit);
-        onFitChange(fit);
-      });
-    };
-
-    measure();
-
-    const article = previewRef.current?.querySelector(".resume-doc");
-    const observer = new ResizeObserver(measure);
-    if (article instanceof HTMLElement) observer.observe(article);
-    if (previewRef.current) observer.observe(previewRef.current);
-
-    window.addEventListener("resize", measure);
-    void document.fonts?.ready.then(measure).catch(() => {});
-
-    return () => {
-      cancelled = true;
-      if (raf) window.cancelAnimationFrame(raf);
-      observer.disconnect();
-      window.removeEventListener("resize", measure);
-    };
-  }, [doc, onFitChange]);
-
-  return (
-    <div className="bg-foreground/[0.015] dark:bg-foreground/[0.04] hidden lg:block lg:overflow-y-auto lg:max-h-[calc(100svh-3.5rem-3.5rem)] gs-pane-scroll">
-      {/* Plain <style> tag with dangerouslySetInnerHTML — styled-jsx
-          silently drops `<style jsx global>{`${dynamicString}`}` when
-          the template literal contains only an interpolation, which
-          was eating every resume rule and making the preview render
-          as plain text. */}
-      <style dangerouslySetInnerHTML={{ __html: RESUME_PRINT_CSS }} />
-      <div className="flex justify-center px-6 py-8">
-        <div
-          className="origin-top"
-          style={{
-            transform: "scale(var(--resume-scale, 0.78))",
-            transformOrigin: "top center",
-          }}
-        >
-          <div ref={previewRef} className="relative">
-            <PrintableResume doc={doc} />
-            {localFit && localFit.pages > 1 ? (
-              <div
-                aria-hidden
-                className="pointer-events-none absolute inset-x-0 z-20 flex items-center gap-2"
-                style={{ top: localFit.pageHeightPx }}
-              >
-                <span className="h-px flex-1 bg-red-500/70" />
-                <span className="rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-white shadow-sm">
-                  Page 2 starts
-                </span>
-                <span className="h-px flex-1 bg-red-500/70" />
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ──────────────────────────────────────────────────────────────
 // Helpers
 // ──────────────────────────────────────────────────────────────
-
-function pageHeightForSize(size: ResumeDoc["page"]["size"]): number {
-  return size === "a4" ? (297 / 25.4) * 96 : 11 * 96;
-}
 
 function hasPatch(patch: Partial<ResumeDoc>): boolean {
   return Object.keys(patch).length > 0;
