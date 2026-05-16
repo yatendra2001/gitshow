@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { FlyClient } from "@gitshow/shared/cloud/fly";
 import { DEFAULT_SCAN_MODEL } from "@gitshow/shared/models";
-import { requireProApi } from "@/lib/entitlements";
+import { requireScanQuota } from "@/lib/entitlements";
 import { getUserGitHubToken } from "@/lib/user-token";
 
 /**
@@ -57,10 +57,11 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: Request) {
-  // Pro-gated: scan creation consumes Fly + OpenRouter credits, so it
-  // can never run without an active subscription. A cancelled user who
-  // somehow slips past the UI hits a 402 here with `upgrade_url`.
-  const gate = await requireProApi();
+  // Scan creation consumes Fly + OpenRouter credits (~$10/run). Free
+  // accounts get exactly one successful generation; Pro is unlimited.
+  // A free user who already spent their scan hits a 402 here with
+  // `free_scan_used` + `upgrade_url`.
+  const gate = await requireScanQuota();
   if (!gate.ok) return gate.response;
   const session = gate.session;
 

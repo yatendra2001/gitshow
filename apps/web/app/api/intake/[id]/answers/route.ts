@@ -4,7 +4,7 @@ import { nanoid } from "nanoid";
 import { z } from "zod";
 import { FlyClient } from "@gitshow/shared/cloud/fly";
 import { DEFAULT_SCAN_MODEL } from "@gitshow/shared/models";
-import { requireProApi } from "@/lib/entitlements";
+import { requireScanQuota } from "@/lib/entitlements";
 import { getIntakeForUser, markIntakeConsumed } from "@/lib/intake";
 import { getUserGitHubToken } from "@/lib/user-token";
 
@@ -58,10 +58,10 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  // Pro-gated: this endpoint spawns the full scan. Without this
-  // guard a cancelled user with a stale draft could still trigger
-  // an expensive generation by replaying the intake-answers call.
-  const gate = await requireProApi();
+  // Scan-quota gated: this endpoint spawns the full scan (~$10).
+  // Free accounts get one successful generation; a spent free user
+  // (or a lapsed Pro replaying a stale intake) hits a 402 here.
+  const gate = await requireScanQuota();
   if (!gate.ok) return gate.response;
   const session = gate.session;
   const { id } = await params;

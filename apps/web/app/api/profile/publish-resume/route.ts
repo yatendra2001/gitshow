@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
-import { requireProApi } from "@/lib/entitlements";
+import { getSession } from "@/auth";
 import {
   draftResumeKey,
   publishedResumeKey,
@@ -25,12 +25,16 @@ import {
  * PUT on successful GET).
  */
 export async function POST() {
-  // Pro-gated: publishing a draft is a Pro edit operation. The public
-  // page itself stays live forever once published — this gate only
-  // controls who can CREATE/UPDATE that public artifact.
-  const gate = await requireProApi();
-  if (!gate.ok) return gate.response;
-  const session = gate.session;
+  // Signed-in only: the hosted portfolio is free, so publishing a
+  // draft is too (the worker already auto-publishes after a free
+  // scan — this manual route is the recovery handle when auto-publish
+  // failed, and must work for free accounts or they're stuck with no
+  // live page). It only ever touches the caller's own handle, so a
+  // free user can't publish anyone else's draft.
+  const session = await getSession();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "unauthenticated" }, { status: 401 });
+  }
   if (!session.user.login) {
     return NextResponse.json({ error: "no_handle" }, { status: 400 });
   }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { nanoid } from "nanoid";
 import { z } from "zod";
-import { requireProApi } from "@/lib/entitlements";
+import { requireScanQuota } from "@/lib/entitlements";
 import { createIntakeSession } from "@/lib/intake";
 
 /**
@@ -25,9 +25,11 @@ const BodySchema = z.object({
 });
 
 export async function POST(req: Request) {
-  // Pro-gated: the next step (POST /answers) spawns a Fly machine.
-  // Re-check here so a non-Pro user doesn't get a usable intakeId.
-  const gate = await requireProApi();
+  // Scan-quota gated: the next step (POST /answers) spawns a Fly
+  // machine. Check here too so a free user who already spent their
+  // one generation gets a clean 402 before filling the intake form
+  // instead of a wall at submit.
+  const gate = await requireScanQuota();
   if (!gate.ok) return gate.response;
   const session = gate.session;
 

@@ -99,6 +99,112 @@ export async function hasPro(
   return isActive(sub);
 }
 
+/**
+ * Free-tier scan quota. The hosted portfolio is free — but a scan
+ * spends real money (~$10 of Fly + OpenRouter per run), so a non-Pro
+ * account gets exactly ONE successful generation, ever.
+ *
+ * A scan is "spent" the moment it's queued and stays spent once it
+ * succeeds. We count `queued` + `running` too so a free user can't
+ * fan out ten concurrent scans before the first one flips to
+ * `succeeded` (each would have been $10). Only `failed` / `cancelled`
+ * scans don't count — a run that produced nothing shouldn't burn the
+ * one free generation.
+ *
+ * Pro is unlimited and short-circuits before this is ever called.
+ */
+export const countBillableScans = cache(
+  async (db: D1Database, userId: string): Promise<number> => {
+    const row = await db
+      .prepare(
+        `SELECT COUNT(*) AS n
+           FROM scans
+          WHERE user_id = ?
+            AND status IN ('queued','running','succeeded')`,
+      )
+      .bind(userId)
+      .first<{ n: number }>();
+    return row?.n ?? 0;
+  },
+);
+
+export async function canRunFreeScan(
+  db: D1Database,
+  userId: string,
+): Promise<boolean> {
+  return (await countBillableScans(db, userId)) === 0;
+}
+
+/**
+ * Guard for the scan-spawning endpoints (`/api/scan`,
+ * `/api/intake`, `/api/intake/[id]/answers`). Unlike `requireProApi`,
+ * this lets a signed-in free user through for their first generation.
+ *
+ *   - signed out          → 401
+ *   - Pro                 → ok (unlimited re-scans)
+ *   - free, no prior scan → ok (the one free generation)
+ *   - free, scan spent    → 402 `free_scan_used` + upgrade_url
+ */
+export async function requireScanQuota(): Promise<
+  | { ok: true; session: AppSession; isPro: boolean }
+  | { ok: false; response: NextResponse }
+> {
+  const session = await getSession();
+  if (!session?.user?.id) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        { error: "unauthenticated" },
+        { status: 401 },
+      ),
+    };
+  }
+  const { env } = await getCloudflareContext({ async: true });
+  const subscription = await getSubscription(env.DB, session.user.id);
+  if (isActive(subscription)) {
+    return { ok: true, session, isPro: true };
+  }
+  if (await canRunFreeScan(env.DB, session.user.id)) {
+    return { ok: true, session, isPro: false };
+  }
+  return {
+    ok: false,
+    response: NextResponse.json(
+      {
+        error: "free_scan_used",
+        message:
+          "You've used your free portfolio. Upgrade to Pro to refresh it anytime.",
+        upgrade_url: "/pricing",
+      },
+      { status: 402 },
+    ),
+  };
+}
+
+/**
+ * Owner Pro check for the public `/{handle}` route, used to decide
+ * whether to render the "Built with GitShow" badge. Resolves the
+ * profile's owning user via `user_profiles.public_slug` (the stable
+ * lowercased handle) and reuses the cached subscription read.
+ *
+ * Returns false for unknown handles — a not-yet-claimed page is, by
+ * definition, not a paying customer's, so the badge (which only ever
+ * shows on a real published page) is moot there anyway.
+ */
+export async function isHandleOwnerPro(
+  db: D1Database,
+  handle: string,
+): Promise<boolean> {
+  const row = await db
+    .prepare(
+      `SELECT user_id FROM user_profiles WHERE public_slug = ? LIMIT 1`,
+    )
+    .bind(handle.toLowerCase())
+    .first<{ user_id: string }>();
+  if (!row?.user_id) return false;
+  return hasPro(db, row.user_id);
+}
+
 export type ProGuardFailure =
   | { kind: "unauthenticated" }
   | { kind: "no_subscription" };

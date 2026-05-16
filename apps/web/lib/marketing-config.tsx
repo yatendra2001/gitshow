@@ -48,7 +48,7 @@ type NavLink = {
 export const siteConfig = {
     name: "GitShow",
     description:
-        "GitShow turns your GitHub history into a portfolio, ATS resume, custom domain, and visitor analytics dashboard.",
+        "GitShow turns your GitHub history into a portfolio site — free to publish. Pro adds a custom domain, ATS resume, and visitor analytics.",
     cta: "Create my portfolio",
     url: process.env.NEXT_PUBLIC_APP_URL || "https://gitshow.io",
     keywords: [
@@ -75,10 +75,10 @@ export const siteConfig = {
     },
     hero: {
         badgeIcon: <Icons.stackedIcons className="size-4" />,
-        badge: "Live in 20 minutes",
+        badge: "Free · live in 20 minutes",
         title: "Let AI build your portfolio.",
         description:
-            "GitShow reads your github history and creates a portfolio site, ats resume, and custom domain setup for you.",
+            "GitShow reads your GitHub history and writes you a portfolio site — free to publish at gitshow.io/you. Pro adds your own domain, an ATS resume, and analytics.",
         demo: {
             label: "See a real portfolio",
             href: "/yatendra2001",
@@ -529,17 +529,17 @@ export const siteConfig = {
         ],
     },
     pricing: {
-        title: "Pricing.",
+        title: "Free to publish.",
         description:
-            "One plan with every feature. Choose monthly or annual. Try the live demo first.",
+            "Publishing your portfolio is free, forever — a small “Built with gitshow” badge is the only catch. Pro unlocks the rest.",
         features: [
-            "Portfolio from your full GitHub history",
-            "Six templates, instant swap",
+            "Free: portfolio from your full GitHub history",
+            "Free: six templates, instant swap, public page",
+            "Pro: custom domain with managed SSL",
+            "Pro: first-party analytics, no third-party scripts",
+            "Pro: ATS-safe single-page PDF resume",
+            "Pro: refresh from GitHub anytime + no badge",
             "Public, private, and org repos",
-            "Custom domain with managed SSL",
-            "First-party analytics, no third-party scripts",
-            "ATS-safe single-page PDF resume",
-            "Edit any section, anytime",
             "Email support",
         ],
         pricingItems: [
@@ -573,7 +573,7 @@ export const siteConfig = {
                 id: 1,
                 question: "What does GitShow do, exactly?",
                 answer:
-                    "Sign in with GitHub. GitShow reads your repos, commits, PRs, and reviews, then drafts a portfolio site in plain English. It also creates an ATS-safe PDF resume, adds analytics, and supports custom domains. About twenty minutes end to end.",
+                    "Sign in with GitHub. GitShow reads your repos, commits, PRs, and reviews, then drafts a portfolio site in plain English and publishes it free at gitshow.io/you. About twenty minutes end to end. Pro adds a custom domain, an ATS-safe PDF resume, and visitor analytics.",
             },
             {
                 id: 2,
@@ -597,13 +597,13 @@ export const siteConfig = {
                 id: 5,
                 question: "Can I use my own domain?",
                 answer:
-                    "Yes. Add a CNAME pointing yourname.com at GitShow. SSL is provisioned automatically, DNS verification runs through a .well-known probe, and your portfolio gets served from a global edge network. Included on every plan.",
+                    "Yes, on Pro. Add a CNAME pointing yourname.com at GitShow. SSL is provisioned automatically, DNS verification runs through a .well-known probe, and your portfolio gets served from a global edge network. Free portfolios live at gitshow.io/you.",
             },
             {
                 id: 6,
                 question: "What kind of analytics do I get?",
                 answer:
-                    "Views, unique visitors, top countries, devices, browsers, traffic sources, visit timing, and recent activity. Visitors are hashed with a salted, non-reversible scheme. There are no reader cookies or third-party scripts.",
+                    "On Pro: views, unique visitors, top countries, devices, browsers, traffic sources, visit timing, and recent activity. Visitors are hashed with a salted, non-reversible scheme. There are no reader cookies or third-party scripts.",
             },
             {
                 id: 7,
@@ -615,7 +615,7 @@ export const siteConfig = {
                 id: 8,
                 question: "How much does it cost?",
                 answer:
-                    "$10/month billed monthly, or $7/month billed annually. Annual billing is $84/year. Cancel any time; your published portfolio stays live forever.",
+                    "Publishing a portfolio is free, forever (with a small gitshow badge). Pro is $10/month billed monthly, or $7/month billed annually ($84/year), and adds a custom domain, analytics, the ATS PDF resume, and unlimited refreshes. Cancel any time; your published portfolio stays live forever.",
             },
             {
                 id: 9,
