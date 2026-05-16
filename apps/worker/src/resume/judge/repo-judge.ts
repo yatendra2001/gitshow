@@ -77,6 +77,15 @@ export interface RepoJudgeInput {
   repoPath: string;
   /** Per-repo attribution + manifest stats produced by `studyRepo`. */
   study?: RepoStudy;
+  /**
+   * Lite mode: skip the expensive per-chunk source corpus analysis
+   * (the N-batch Kimi fan-out that dominates scan cost) and judge
+   * from README + manifests + attribution only. Used for repos
+   * outside the deep-judge shortlist — they only feed the build-log
+   * timeline, which needs a solid one-line purpose, not a full
+   * source read. Featured-grid candidates always run the full judge.
+   */
+  lite?: boolean;
   trace?: ScanTrace;
   onProgress?: (text: string) => void;
   /** Optional structured emit — streams reasoning/tool events. */
@@ -229,16 +238,56 @@ const JUDGE_TIMEOUT_MS = 3 * 60_000;
  * RepoRef metadata.
  *
  * Combined with JUDGE_TIMEOUT_MS this caps worst-case waste per
- * judge at min(20 iterations × ~1.5 OpenRouter calls each ≈ 30
+ * judge at min(8 iterations × ~1.5 OpenRouter calls each ≈ 12
  * requests, 3 min wall-clock).
+ *
+ * Lowered 20 → 8 (2026-05): a healthy judge needs ~2-4 iterations
+ * (read → reason → submit). The 12-extra-iteration tail was pure
+ * Kimi-degeneracy waste — OpenRouter `/activity` showed 3,469 Kimi
+ * requests in a single day, ~96% of request volume, driven by this
+ * loop. 8 still doubles real-world need; anything past it is the
+ * pathological no-submit loop the fallback already handles.
  */
-const JUDGE_MAX_ITERATIONS = 20;
+const JUDGE_MAX_ITERATIONS = 8;
 
 const CHUNK_BATCH_MAX_CHUNKS = 8;
 const CHUNK_BATCH_MAX_CHARS = 90_000;
 const CHUNK_ANALYSIS_CONCURRENCY = 4;
 const CHUNK_ANALYSIS_TIMEOUT_MS = 2 * 60_000;
-const CHUNK_ANALYSIS_MAX_ITERATIONS = 12;
+// A chunk-batch analysis is a single structured extraction (read
+// chunks → emit findings). It needs 1-2 iterations; 6 is ample
+// headroom. 12 → 6 trims the per-batch degeneracy tail (this call
+// fans out per batch, so its iteration ceiling is the single biggest
+// request multiplier on large repos).
+const CHUNK_ANALYSIS_MAX_ITERATIONS = 6;
+
+/**
+ * Hard cap on how many source-chunk batches a single deep judge will
+ * LLM-analyze. The sampler emits chunks already prioritized (README,
+ * manifests, entrypoints, then the rest), so the first N batches
+ * carry the signal needed to classify kind/polish/challenge — judging
+ * is structural classification, not a full code review. Capping the
+ * tail is what stops a 3 MB repo from fanning out 30+ Kimi calls
+ * (the aimuse/autotext pathology in the @pcnoic traces). 12 batches
+ * ≈ ~1 MB of the most-informative source — plenty to judge, and the
+ * ranker's CHALLENGE axis only needs the gist.
+ */
+const MAX_CORPUS_BATCHES = 12;
+
+/**
+ * How many repos get the full deep judge (per-chunk corpus analysis +
+ * judgment). The rest get a lite judge (one call, README + manifests).
+ *
+ * Was effectively unbounded (every cloned repo, cap 200). The Sonnet
+ * ranker only ever features PROJECT_FEATURE_CAP (6), and its hard
+ * DEPTH gate (git-blame userShare, computed at clone time — before
+ * any judge) means the featureable set is knowable cheaply up front.
+ * 14 ≈ 2.3× the feature cap: enough headroom that the ranker never
+ * misses a grid-worthy repo, while ~60% fewer repos hit the
+ * cost-dominant corpus fan-out. Build-log quality is unaffected —
+ * lite-judged repos still get an LLM one-line purpose.
+ */
+const DEEP_JUDGE_CAP = 14;
 
 /**
  * Hard wall-clock cap on the entire `judgeRepo` call (sample + corpus
@@ -264,17 +313,26 @@ const CHUNK_ANALYSIS_MAX_ITERATIONS = 12;
 const REPO_WALL_CLOCK_MS = 20 * 60_000;
 
 export async function judgeRepo(input: RepoJudgeInput): Promise<RepoJudgeOutput> {
-  const { repo, repoPath, study, session, usage, trace, onProgress, emit } = input;
+  const { repo, repoPath, study, session, usage, trace, onProgress, emit, lite } =
+    input;
   const t0 = Date.now();
   const sample = await sampleRepo(repoPath);
-  const analysis = await analyzeRepoCorpus({
-    corpus: sample,
-    repo,
-    session,
-    usage,
-    onProgress,
-    trace,
-  });
+  // Lite judge: skip the per-chunk corpus fan-out entirely. This is
+  // the cost-dominant stage (N Kimi calls per repo); lite-judged
+  // repos only feed the build-log timeline, which a single judgment
+  // over README + manifests + attribution renders just as well. An
+  // empty analysis is the same shape analyzeRepoCorpus returns when a
+  // repo has no chunks, so every downstream path already handles it.
+  const analysis = lite
+    ? reduceFindings(sample, [], 0, 0)
+    : await analyzeRepoCorpus({
+        corpus: sample,
+        repo,
+        session,
+        usage,
+        onProgress,
+        trace,
+      });
   const formatted = formatSample(sample, analysis);
 
   const attributionBlock = study
@@ -374,7 +432,13 @@ async function analyzeRepoCorpus(input: {
   trace?: ScanTrace;
 }): Promise<RepoCorpusAnalysis> {
   const { corpus, repo, session, usage, onProgress, trace } = input;
-  const batches = buildChunkBatches(corpus.chunks);
+  const allBatches = buildChunkBatches(corpus.chunks);
+  // Bound the per-repo fan-out. Chunks are emitted signal-first by the
+  // sampler, so the first MAX_CORPUS_BATCHES carry what classification
+  // needs; the tail is diminishing returns and was the dominant cost
+  // multiplier on large repos.
+  const batches = allBatches.slice(0, MAX_CORPUS_BATCHES);
+  const droppedBatches = allBatches.length - batches.length;
   trace?.note(`repo-corpus:${repo.fullName}`, "source corpus prepared", {
     tier: corpus.stats.tier,
     fullCoverage: corpus.stats.fullCoverage,
@@ -383,6 +447,7 @@ async function analyzeRepoCorpus(input: {
     analyzedBytes: corpus.stats.analyzedBytes,
     chunks: corpus.stats.chunkCount,
     batches: batches.length,
+    droppedBatches,
     skippedFiles: corpus.stats.skippedFiles,
     skippedSensitive: corpus.stats.skippedSensitive,
   });
@@ -698,12 +763,28 @@ export interface JudgeAllOptions {
 export async function judgeAllRepos(
   opts: JudgeAllOptions,
 ): Promise<Record<string, RepoJudgeOutput>> {
-  const candidates = pickJudgeCandidates(opts.github, opts.clonedPaths, opts.maxCandidates ?? 30);
+  const candidates = pickJudgeCandidates(
+    opts.github,
+    opts.clonedPaths,
+    opts.studies,
+    opts.maxCandidates ?? 30,
+  );
+  // candidates is sorted best-first by the depth-aware score. The top
+  // DEEP_JUDGE_CAP get the full corpus judge (featured-grid quality);
+  // the rest get a lite judge (one call → still an LLM build-log
+  // one-liner). This split is the primary cost reduction.
+  const deepCount = Math.min(DEEP_JUDGE_CAP, candidates.length);
+  opts.trace?.note(
+    "judge:plan",
+    `deep ${deepCount} / lite ${candidates.length - deepCount} (of ${candidates.length} candidates)`,
+    { deep: deepCount, lite: candidates.length - deepCount, cap: DEEP_JUDGE_CAP },
+  );
   const limit = pLimit(JUDGE_CONCURRENCY);
   const out: Record<string, RepoJudgeOutput> = {};
   await Promise.all(
-    candidates.map((c) =>
+    candidates.map((c, idx) =>
       limit(async () => {
+        const lite = idx >= deepCount;
         try {
           const judged = await withTimeout(
             judgeRepo({
@@ -712,6 +793,7 @@ export async function judgeAllRepos(
               repo: c.repo,
               repoPath: c.repoPath,
               study: opts.studies?.[c.repo.fullName],
+              lite,
               trace: opts.trace,
               onProgress: opts.onProgress,
               emit: opts.emit,
@@ -761,13 +843,19 @@ export async function judgeAllRepos(
 }
 
 /**
- * Lightweight pre-score: pinned + owned + non-archived + non-fork +
- * (stars * 3 + commits * 0.5). NO regex noise filter. Top N candidates
- * go to the LLM for the real judgment.
+ * Pre-rank every cloned owned repo best-first. The score mirrors the
+ * Sonnet ranker's axes using only data available BEFORE any judge:
+ * stars (FAMOUS, secondary signal) + git-blame depth (DEPTH — the
+ * ranker's hard gate, "never feature work the user didn't really
+ * do"). The top `DEEP_JUDGE_CAP` get the full corpus judge; the rest
+ * get a lite judge. This is the core cost lever: a depth-aware score
+ * means the ~6 the ranker will feature are reliably in the deep set
+ * without judging all ~34.
  */
 function pickJudgeCandidates(
   github: GitHubData,
   cloned: Record<string, string>,
+  studies: Record<string, RepoStudy> | undefined,
   n: number,
 ): Array<{ repo: RepoRef; repoPath: string }> {
   const owned = github.ownedRepos.filter((r) => {
@@ -778,7 +866,7 @@ function pickJudgeCandidates(
     .filter((r) => !r.isArchived)
     .map((r) => ({
       repo: r,
-      score: scoreRepo(r),
+      score: scoreRepo(r, studies?.[r.fullName]),
       cloned: cloned[r.fullName],
     }))
     .filter((c) => Boolean(c.cloned));
@@ -786,10 +874,20 @@ function pickJudgeCandidates(
   return scored.slice(0, n).map((c) => ({ repo: c.repo, repoPath: c.cloned! }));
 }
 
-function scoreRepo(r: RepoRef): number {
+function scoreRepo(r: RepoRef, study?: RepoStudy): number {
   const stars = r.stargazerCount ?? 0;
   const commits = r.userCommitCount ?? 0;
   let s = stars * 3 + commits * 0.5;
+  // Depth signal — the ranker's truth check. A high-ownership solo
+  // build with 0 stars must outrank a barely-touched popular fork
+  // (ranker rule: "a 0-star solo build with depth=10 beats a 200-star
+  // tutorial-follow"). userShare dominates; userLines adds a capped
+  // absolute-effort term so a substantial repo isn't beaten by a
+  // tiny 100%-owned script.
+  if (study) {
+    s += study.userShare * 60;
+    s += Math.min(study.userLines / 50, 40);
+  }
   if (r.isFork) s *= 0.4; // forks rank below original work but still eligible
   return s;
 }

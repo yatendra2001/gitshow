@@ -735,7 +735,12 @@ You did NOT call ${config.submitToolName}. Your analysis above is good, but the 
     systemPrompt: config.systemPrompt,
     input: forcingInput,
     tools: allTools,
-    maxIterations: 20,
+    // Attempt 2 only reformats existing analysis into the tool call —
+    // it must not re-analyze. A reformat needs 1-2 iterations; 20 was
+    // pure waste when a degenerate model kept looping instead of
+    // emitting the tool (attempt 3 + the fallback already backstop
+    // genuine failures). 20 → 6 cuts the forcing-round multiplier.
+    maxIterations: 6,
     reasoning: { effort: "low" },
     timeoutMs: config.timeoutMs,
     onProgress: config.onProgress,
