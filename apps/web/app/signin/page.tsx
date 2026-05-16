@@ -31,9 +31,11 @@ export default async function SignInPage() {
         Sign in to generate your portfolio
       </h1>
       <p className="mb-8 text-sm leading-relaxed text-muted-foreground">
-        We use your GitHub identity so you can read back private-repo
-        analyses if you grant that scope. We never store source code —
-        just commit metadata, PR descriptions, and review traces.
+        GitShow reads your real source — READMEs, manifests, and
+        first-party code — not just commit counts, so your portfolio
+        reflects what you actually built. Grant the private-repo scope
+        to include private and org work. Raw source is used for
+        inference in the moment and never stored.
       </p>
 
       <SignInButton />
