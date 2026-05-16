@@ -356,6 +356,100 @@ const PRO_FEATURES = [
   "ATS-safe resume + PDF export",
 ] as const;
 
+// ─── Free, published — the live portfolio + Pro upsell ──────────
+//
+// The hosted portfolio is free. Once a free user is published this is
+// their dashboard home: celebrate the live page, then sell the paid
+// extras (analytics, custom domain, PDF, unlimited refresh, no badge).
+// Replaces the old hard paywall for the published-but-free case.
+
+const PRO_UPSELL = [
+  "Visitor analytics — views, countries, sources, devices",
+  "Custom domain with managed SSL & edge caching",
+  "ATS-safe one-page PDF resume",
+  "Refresh your portfolio anytime as you ship more",
+  "Remove the “Built with GitShow” badge",
+  "Edit any section, swap any of six templates",
+] as const;
+
+export function FreePublishedState({
+  handle,
+  slug,
+  views,
+  wasCancelled,
+}: {
+  handle: string;
+  slug: string;
+  views: number | null;
+  wasCancelled: boolean;
+}) {
+  return (
+    <section className="mx-auto w-full max-w-xl px-4 sm:px-6 py-16 gs-enter">
+      <div className="flex items-center gap-2 text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-2">
+        <span className="h-1.5 w-1.5 rounded-full bg-[var(--primary)]" />
+        <span>{wasCancelled ? "Welcome back" : "You're live"}</span>
+      </div>
+      <h1 className="font-[var(--font-serif)] text-[32px] leading-tight mb-3">
+        Your portfolio is live
+      </h1>
+      <p className="text-[14px] leading-relaxed text-muted-foreground mb-5">
+        It&apos;s public at{" "}
+        <Link
+          href={`/${slug}`}
+          target="_blank"
+          rel="noreferrer"
+          className="font-mono text-foreground underline decoration-border underline-offset-4 hover:decoration-foreground"
+        >
+          gitshow.io/{slug}
+        </Link>
+        {typeof views === "number" && views > 0 ? (
+          <> · {views.toLocaleString()} view{views === 1 ? "" : "s"} so far</>
+        ) : (
+          <> — share the link and watch it travel</>
+        )}
+        . {wasCancelled
+          ? "Your Pro subscription ended, but the page stays live forever."
+          : "It carries a small “Built with GitShow” badge on the free plan."}
+      </p>
+
+      <div className="flex flex-wrap gap-2 mb-7">
+        <Link
+          href={`/${slug}`}
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center min-h-11 rounded-xl bg-foreground text-background px-4 py-2 text-[13px] font-medium select-none shadow-[inset_0_1px_0_rgb(255_255_255_/_0.10),0_1px_2px_-1px_oklch(0_0_0_/_0.20)] transition-[background-color,box-shadow,transform,opacity] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:shadow-[inset_0_1px_0_rgb(255_255_255_/_0.14),0_2px_8px_-3px_oklch(0_0_0_/_0.24)] active:scale-[0.97] active:duration-[80ms] outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          View your live portfolio ↗
+        </Link>
+      </div>
+
+      <div className="rounded-2xl border border-border/40 bg-card/30 p-5">
+        <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-3">
+          Unlock with Pro — $10/mo, or $7/mo billed annually
+        </div>
+        <ul className="grid grid-cols-1 gap-2 mb-5">
+          {PRO_UPSELL.map((f) => (
+            <li key={f} className="flex items-start gap-2 text-[13px]">
+              <Check className="mt-0.5 size-4 shrink-0 text-[var(--primary)]" />
+              <span className="text-secondary-foreground">{f}</span>
+            </li>
+          ))}
+        </ul>
+        <Link
+          href="/pricing"
+          className="inline-flex items-center min-h-11 rounded-xl border border-border/60 bg-card/40 px-4 py-2 text-[13px] font-medium select-none transition-[background-color,border-color,transform] duration-[140ms] ease-[cubic-bezier(0.4,0,0.2,1)] hover:bg-card/60 hover:border-foreground/25 active:scale-[0.97] active:duration-[80ms] outline-none focus-visible:ring-2 focus-visible:ring-ring/60 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+        >
+          {wasCancelled ? "Re-subscribe →" : "Upgrade to Pro →"}
+        </Link>
+      </div>
+
+      <div className="mt-8">
+        <DeleteProfileButton />
+      </div>
+    </section>
+  );
+}
+
 export function NonProShowcase({
   handle,
   hasPublished,

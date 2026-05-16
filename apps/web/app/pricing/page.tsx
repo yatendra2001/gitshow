@@ -23,15 +23,20 @@ import { PlanButton } from "./_plan-button";
 
 export const dynamic = "force-dynamic";
 
-const FEATURES = [
+const FREE_FEATURES = [
   "AI-generated portfolio from your GitHub",
   "Six designer-grade templates",
+  "Public page at gitshow.io/you",
   "Private + org repo support",
+];
+
+const PRO_FEATURES = [
   "Custom domain with SSL & edge caching",
   "Built-in visitor analytics",
   "ATS-safe resume + PDF export",
-  "Edit any section, anytime",
-  "Email support",
+  "Refresh from GitHub anytime as you ship more",
+  "Remove the “Built with gitshow” badge",
+  "Edit any section, swap templates, email support",
 ];
 
 export default async function PricingPage() {
@@ -87,11 +92,14 @@ export default async function PricingPage() {
             Pricing
           </div>
           <h1 className="font-[var(--font-serif)] text-[40px] leading-tight mb-3">
-            One plan. Two ways to pay.
+            Free to publish. Pro for the rest.
           </h1>
           <p className="text-[14px] leading-relaxed text-muted-foreground">
-            $10 a month, or $7 a month billed annually — same features
-            either way. The annual option just saves you 30%.
+            Publishing your portfolio at{" "}
+            <span className="font-mono">gitshow.io/you</span> is free,
+            forever. Pro is $10 a month, or $7 a month billed annually
+            (save 30%), and adds your own domain, analytics, the PDF
+            resume, unlimited refreshes, and removes the badge.
             {pro ? (
               <>
                 {" "}
@@ -138,18 +146,33 @@ export default async function PricingPage() {
           </PlanCard>
         </div>
 
-        <div className="mt-10 rounded-2xl border border-border/40 bg-card/30 p-6">
-          <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-3">
-            Included in Pro
+        <div className="mt-10 grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-border/40 bg-card/30 p-6">
+            <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-3">
+              Free, forever
+            </div>
+            <ul className="grid grid-cols-1 gap-2">
+              {FREE_FEATURES.map((f) => (
+                <li key={f} className="flex items-start gap-2 text-[13px]">
+                  <Check className="mt-0.5 size-4 shrink-0 text-[var(--primary)]" />
+                  <span className="text-secondary-foreground">{f}</span>
+                </li>
+              ))}
+            </ul>
           </div>
-          <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {FEATURES.map((f) => (
-              <li key={f} className="flex items-start gap-2 text-[13px]">
-                <Check className="mt-0.5 size-4 shrink-0 text-[var(--primary)]" />
-                <span className="text-secondary-foreground">{f}</span>
-              </li>
-            ))}
-          </ul>
+          <div className="rounded-2xl border border-[var(--primary)]/25 bg-accent/40 p-6">
+            <div className="text-[12px] uppercase tracking-wide text-muted-foreground/80 mb-3">
+              Everything in Pro
+            </div>
+            <ul className="grid grid-cols-1 gap-2">
+              {PRO_FEATURES.map((f) => (
+                <li key={f} className="flex items-start gap-2 text-[13px]">
+                  <Check className="mt-0.5 size-4 shrink-0 text-[var(--primary)]" />
+                  <span className="text-secondary-foreground">{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
 
         <p className="mt-8 text-[12px] text-muted-foreground">

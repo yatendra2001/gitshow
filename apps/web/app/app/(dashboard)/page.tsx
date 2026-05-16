@@ -10,6 +10,7 @@ import {
   DraftState,
   EmptyState,
   FailedState,
+  FreePublishedState,
   NonProShowcase,
   PublishedFooter,
   ScanningState,
@@ -17,6 +18,7 @@ import {
   safeParse,
 } from "./_home-states";
 import { loadDashboardContext } from "./_context";
+import { countBillableScans } from "@/lib/entitlements";
 import { loadDraftResume } from "@/lib/resume-io";
 import {
   getAttributionSplit,
@@ -104,24 +106,18 @@ export default async function AppHomePage({
     rangeParam && rangeParam in RANGE_DAYS ? rangeParam : "30d";
   const days = RANGE_DAYS[rangeKey];
 
-  // Order matters: a user who just hit Dodo's success URL is in the
-  // window between checkout completing and `subscription.active`
-  // landing via webhook. During that gap `ctx.isPro` is still false,
-  // so the NonProShowcase check below would intercept and hide the
-  // polling screen. CheckoutProcessingState handles its own bail-out
-  // (90s hard-stop with a retry CTA) so a missing webhook can't leave
-  // the customer here forever.
+  // A user who just hit Dodo's success URL is in the window between
+  // checkout completing and `subscription.active` landing via webhook.
+  // CheckoutProcessingState handles its own bail-out (90s hard-stop
+  // with a retry CTA) so a missing webhook can't strand the customer.
   if (!ctx.isPro && justCheckedOut) return <CheckoutProcessingState />;
-  if (!ctx.isPro) {
-    return (
-      <NonProShowcase
-        handle={ctx.handle}
-        hasPublished={ctx.isPublished}
-        wasCancelled={ctx.subscriptionStatus === "cancelled"}
-      />
-    );
-  }
 
+  // The hosted portfolio is free, so free users are NOT short-circuited
+  // to a paywall here — they run the same scan → draft → published
+  // state machine as Pro. The only fork is at the published step:
+  // Pro gets the analytics dashboard, free gets FreePublishedState
+  // (live link + Pro upsell). The scan-quota guard on /api/scan +
+  // /api/intake* enforces the "one free generation" limit server-side.
   const { env } = await getCloudflareContext({ async: true });
   const userId = ctx.userId;
 
@@ -166,7 +162,36 @@ export default async function AppHomePage({
     return <DraftState handle={ctx.handle} access={accessSnapshot} />;
   }
   if (lastFailed) return <FailedState scan={latestScan!} />;
-  if (!ctx.isPublished) return <EmptyState handle={ctx.handle} />;
+  if (!ctx.isPublished) {
+    // Free user who already spent their one generation but has no
+    // live page (rare — a succeeded scan normally auto-publishes).
+    // Don't show EmptyState: its Start button would just 402. Send
+    // them to the upgrade surface instead.
+    if (!ctx.isPro && (await countBillableScans(env.DB, userId)) > 0) {
+      return (
+        <NonProShowcase
+          handle={ctx.handle}
+          hasPublished={false}
+          wasCancelled={ctx.subscriptionStatus === "cancelled"}
+        />
+      );
+    }
+    return <EmptyState handle={ctx.handle} />;
+  }
+
+  // Published + free: the page is live, but analytics/domain/PDF are
+  // Pro. Celebrate the live URL and upsell — don't run the (Pro-only)
+  // analytics queries below.
+  if (!ctx.isPro) {
+    return (
+      <FreePublishedState
+        handle={ctx.handle}
+        slug={ctx.profile?.public_slug ?? ctx.handle.toLowerCase()}
+        views={ctx.profile?.view_count ?? null}
+        wasCancelled={ctx.subscriptionStatus === "cancelled"}
+      />
+    );
+  }
 
   // ─── Published — stream analytics sections ──────────────────────
   //
