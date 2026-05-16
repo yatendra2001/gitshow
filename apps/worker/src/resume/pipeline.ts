@@ -92,11 +92,12 @@ import type { AgentEventEmit } from "../agents/base.js";
 import type { Resume } from "@gitshow/shared/resume";
 
 /**
- * Defensive ceiling on how many owned repos we clone + judge. Set to
- * 200 because no normal user has more than that — but a typo'd handle
- * pointing at a bot account with 5000 repos shouldn't burn $250 of
- * Kimi credits. Below this threshold the pipeline studies EVERY owned
- * repo so the Sonnet ranker has full context to pick the top 6 from.
+ * Defensive ceiling on how many owned repos we clone. 200 because no
+ * normal user has more — a typo'd handle pointing at a bot account
+ * with 5000 repos shouldn't clone forever. Cloning is cheap; cost
+ * lives in the judge, which is bounded separately by DEEP_JUDGE_CAP
+ * (full corpus judge) with everything else getting a cheap lite
+ * judge — see repo-judge.ts.
  */
 const INVENTORY_CAP = 200;
 /**
@@ -108,6 +109,9 @@ const INVENTORY_CAP = 200;
  * inventory still gating scan duration.
  */
 const INVENTORY_CONCURRENCY = 24;
+// Outer ceiling on repos that get ANY judge (deep + lite combined).
+// Lite judges are cheap, so 200 stays a pure safety cap; the real
+// cost lever is DEEP_JUDGE_CAP inside judgeAllRepos.
 const JUDGE_MAX_CANDIDATES = 200;
 
 /**
@@ -410,9 +414,11 @@ async function runPipelineBody(args: PipelineBodyArgs): Promise<Resume> {
   });
 
   // 4. Repo Judge (Kimi K2.6) — produces shouldFeature/kind/polish per repo.
-  //    Runs over EVERY successfully-cloned owned repo (cap=200 is a
-  //    defensive ceiling, not the working limit) so the downstream
-  //    Sonnet ranker has full per-repo context to pick from.
+  //    Depth-aware pre-rank (git-blame, computed at clone time) picks
+  //    the top DEEP_JUDGE_CAP for the full corpus judge; the rest get
+  //    a cheap lite judge (one call, README+manifests) so they still
+  //    carry an LLM build-log one-liner. studies is threaded in so the
+  //    pre-rank mirrors the Sonnet ranker's DEPTH gate.
   const judgments = await phases.phase("repo-judge", async () => {
     log(`[pipeline] stage 4: repo-judge (max ${JUDGE_MAX_CANDIDATES})\n`);
     return judgeAllRepos({
