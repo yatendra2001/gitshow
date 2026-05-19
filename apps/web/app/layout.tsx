@@ -89,7 +89,10 @@ export default function RootLayout({
          */
         suppressHydrationWarning
       >
-        <PostHogProvider>
+        <PostHogProvider
+          posthogKey={process.env.NEXT_PUBLIC_POSTHOG_KEY}
+          posthogHost={process.env.NEXT_PUBLIC_POSTHOG_HOST}
+        >
           <ThemeProvider attribute="class" defaultTheme="dark">
             <TooltipProvider delayDuration={0}>{children}</TooltipProvider>
           </ThemeProvider>

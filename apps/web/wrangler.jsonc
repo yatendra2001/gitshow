@@ -46,6 +46,8 @@
   },
   "vars": {
     "NEXT_PUBLIC_APP_URL": "https://gitshow.io",
+    "NEXT_PUBLIC_POSTHOG_KEY": "phc_rRabNF2KeLNDJHpRjeV8zHNqR6k5AGTdPCPCKLXgyExB",
+    "NEXT_PUBLIC_POSTHOG_HOST": "https://us.i.posthog.com",
     "DEMO_HANDLE": "yatendra2001",
     // Flip to "live_mode" when you're done with test_mode verification.
     // The Better Auth Dodo plugin reads this from the env at runtime.
