@@ -155,7 +155,11 @@ async function buildAuth() {
                 // Dedicated `onSubscription*` callbacks below handle
                 // the specific state transitions on top of the sync.
                 onPayload: async (payload) => {
-                  await syncSubscriptionFromWebhook(env.DB, payload);
+                  // Pass the Dodo client so the sync can fall back to
+                  // a customer→user lookup when a payload (e.g. an
+                  // operator cancel from the Dodo dashboard) arrives
+                  // without `customer.metadata.userId`.
+                  await syncSubscriptionFromWebhook(env.DB, payload, dodo);
                 },
               }),
             ],
