@@ -3,6 +3,7 @@
 import * as React from "react";
 import { ArrowUpRight, Github, Loader2 } from "lucide-react";
 import { authClient } from "@/lib/auth-client";
+import { track } from "@/components/posthog-provider";
 
 /**
  * Kicks off the GitHub OAuth round-trip via Better Auth. The client
@@ -16,6 +17,14 @@ export function SignInButton() {
 
   const onClick = async () => {
     setBusy(true);
+    // Read source off the URL in the handler (no useSearchParams hook →
+    // no extra Suspense boundary). `src` is set by the claim page /
+    // examples / hero CTAs; `callbackURL` carries the pricing intent.
+    const sp = new URLSearchParams(window.location.search);
+    const source =
+      sp.get("src") ??
+      (sp.get("callbackURL")?.includes("pricing") ? "pricing" : "direct");
+    track("signin_started", { source });
     try {
       await authClient.signIn.social({
         provider: "github",
