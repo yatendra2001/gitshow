@@ -46,14 +46,17 @@ export function ProfileClaim({ handle }: { handle: string }) {
           maxOpacity={0.18}
         />
       </div>
-      {/* Brand glow — the same cyan→blue radial the landing hero uses. */}
+      {/* Brand glow — the cyan→blue radial from the landing hero, but
+          dialled down and seated low so the bloom sits BELOW the copy.
+          The earlier version centred the hot zone behind the body text,
+          washing out secondary copy against the teal. */}
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-0 bg-radial-[at_50%_78%] from-[#2CD5FF]/30 via-[#2C30FF]/3 to-transparent mask-[linear-gradient(to_bottom,transparent,black_60%,transparent)]"
+        className="pointer-events-none absolute inset-0 -z-0 bg-radial-[at_50%_92%] from-[#2CD5FF]/20 via-[#2C30FF]/3 to-transparent mask-[linear-gradient(to_bottom,transparent,black_70%,transparent)]"
       />
       <div
         aria-hidden
-        className="pointer-events-none absolute inset-0 -z-0 bg-radial-[at_50%_60%] from-[#2CD5FF]/40 via-[#2C30FF]/2 to-transparent blur-[60px]"
+        className="pointer-events-none absolute inset-0 -z-0 bg-radial-[at_50%_98%] from-[#2CD5FF]/22 via-[#2C30FF]/2 to-transparent blur-[70px]"
       />
 
       <div className="relative z-10 mx-auto flex min-h-svh w-full max-w-3xl flex-col px-5 py-7 sm:px-6">
@@ -61,12 +64,12 @@ export function ProfileClaim({ handle }: { handle: string }) {
           <Link
             href="/"
             aria-label="gitshow home"
-            className="inline-flex items-center gap-2 rounded-lg border border-border/40 bg-background/40 px-1 py-1 pr-2.5 text-[12px] text-muted-foreground backdrop-blur transition-colors hover:text-foreground"
+            className="inline-flex items-center gap-2 rounded-lg border border-border/40 bg-background/40 px-1 py-1 pr-2.5 text-[12px] text-foreground/70 backdrop-blur transition-colors hover:text-foreground"
           >
             <LogoMark size={18} />
             <span>gitshow.io</span>
           </Link>
-          <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-muted-foreground/70">
+          <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-foreground/55">
             Unclaimed handle
           </span>
         </header>
@@ -118,7 +121,7 @@ export function ProfileClaim({ handle }: { handle: string }) {
               </div>
 
               <div className="relative flex flex-col items-center gap-2.5">
-                <span className="font-mono text-[13px] text-muted-foreground/70 line-through decoration-border">
+                <span className="font-mono text-[13px] text-foreground/55 line-through decoration-foreground/30">
                   github.com/{handle}
                 </span>
                 <ArrowRight className="size-4 rotate-90 text-[var(--primary)]" />
@@ -136,7 +139,7 @@ export function ProfileClaim({ handle }: { handle: string }) {
             {handle}, this is your portfolio.
           </h1>
           <p
-            className="gs-enter mt-4 max-w-lg text-balance text-[15px] leading-relaxed text-muted-foreground"
+            className="gs-enter mt-4 max-w-lg text-balance text-[15px] leading-relaxed text-foreground/80"
             style={{ animationDelay: "240ms", animationDuration: "600ms" }}
           >
             gitshow reads your GitHub — repos, commits, pull requests,
@@ -164,7 +167,7 @@ export function ProfileClaim({ handle }: { handle: string }) {
           </div>
 
           <p
-            className="gs-enter mt-6 max-w-md text-[12px] leading-relaxed text-muted-foreground/80"
+            className="gs-enter mt-6 max-w-md text-[12px] leading-relaxed text-foreground/65"
             style={{ animationDelay: "400ms", animationDuration: "600ms" }}
           >
             Sign in scans <span className="font-medium">your own</span>{" "}
@@ -180,7 +183,7 @@ export function ProfileClaim({ handle }: { handle: string }) {
           </p>
         </section>
 
-        <footer className="flex items-center justify-between text-[11px] text-muted-foreground/60">
+        <footer className="flex items-center justify-between text-[11px] text-foreground/45">
           <span className="font-mono">status 200 · unclaimed</span>
           <Logo size={18} markOnly />
         </footer>
