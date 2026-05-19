@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
+import { track } from "@/components/posthog-provider";
 
 /**
  * Pricing-page CTA. Three behaviors folded into one button so the
@@ -37,6 +38,7 @@ export function PlanButton({
   const onClick = () => {
     setError(null);
     if (mode === "signin") {
+      track("signin_started", { source: "pricing", plan: slug });
       const callback = encodeURIComponent(`/pricing?plan=${slug}`);
       router.push(`/signin?callbackURL=${callback}`);
       return;
@@ -45,6 +47,7 @@ export function PlanButton({
       router.push("/app/billing");
       return;
     }
+    track("checkout_started", { plan: slug });
     startTransition(async () => {
       try {
         // The plugin proxies to the Dodo API server-side; `data.url` is

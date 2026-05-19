@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { track } from "@/components/posthog-provider";
 
 /**
  * Kicks off /api/intake with the user's GitHub handle (captured
@@ -35,6 +36,7 @@ export function StartFirstScanButton({
         return;
       }
       const data = (await resp.json()) as { intakeId: string };
+      track("scan_started", { handle });
       router.push(`/app/intake/${data.intakeId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "network error");

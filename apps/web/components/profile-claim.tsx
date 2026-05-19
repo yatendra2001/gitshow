@@ -4,6 +4,7 @@ import { FlickeringGrid } from "@/components/magicui/flickering-grid";
 import { CornerPlus } from "@/components/marketing/ui/corner-plus";
 import { HeaderBadge } from "@/components/marketing/header-badge";
 import { Logo, LogoMark } from "@/components/logo";
+import { CaptureOnMount } from "@/components/posthog-provider";
 
 /* eslint-disable @next/next/no-img-element */
 
@@ -32,6 +33,10 @@ export function ProfileClaim({ handle }: { handle: string }) {
 
   return (
     <main className="relative min-h-svh overflow-hidden bg-background text-foreground">
+      {/* Growth-surface impression — the claim page is the top of the
+          viral-loop + SEO funnel. noindex, so this is the only signal
+          we get that it converted. */}
+      <CaptureOnMount event="claim_page_viewed" properties={{ handle }} />
       {/* Flickering grid, faded toward the centre so it never fights
           the copy — same recipe as the 404 hero. */}
       <div
