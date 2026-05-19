@@ -2,7 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getCloudflareContext } from "@opennextjs/cloudflare";
 import { getSession } from "@/auth";
-import { getSubscription, isActive } from "@/lib/entitlements";
+import {
+  getSubscription,
+  querySubscription,
+  isActive,
+} from "@/lib/entitlements";
+import { getDodoClient } from "@/lib/dodo";
+import { syncSubscriptionFromDodo } from "@/lib/billing-sync";
 import { PortalButton } from "./_portal-button";
 
 /**
@@ -20,6 +26,14 @@ import { PortalButton } from "./_portal-button";
  */
 
 export const dynamic = "force-dynamic";
+
+// On-read resync: the billing page is where a user comes to confirm
+// "did my cancellation actually go through?". If the cached row was
+// last touched more than this ago, pull live state from Dodo before
+// rendering so a missed webhook can't make this page lie. The window
+// keeps repeated refreshes (and a just-landed webhook write) from
+// each triggering a redundant Dodo round-trip.
+const RESYNC_AFTER_MS = 60_000;
 
 function formatDate(epochMs: number): string {
   return new Date(epochMs).toLocaleDateString("en-US", {
@@ -41,7 +55,23 @@ export default async function BillingPage() {
   const userId = session.user.id;
 
   const { env } = await getCloudflareContext({ async: true });
-  const sub = await getSubscription(env.DB, userId);
+  let sub = await getSubscription(env.DB, userId);
+
+  // Best-effort on-read resync. Never blocks rendering: a Dodo outage
+  // degrades to "show the cached row". `querySubscription` (uncached)
+  // re-reads after the pull — the `getSubscription` wrapper is
+  // `React.cache`-memoized and would hand back the pre-resync value.
+  if (sub && Date.now() - sub.updated_at > RESYNC_AFTER_MS) {
+    const result = await syncSubscriptionFromDodo(env.DB, getDodoClient(env), {
+      subscriptionId: sub.id,
+      userId,
+      customerId: sub.customer_id,
+    });
+    if (result !== "skipped") {
+      sub = await querySubscription(env.DB, userId);
+    }
+  }
+
   const active = isActive(sub);
 
   const planLabel =

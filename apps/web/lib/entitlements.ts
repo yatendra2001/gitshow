@@ -47,29 +47,42 @@ export interface SubscriptionRow {
 const ACTIVE_STATUSES = new Set(["active", "cancelled", "on_hold"]);
 
 /**
+ * Raw, UNCACHED read of the user's effective subscription row.
+ *
+ * Most callers want `getSubscription` (the `React.cache` wrapper).
+ * This exists for the one place that needs to read *after* mutating
+ * the row inside the same request — the on-read resync on
+ * /app/billing pulls fresh state from Dodo and must then re-read it;
+ * going through the memoized wrapper would hand back the pre-resync
+ * value. SQL lives here once so the two never drift.
+ */
+export async function querySubscription(
+  db: D1Database,
+  userId: string,
+): Promise<SubscriptionRow | null> {
+  const row = await db
+    .prepare(
+      `SELECT id, user_id, customer_id, product_id, status, interval,
+              amount_cents, currency, current_period_end,
+              cancel_at_period_end, cancelled_at, created_at, updated_at
+         FROM subscription
+        WHERE user_id = ?
+        ORDER BY current_period_end DESC
+        LIMIT 1`,
+    )
+    .bind(userId)
+    .first<SubscriptionRow>();
+  return row ?? null;
+}
+
+/**
  * Wrapped in `React.cache` so layout + page + pro-gate, all of which
  * resolve subscription state during the same request, share one
  * D1 query. `cache()` keys by argument identity — `db` is stable per
  * isolate and `userId` is a string, so two callers with the same
  * userId hit the cache.
  */
-export const getSubscription = cache(
-  async (db: D1Database, userId: string): Promise<SubscriptionRow | null> => {
-    const row = await db
-      .prepare(
-        `SELECT id, user_id, customer_id, product_id, status, interval,
-                amount_cents, currency, current_period_end,
-                cancel_at_period_end, cancelled_at, created_at, updated_at
-           FROM subscription
-          WHERE user_id = ?
-          ORDER BY current_period_end DESC
-          LIMIT 1`,
-      )
-      .bind(userId)
-      .first<SubscriptionRow>();
-    return row ?? null;
-  },
-);
+export const getSubscription = cache(querySubscription);
 
 /**
  * True if the user has current access to Pro features.
