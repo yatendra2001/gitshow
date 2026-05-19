@@ -1,0 +1,39 @@
+name: Subscriptions — hourly reconcile
+
+# Pulls live subscription state from the Dodo API and rewrites the
+# local mirror, so a missed/unparseable subscription.cancelled or
+# subscription.expired webhook self-heals instead of stranding a
+# cancelled user as "subscribed" forever. Idempotent + bounded
+# (100 subs/run) — see apps/web/app/api/cron/subscriptions-reconcile/route.ts.
+#
+# Why a GitHub Actions cron and not Cloudflare's `triggers.crons`:
+# OpenNext's Next.js worker exports `fetch` only, no `scheduled()`
+# handler. Routing a Cloudflare cron at our HTTP route would need a
+# second worker. GitHub Actions is dirt cheap, observable, and we
+# already use it for migrate-d1 + cron-domains-recheck.
+
+on:
+  schedule:
+    - cron: "43 * * * *" # every hour at :43 (offset from domains :17)
+  workflow_dispatch:
+
+concurrency:
+  group: cron-subscriptions-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: POST to reconcile endpoint
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+          curl -sS --fail-with-body \
+            -X POST \
+            -H "authorization: Bearer ${CRON_SECRET}" \
+            -H "content-type: application/json" \
+            --max-time 60 \
+            https://gitshow.io/api/cron/subscriptions-reconcile
