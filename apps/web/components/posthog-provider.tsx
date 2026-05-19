@@ -8,30 +8,28 @@ import { useSession } from "@/lib/auth-client";
 
 /**
  * Client-side PostHog — the growth funnel (acquisition → activation →
- * revenue). Mirrors the server client's contract (packages/shared/
- * cloud/posthog.ts): **env-gated, no-op when the key is absent**, so
- * the site runs identically with or without analytics. The founder
- * flips it on by setting `NEXT_PUBLIC_POSTHOG_KEY` (the public
- * `phc_…` project key — safe to expose) and optionally
- * `NEXT_PUBLIC_POSTHOG_HOST` in the production env.
+ * revenue).
  *
- * `$pageview` is captured manually because the App Router does
- * client-side nav that posthog-js's default single-shot pageview
- * misses. UTM params ride on every pageview automatically — that's
- * what attributes the "Built with gitshow" badge loop
- * (utm_source=portfolio_badge) and organic SEO.
+ * Key/host are passed as **props from the server layout**, not read
+ * from `process.env` here. Reason: with Turbopack pinned at the
+ * monorepo root + OpenNext, `NEXT_PUBLIC_*` does not reliably inline
+ * into the client bundle (verified: server sees the env, client
+ * bundle doesn't). The server component reads `process.env` at
+ * runtime — deterministic in `next dev` (.env.local) and in the
+ * OpenNext Worker (wrangler.jsonc vars) — and hands the (public,
+ * write-only) token down as a prop. No key → no-op, site unchanged.
+ *
+ * `$pageview` is captured manually (App Router client nav). UTM
+ * params ride every pageview automatically — that's what attributes
+ * the "Built with gitshow" badge loop and organic SEO.
  */
 
-const KEY = process.env.NEXT_PUBLIC_POSTHOG_KEY;
-const HOST =
-  process.env.NEXT_PUBLIC_POSTHOG_HOST ?? "https://us.i.posthog.com";
-
 let started = false;
-function ensureInit() {
-  if (started || !KEY || typeof window === "undefined") return;
+function ensureInit(key?: string, host?: string) {
+  if (started || !key || typeof window === "undefined") return;
   started = true;
-  posthog.init(KEY, {
-    api_host: HOST,
+  posthog.init(key, {
+    api_host: host || "https://us.i.posthog.com",
     // App Router → we fire $pageview ourselves on route change.
     capture_pageview: false,
     capture_pageleave: true,
@@ -42,11 +40,22 @@ function ensureInit() {
   });
 }
 
+function isReady(): boolean {
+  // Check the imported instance, NOT window.posthog — the npm SDK
+  // (unlike the HTML snippet) never assigns the global, so a
+  // window.posthog check would falsely no-op every funnel event even
+  // though PostHog is fully initialized.
+  return (
+    typeof window !== "undefined" &&
+    (posthog as unknown as { __loaded?: boolean }).__loaded === true
+  );
+}
+
 function PageViewTracker() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   useEffect(() => {
-    if (!KEY) return;
+    if (!isReady()) return;
     let url = window.origin + pathname;
     const qs = searchParams?.toString();
     if (qs) url += `?${qs}`;
@@ -58,7 +67,7 @@ function PageViewTracker() {
 function IdentifyOnAuth() {
   const { data } = useSession();
   useEffect(() => {
-    if (!KEY) return;
+    if (!isReady()) return;
     const user = data?.user as
       | { id?: string; login?: string | null; email?: string; name?: string }
       | undefined;
@@ -75,12 +84,20 @@ function IdentifyOnAuth() {
   return null;
 }
 
-export function PostHogProvider({ children }: { children: React.ReactNode }) {
+export function PostHogProvider({
+  children,
+  posthogKey,
+  posthogHost,
+}: {
+  children: React.ReactNode;
+  posthogKey?: string;
+  posthogHost?: string;
+}) {
   useEffect(() => {
-    ensureInit();
-  }, []);
+    ensureInit(posthogKey, posthogHost);
+  }, [posthogKey, posthogHost]);
 
-  if (!KEY) return <>{children}</>;
+  if (!posthogKey) return <>{children}</>;
 
   return (
     <PHProvider client={posthog}>
@@ -94,9 +111,9 @@ export function PostHogProvider({ children }: { children: React.ReactNode }) {
 }
 
 /**
- * Fire-and-forget event on mount. Use for server-rendered surfaces
- * that have no natural click handler (e.g. the claim page view).
- * No-ops without the key.
+ * Fire-and-forget event on mount. For server-rendered surfaces with
+ * no natural click handler (e.g. the claim page view). No-ops until
+ * PostHog has initialized.
  */
 export function CaptureOnMount({
   event,
@@ -106,15 +123,15 @@ export function CaptureOnMount({
   properties?: Record<string, unknown>;
 }) {
   useEffect(() => {
-    if (!KEY) return;
+    if (!isReady()) return;
     posthog.capture(event, properties);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return null;
 }
 
-/** Imperative capture helper — safe to call anywhere, no-ops without key. */
+/** Imperative capture helper — safe to call anywhere, no-ops if PostHog is off. */
 export function track(event: string, properties?: Record<string, unknown>) {
-  if (!KEY || typeof window === "undefined") return;
+  if (!isReady()) return;
   posthog.capture(event, properties);
 }
